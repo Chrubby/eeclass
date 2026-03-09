@@ -24,14 +24,22 @@ const courseId = computed(() => route.params.id)
 const currentCourse = computed(() =>
   courses.value.find((c) => c.id === courseId.value)
 )
+
+const isAuthPage = computed(() => ["Login", "Register"].includes(route.name))
+
+const logout = () => {
+  isMenuOpen.value = false
+  router.push('/login')
+}
+
 </script>
 
 <template>
   <div class="min-h-screen bg-gray-50 text-gray-800 font-sans">
-    <header class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm">
+    <header v-if="!isAuthPage" class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm">
       <div class="font-bold text-base">國立中央大學「新 ee-class 系統」</div>
       <div class="flex space-x-6 items-center text-gray-600">
-        <router-link to="/" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
+        <router-link to="/dashboard" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
         <div class="relative">
 
           <span class="cursor-pointer hover:text-blue-600" @click="isMenuOpen = !isMenuOpen">
@@ -43,7 +51,7 @@ const currentCourse = computed(() =>
               <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer">我的筆記</li>
               <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer">問卷中心</li>
               <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer">個人資訊</li>
-              <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer">登出</li>
+              <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer" @click="logout">登出</li>
             </ul>
           </div>
 
@@ -53,18 +61,18 @@ const currentCourse = computed(() =>
       </div>
     </header>
 
-    <div  v-if="!isCoursePage"class="h-32 bg-gray-300 relative flex items-center px-10">
+    <div v-if="!isAuthPage && !isCoursePage" class="h-32 bg-gray-300 relative flex items-center px-10">
       <h1 class="text-3xl text-white font-bold z-10">ee-class 易課平台</h1>
     </div>
 
-    <div v-else class="h-28 bg-[#a39481] flex items-center px-10">
+    <div v-else-if="!isAuthPage && isCoursePage" class="h-28 bg-[#a39481] flex items-center px-10">
       <h1 class="text-2xl text-white font-bold">課程代碼：{{ courseId }}</h1>
     </div>
 
     <div class="max-w-7xl mx-auto flex gap-6 mt-6 px-4 pb-10">
       <!-- sidebar -->
 
-      <aside class="w-[260px] flex-shrink-0">
+      <aside v-if="!isAuthPage" class="w-[260px] flex-shrink-0">
         <!-- 首頁-->
         <div v-if="!isCoursePage" class="bg-white border mb-4">
           <div class="bg-gray-100 px-4 py-2 font-bold text-center border-b text-sm">我的首頁</div>
@@ -100,7 +108,7 @@ const currentCourse = computed(() =>
           </div>
         </div>
 
-        <ul class="bg-white text-[15px] text-gray-700 py-2">
+        <ul v-if="!isCoursePage" class="bg-white text-[15px] text-gray-700 py-2">
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer">成績查詢</li>
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2">我的課表</li>
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer">最近事件</li>
@@ -114,6 +122,15 @@ const currentCourse = computed(() =>
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2">筆記本</li>
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2">檔案庫</li>
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer">教學評量</li>
+        </ul>
+
+        <ul v-else class="bg-white text-[15px] text-gray-700 py-2">
+          <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer">公告</li>
+          <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2">教材</li>
+          <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer">作業</li>
+          <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2">考試</li>
+          <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2">討論區</li>
+          <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer ">成績</li>
         </ul>
       </aside>
 
