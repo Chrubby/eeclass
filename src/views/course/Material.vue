@@ -2,7 +2,7 @@
   <div>
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-bold text-gray-800 border-l-4 border-[#337ab7] pl-3">
-        課程公告
+        教材
       </h2>
     </div>
 
