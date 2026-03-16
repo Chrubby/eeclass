@@ -17,7 +17,7 @@ const courseId = route.params.id
           <router-link to="/dashboard" class="text-blue-600 hover:underline">我的首頁</router-link> /
           {{ courseId }} 課程頁面
         </div>
-        <p>Welcome!</p>
+        <router-view />
       </main>
     </div>
   </div>
