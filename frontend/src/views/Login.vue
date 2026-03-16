@@ -4,25 +4,23 @@
       <form @submit.prevent="login" class="flex flex-col gap-6">
 
         <div>
-          <input 
-            v-model="email" 
-            type="email" 
-            placeholder="Email"
-            required
+          <input
+            v-model="email"
+            type="text"  placeholder="帳號 或 Email" required
             class="w-full bg-[#eef3fe] border-b-[3px] border-gray-300 px-4 py-3 text-lg text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#e4ebf9] transition-colors"
           />
         </div>
 
         <div class="relative">
-          <input 
-            v-model="password" 
-            :type="showPassword ? 'text' : 'password'" 
+          <input
+            v-model="password"
+            :type="showPassword ? 'text' : 'password'"
             placeholder="Password"
             required
             class="w-full bg-[#eef3fe] border-b-[3px] border-gray-300 px-4 py-3 pr-12 text-lg text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#e4ebf9] transition-colors"
           />
-          <button 
-            type="button" 
+          <button
+            type="button"
             @click="showPassword = !showPassword"
             class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-700 hover:text-black cursor-pointer"
           >
@@ -37,10 +35,10 @@
         </div>
 
         <div class="flex items-center -mt-2">
-          <input 
-            id="remember" 
-            v-model="rememberMe" 
-            type="checkbox" 
+          <input
+            id="remember"
+            v-model="rememberMe"
+            type="checkbox"
             class="w-4 h-4 border-gray-400 rounded cursor-pointer"
           />
           <label for="remember" class="ml-2 text-gray-600 text-[15px] cursor-pointer select-none">
@@ -48,8 +46,8 @@
           </label>
         </div>
 
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           class="w-full bg-[#337ab7] text-white py-2.5 rounded text-lg tracking-widest hover:bg-[#285e8e] transition-colors mt-2"
         >
           登入
@@ -69,7 +67,6 @@
 import { ref } from "vue"
 import { useRouter } from "vue-router"
 
-
 const email = ref("")
 const password = ref("")
 const showPassword = ref(false)
@@ -77,9 +74,34 @@ const rememberMe = ref(false)
 
 const router = useRouter()
 
-const login = () => {
-  //Fake
-  alert("登入成功")
-  router.push("/dashboard")
+const login = async () => {
+  try {
+    const response = await fetch('http://127.0.0.1:5000/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        username: email.value,
+        password: password.value
+      })
+    })
+
+    const result = await response.json()
+
+    if (response.ok) {
+      alert(result.message)
+
+      localStorage.setItem("user", result.username)
+
+      router.push("/dashboard")
+    } else {
+      alert(result.message)
+    }
+
+  } catch (error) {
+    alert("連線失敗")
+    console.error("錯誤詳細資訊:", error)
+  }
 }
 </script>

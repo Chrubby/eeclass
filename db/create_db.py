@@ -4,7 +4,7 @@ import mysql.connector
 conn = mysql.connector.connect(
     host="localhost",
     user="root",
-    password="@Ruby931220"
+    password="a7385966"
 )
 
 cursor = conn.cursor()

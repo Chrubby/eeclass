@@ -7,9 +7,9 @@
           <label class="block text-gray-800 mb-1.5 text-[15px]">
             帳號 <span class="text-red-500">*</span>
           </label>
-          <input 
-            v-model="account" 
-            type="text" 
+          <input
+            v-model="account"
+            type="text"
             placeholder="帳號"
             required
             class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
@@ -20,9 +20,9 @@
           <label class="block text-gray-800 mb-1.5 text-[15px]">
             姓名 <span class="text-red-500">*</span>
           </label>
-          <input 
-            v-model="name" 
-            type="text" 
+          <input
+            v-model="name"
+            type="text"
             placeholder="姓名"
             required
             class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
@@ -34,9 +34,9 @@
             密碼 <span class="text-red-500">*</span>
           </label>
           <div class="relative">
-            <input 
-              v-model="password" 
-              :type="showPassword ? 'text' : 'password'" 
+            <input
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
               placeholder="密碼長度至少8個字元"
               required
               class="w-full bg-white border border-gray-300 rounded px-3 py-2 pr-10 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
@@ -53,9 +53,9 @@
             密碼確認
           </label>
           <div class="relative">
-            <input 
-              v-model="confirmPassword" 
-              :type="showConfirmPassword ? 'text' : 'password'" 
+            <input
+              v-model="confirmPassword"
+              :type="showConfirmPassword ? 'text' : 'password'"
               placeholder="密碼確認"
               required
               class="w-full bg-white border border-gray-300 rounded px-3 py-2 pr-10 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
@@ -71,9 +71,9 @@
           <label class="block text-gray-800 mb-1.5 text-[15px]">
             信箱 <span class="text-red-500">*</span>
           </label>
-          <input 
-            v-model="email" 
-            type="email" 
+          <input
+            v-model="email"
+            type="email"
             placeholder=""
             required
             class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
@@ -84,9 +84,9 @@
           <label class="block text-gray-800 mb-1.5 text-[15px]">
             身份 <span class="text-red-500">*</span>
           </label>
-          <select 
-            v-model="role" 
-            required 
+          <select
+            v-model="role"
+            required
             class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors appearance-none cursor-pointer bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%234A5568%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_12px] bg-[position:right_12px_center] bg-no-repeat"
           >
             <option value="student">學生</option>
@@ -98,27 +98,27 @@
           <div class="flex items-center gap-2">
             <div class="h-[38px] w-[110px] bg-gray-200 border border-gray-300 flex items-center justify-center bg-cover bg-center opacity-80" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMTAiIGhlaWdodD0iMzgiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48dGV4dCB4PSI1NSIgeT0iMjYiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmaWxsPSIjMWUzYThhIiBsZXR0ZXItc3BhY2luZz0iMnB4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5iMzNtPC90ZXh0Pjwvc3ZnPg==');">
             </div>
-            
+
             <button type="button" class="text-[#337ab7] hover:text-[#285e8e] cursor-pointer p-1">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
 
-            <input 
-              v-model="captcha" 
-              type="text" 
-              placeholder="驗證碼" 
+            <input
+              v-model="captcha"
+              type="text"
+              placeholder="驗證碼"
               required
-              class="w-28 bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors" 
+              class="w-28 bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
             />
           </div>
           <span class="text-gray-500 text-xs mt-0.5">區分大小寫</span>
         </div>
 
         <div class="flex justify-center mt-3">
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             class="bg-[#337ab7] text-white px-8 py-2.5 rounded text-[16px] tracking-widest hover:bg-[#285e8e] transition-colors"
           >
             註冊
@@ -127,7 +127,7 @@
       </form>
 
       <div class="mt-6 text-center text-[15px] text-gray-700">
-        已經有帳號？ 
+        已經有帳號？
         <router-link to="/login" class="text-[#337ab7] hover:text-[#285e8e]">
           登入
         </router-link>
@@ -140,40 +140,54 @@
 import { ref } from "vue"
 import { useRouter } from "vue-router"
 
-// 表單狀態
 const account = ref("")
 const name = ref("")
 const password = ref("")
 const confirmPassword = ref("")
 const email = ref("")
-const role = ref("student") // 下拉選單預設值
+const role = ref("student")
 const agreeTerms = ref(false)
 const captcha = ref("")
 
-// 密碼顯示/隱藏切換狀態
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 
 const router = useRouter()
 
-const register = () => {
-  // 簡單的密碼確認檢查
+const register = async () => {
   if (password.value !== confirmPassword.value) {
     alert("兩次輸入的密碼不相符，請重新確認！")
     return
   }
-
-  console.log("註冊資訊:", {
-    account: account.value,
-    name: name.value,
+  const userData = {
+    username: account.value,
     password: password.value,
+    name: name.value,
     email: email.value,
-    role: role.value,
-    agreeTerms: agreeTerms.value,
-    captcha: captcha.value
-  })
+    role: role.value
+  }
 
-  alert("註冊成功 (假)")
-  router.push("/login") // 註冊成功後導向登入頁
+  try {
+    const response = await fetch('http://127.0.0.1:5000/api/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(userData)
+    })
+
+    const result = await response.json()
+
+    if (response.ok) {
+      alert(result.message)
+      router.push("/login")
+    } else {
+      alert(result.message)
+    }
+
+  } catch (error) {
+    alert("連線失敗")
+    console.error( error)
+  }
 }
 </script>
