@@ -107,7 +107,7 @@ const homeworkData = ref({
   title: '第三次平時作業：SQL Query 實作', 
   deadline: '2026-05-01 23:59', 
   isGraded: true, 
-  score: 'A', 
+  score: '100', 
   feedback: 'Query 寫得非常精簡漂亮，效能很好！'
 })
 

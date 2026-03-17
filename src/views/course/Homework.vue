@@ -6,6 +6,14 @@
       </h2>
     </div>
 
+    <button 
+        v-if="userRole === 'teacher'"
+        @click="goToCreateHomework"
+        class="bg-[#337ab7] text-white px-4 py-1.5 rounded text-sm font-bold tracking-wide hover:bg-[#285e8e] shadow-sm transition-colors flex items-center gap-1 mb-4"
+      >
+        ＋ 新增作業
+      </button>
+
     <div class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="flex bg-gray-100 text-sm font-bold text-gray-700 p-3 border-b">
         <div class="flex-1">作業名稱</div>
@@ -47,6 +55,9 @@ const router = useRouter()
 const route = useRoute()
 const courseId = route.params.id
 
+// Test
+const userRole = ref('teacher')
+
 const homeworkList = ref([
   { id: 'hw1', title: '期中專案報告與系統分析', deadline: '2026-04-10 23:59', isSubmitted: true, isGraded: true, score: 88 },
   { id: 'hw2', title: '第三次平時作業：SQL Query 實作', deadline: '2026-05-01 23:59', isSubmitted: true, isGraded: true, score: 'A-' },
@@ -56,5 +67,9 @@ const homeworkList = ref([
 
 const goToDetail = (hwId) => {
   router.push(`/course/${courseId}/homework/${hwId}`)
+}
+
+const goToCreateHomework = () => {
+  router.push(`/course/${courseId}/homework/create`)
 }
 </script>

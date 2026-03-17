@@ -27,9 +27,23 @@ const router = createRouter({
           component: () => import('../views/course/Homework.vue')
         },
         {
+          path: 'homework/create',
+          name: 'HomeworkCreate',
+          component: () => import('../views/course/teacher/HomeworkCreate.vue')
+        },
+        {
           path: 'homework/:hwId',
           name: 'HomeworkDetail',
-          component: () => import('../views/course/HomeworkDetail.vue')
+          component: async () => {
+            // Test
+            const role = localStorage.getItem('userRole') || 'teacher'
+
+            if (role === 'teacher') {
+              return (await import('../views/course/teacher/HomeworkTeacher.vue')).default
+            }
+
+            return (await import('../views/course/student/HomeworkStudent.vue')).default
+          }
         },
         {
           path: 'exam',
