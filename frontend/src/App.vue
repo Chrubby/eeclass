@@ -7,7 +7,7 @@ const router = useRouter()
 const route = useRoute()
 
 const user = ref({
-  name: 'student',
+  name: localStorage.getItem('user') || '尚未登入',
   level: 7,
   score: 10172,
   maxScore: 15000
@@ -29,7 +29,8 @@ const isAuthPage = computed(() => ["Login", "Register"].includes(route.name))
 
 const logout = () => {
   isMenuOpen.value = false
-  router.push('/login')
+  localStorage.clear()
+  window.location.href = '/login'
 }
 
 </script>
@@ -125,7 +126,7 @@ const logout = () => {
         </ul>
 
 <ul v-else class="bg-white text-[15px] text-gray-700 py-2">
-          
+
           <router-link :to="`/course/${courseId}`" custom v-slot="{ navigate, isExactActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isExactActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
               公告
@@ -133,7 +134,7 @@ const logout = () => {
           </router-link>
 
           <router-link :to="`/course/${courseId}/material`" custom v-slot="{ navigate, isActive }">
-            <li @click="navigate" 
+            <li @click="navigate"
                 :class="['px-6 py-2.5 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']"
                 :style="isActive ? 'border-left-style: solid;' : ''">
               教材
@@ -147,7 +148,7 @@ const logout = () => {
           </router-link>
 
           <router-link :to="`/course/${courseId}/exam`" custom v-slot="{ navigate, isActive }">
-            <li @click="navigate" 
+            <li @click="navigate"
                 :class="['px-6 py-2.5 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']"
                 :style="isActive ? 'border-left-style: solid;' : ''">
               考試

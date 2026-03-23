@@ -2,65 +2,113 @@
   <div>
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-bold text-gray-800 border-l-4 border-[#337ab7] pl-3">
-        課程公告
+        課程作業清單
       </h2>
     </div>
 
+    <button
+      v-if="userRole === 'teacher'"
+      @click="goToCreateHomework"
+      class="bg-[#337ab7] text-white px-4 py-1.5 rounded text-sm font-bold tracking-wide hover:bg-[#285e8e] shadow-sm transition-colors flex items-center gap-1 mb-4"
+    >
+      ＋ 新增作業
+    </button>
+
     <div class="bg-white border rounded shadow-sm overflow-hidden">
-      
       <div class="flex bg-gray-100 text-sm font-bold text-gray-700 p-3 border-b">
-        <div class="flex-1">標題</div>
-        <div class="w-32 text-center">發布者</div>
-        <div class="w-32 text-center">發布日期</div>
+        <div class="flex-1">作業名稱</div>
+        <div class="w-40 text-center">截止日期</div>
+        <div class="w-32 text-center">狀態</div>
+        <div class="w-24 text-center">成績</div>
       </div>
 
       <ul class="divide-y divide-gray-200">
-        <li 
-          v-for="item in announcements" 
-          :key="item.id" 
+        <li
+          v-for="hw in homeworkList"
+          :key="hw.id"
+          @click="goToDetail(hw.id)"
           class="flex p-3 hover:bg-blue-50 cursor-pointer transition-colors items-center text-[15px]"
         >
           <div class="flex-1 text-[#337ab7] hover:underline truncate pr-4">
-            <span v-if="item.isNew" class="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded mr-2">NEW</span>
-            {{ item.title }}
+            {{ hw.title }}
           </div>
-          <div class="w-32 text-center text-gray-600 text-sm">{{ item.author }}</div>
-          <div class="w-32 text-center text-gray-500 text-sm">{{ item.date }}</div>
+          <div class="w-40 text-center text-gray-500 text-sm">{{ hw.deadlineText }}</div>
+          <div class="w-32 text-center text-sm">
+            <span
+              :class="hw.isGraded ? 'text-green-600' : hw.isSubmitted ? 'text-blue-600' : 'text-red-500'"
+            >
+              {{ hw.statusText }}
+            </span>
+          </div>
+          <div class="w-24 text-center text-lg" :class="hw.score ? 'text-green-600' : 'text-gray-400'">
+            {{ hw.scoreText }}
+          </div>
         </li>
       </ul>
-
-      <div v-if="announcements.length === 0" class="p-10 text-center text-gray-500">
-        目前尚無公告資料
-      </div>
+      <div v-if="isLoading" class="p-6 text-center text-gray-500">讀取中...</div>
+      <div v-else-if="homeworkList.length === 0" class="p-6 text-center text-gray-500">目前尚無作業</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 
-// 假資料：公告列表
-const announcements = ref([
-  { 
-    id: 1, 
-    title: '歡迎修習本課程！第一週上課注意事項與大綱', 
-    author: '教授', 
-    date: '2026-03-16',
-    isNew: true
-  },
-  { 
-    id: 2, 
-    title: '請各位同學於下週前完成分組名單填寫', 
-    author: '助教', 
-    date: '2026-03-10',
-    isNew: false
-  },
-  { 
-    id: 3, 
-    title: '課程參考書目已更新至圖書館指定參考書區', 
-    author: '系統管理員', 
-    date: '2026-02-25',
-    isNew: false
+const router = useRouter()
+const route = useRoute()
+const courseId = route.params.id
+
+const userRole = ref(localStorage.getItem('userRole') || 'student')
+const userId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000"
+const isLoading = ref(false)
+
+const homeworkList = ref([])
+
+const formatDate = (raw) => {
+  if (!raw) return '-'
+  return new Date(raw).toLocaleString()
+}
+
+const loadHomeworkList = async () => {
+  if (!userId) return
+  isLoading.value = true
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/courses/${courseId}/homework?userId=${encodeURIComponent(userId)}&role=${userRole.value}`,
+    )
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.message || '讀取作業失敗')
+    homeworkList.value = result.map((item) => ({
+      ...item,
+      deadlineText: formatDate(item.deadline),
+      isSubmitted: Boolean(item.submissionId),
+      isGraded: Boolean(item.score),
+      scoreText: item.score || '-',
+      statusText:
+        userRole.value === 'teacher'
+          ? `已繳交 ${item.submitCount || 0} / 已批改 ${item.gradedCount || 0}`
+          : item.status === 'graded'
+            ? '已批改'
+            : item.status === 'submitted'
+              ? '待批改'
+              : '未繳交',
+    }))
+  } catch (error) {
+    alert(error.message)
+  } finally {
+    isLoading.value = false
   }
-])
+}
+
+const goToDetail = (hwId) => {
+  router.push(`/course/${courseId}/homework/${hwId}`)
+}
+
+const goToCreateHomework = () => {
+  router.push(`/course/${courseId}/homework/create`)
+}
+
+onMounted(loadHomeworkList)
 </script>

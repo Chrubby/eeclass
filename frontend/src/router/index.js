@@ -27,6 +27,31 @@ const router = createRouter({
           component: () => import('../views/course/Homework.vue')
         },
         {
+          path: 'homework/create',
+          name: 'HomeworkCreate',
+          component: () => import('../views/course/teacher/HomeworkCreate.vue'),
+          meta: { requiresTeacher: true }
+        },
+        {
+          path: 'homework/:hwId',
+          name: 'HomeworkDetail',
+          component: async () => {
+            const role = localStorage.getItem('userRole') || 'student'
+
+            if (role === 'teacher') {
+              return (await import('../views/course/teacher/HomeworkTeacher.vue')).default
+            }
+
+            return (await import('../views/course/student/HomeworkStudent.vue')).default
+          }
+        },
+        {
+          path: 'homework/:hwId/grade/:submissionId',
+          name: 'HomeworkGrade',
+          component: () => import('../views/course/teacher/HomeworkGrade.vue'),
+          meta: { requiresTeacher: true }
+        },
+        {
           path: 'exam',
           name: 'CourseExam',
           component: () => import('../views/course/Exam.vue')
@@ -44,3 +69,15 @@ const router = createRouter({
 })
 
 export default router
+
+router.beforeEach((to, from, next) => {
+  const userRole = localStorage.getItem('userRole') || 'student' // Test!!! 將值改為 student 或是 teacher 檢視不同頁面
+
+  // 訪問頁面身份必須為老師
+  if (to.meta.requiresTeacher && userRole !== 'teacher') {
+    alert('無法訪問此頁面。')
+    next(false)
+  } else {
+    next()
+  }
+})

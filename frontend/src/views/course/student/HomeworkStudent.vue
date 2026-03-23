@@ -1,0 +1,183 @@
+<template>
+  <div class="flex flex-col gap-6">
+    <div class="bg-white border rounded p-5 shadow-sm border-l-4 border-l-[#337ab7]">
+      <h2 class="text-xl font-bold text-gray-800 mb-2">{{ homeworkData.title }}</h2>
+      <div class="text-[15px] text-gray-600 flex gap-6">
+        <span>截止日期：{{ homeworkData.deadlineText }}</span>
+        <span>
+          狀態：
+          <span :class="homeworkData.isGraded ? 'text-green-600 font-bold' : homeworkData.isSubmitted ? 'text-blue-600 font-bold' : 'text-orange-500 font-bold'">
+            {{ homeworkData.isGraded ? '已批改' : homeworkData.isSubmitted ? '已繳交' : '未繳交' }}
+          </span>
+        </span>
+      </div>
+    </div>
+
+
+    <div v-if="homeworkData.isGraded" class="bg-green-50 border border-green-200 rounded p-5 shadow-sm">
+      <h3 class="text-lg font-bold text-green-800 mb-4 border-b border-green-200 pb-2">批改結果</h3>
+      <div class="flex flex-col gap-4">
+        <div>
+          <span class="text-sm font-bold text-green-700 block mb-1">獲得分數：</span>
+          <span class="text-3xl font-black text-green-600">{{ homeworkData.score }}</span>
+        </div>
+        <div>
+          <span class="text-sm font-bold text-green-700 block mb-1">老師評語：</span>
+          <p class="text-green-900 whitespace-pre-line">{{ homeworkData.feedback || '（無評語）' }}</p>
+        </div>
+      </div>
+    </div>
+
+<div v-if="!homeworkData.isGraded" class="bg-white border rounded shadow-sm overflow-hidden">
+      <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700">作業題目內容</div>
+
+      <div class="p-5 space-y-8">
+        <div v-for="(q, index) in homeworkData.questions" :key="q.id" class="border-b pb-6 last:border-0">
+          <h3 class="font-bold text-[#337ab7] mb-2">第 {{ index + 1 }} 題：{{ q.title }}</h3>
+          <p class="text-gray-700 whitespace-pre-line mb-4">{{ q.description || '（無題目說明）' }}</p>
+
+          <div v-if="q.hasAttachment && q.filePath" class="mb-4">
+            <a :href="`${API_BASE_URL}${q.filePath}`" target="_blank" class="text-sm text-blue-600 hover:underline flex items-center gap-1">
+              📎 下載題目附件：{{ q.fileName }}
+            </a>
+          </div>
+
+          <div v-if="q.answerFormat === 'text'">
+            <label class="block text-xs font-bold text-gray-500 mb-1">文字作答</label>
+            <textarea
+              v-model="answers[index]"
+              rows="4"
+              placeholder="請在此輸入答案..."
+              class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors resize-y"
+            ></textarea>
+          </div>
+
+          <div v-else>
+            <label class="block text-xs font-bold text-gray-500 mb-1">上傳檔案 (PDF)</label>
+            <input type="file" @change="handleFileChange(index, $event)" class="block w-full text-xs text-gray-600" />
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-gray-50 px-5 py-4 border-t flex justify-end gap-3">
+        <button v-if="homeworkData.isSubmitted" @click="unsubmitHomework" class="bg-red-500 text-white px-8 py-2.5 rounded text-[16px] hover:bg-red-600 transition-colors">
+          收回作業
+        </button>
+        <button v-else @click="submitHomework" class="bg-[#337ab7] text-white px-8 py-2.5 rounded text-[16px] hover:bg-[#285e8e] transition-colors">
+          確認送出作業
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
+const hwId = route.params.hwId
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000"
+const studentId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
+
+const homeworkData = ref({
+  title: '',
+  description: '',
+  deadlineText: '-',
+  questions: [], // 這裡會存多道題目
+  isGraded: false,
+  isSubmitted: false,
+  score: null,
+  feedback: ''
+})
+
+// 準備儲存每一題的答案
+const answers = ref([]) // 存文字
+const files = ref([])   // 存檔案
+
+const loadData = async () => {
+  try {
+    const [hwRes, listRes] = await Promise.all([
+      fetch(`${API_BASE_URL}/api/homework/${hwId}`),
+      fetch(`${API_BASE_URL}/api/courses/${route.params.id}/homework?userId=${encodeURIComponent(studentId)}&role=student`),
+    ])
+    const hw = await hwRes.json()
+    const list = await listRes.json()
+
+    const current = list.find((x) => Number(x.id) === Number(hwId))
+
+    homeworkData.value = {
+      ...hw,
+      deadlineText: hw.deadline ? new Date(hw.deadline).toLocaleString() : '-',
+      isSubmitted: Boolean(current?.submissionId),
+      isGraded: Boolean(current?.score),
+      score: current?.score || null,
+      feedback: current?.feedback || ''
+    }
+
+    // 初始化答案陣列
+    if (hw.questions) {
+      answers.value = new Array(hw.questions.length).fill('')
+      files.value = new Array(hw.questions.length).fill(null)
+    }
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const handleFileChange = (index, event) => {
+  files.value[index] = event.target.files[0] || null
+}
+
+const submitHomework = async () => {
+  try {
+    const formData = new FormData()
+    formData.append('studentId', studentId)
+
+    // 將所有文字答案打包成 JSON 送出
+    formData.append('answerText', JSON.stringify(answers.value))
+
+    // 如果有檔案，也一併附加 (目前後端 submit 僅支援單檔，若要多檔需再改後端)
+    if (files.value.some(f => f !== null)) {
+      const firstFile = files.value.find(f => f !== null)
+      formData.append('file', firstFile)
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/homework/${hwId}/submit`, {
+      method: 'POST',
+      body: formData,
+    })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.message)
+    alert(result.message)
+    await loadData()
+  } catch (error) {
+    alert(error.message)
+  }
+}
+const unsubmitHomework = async () => {
+  if (!confirm('確定要收回作業嗎？')) {
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/homework/${hwId}/submit`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId })
+    })
+
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.message || '收回失敗')
+
+    //清空
+    alert(result.message)
+    textAnswer.value = ''
+    selectedFile.value = null
+    await loadData()
+  } catch (error) {
+    alert(error.message)
+  }
+}
+onMounted(loadData)
+</script>

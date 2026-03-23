@@ -93,28 +93,28 @@
             <option value="teacher">老師</option>
           </select>
         </div>
-
+<!--
         <div class="flex flex-col gap-1 mt-1">
           <div class="flex items-center gap-2">
             <div class="h-[38px] w-[110px] bg-gray-200 border border-gray-300 flex items-center justify-center bg-cover bg-center opacity-80" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMTAiIGhlaWdodD0iMzgiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48dGV4dCB4PSI1NSIgeT0iMjYiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmaWxsPSIjMWUzYThhIiBsZXR0ZXItc3BhY2luZz0iMnB4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5iMzNtPC90ZXh0Pjwvc3ZnPg==');">
-            </div>
+            </div> -->
 
-            <button type="button" class="text-[#337ab7] hover:text-[#285e8e] cursor-pointer p-1">
+            <!-- <button type="button" class="text-[#337ab7] hover:text-[#285e8e] cursor-pointer p-1">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-            </button>
+            </button> -->
 
-            <input
+            <!-- <input
               v-model="captcha"
               type="text"
               placeholder="驗證碼"
               required
               class="w-28 bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
-            />
-          </div>
-          <span class="text-gray-500 text-xs mt-0.5">區分大小寫</span>
-        </div>
+            /> -->
+          <!-- </div>
+          <span class="text-gray-500 text-xs mt-0.5">區分大小寫</span> -->
+        <!-- </div> -->
 
         <div class="flex justify-center mt-3">
           <button
@@ -153,6 +153,7 @@ const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 
 const router = useRouter()
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000"
 
 const register = async () => {
   if (password.value !== confirmPassword.value) {
@@ -168,7 +169,7 @@ const register = async () => {
   }
 
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/register', {
+    const response = await fetch(`${API_BASE_URL}/api/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

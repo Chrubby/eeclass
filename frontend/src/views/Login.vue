@@ -73,10 +73,11 @@ const showPassword = ref(false)
 const rememberMe = ref(false)
 
 const router = useRouter()
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000"
 
 const login = async () => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/login', {
+    const response = await fetch(`${API_BASE_URL}/api/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -93,8 +94,10 @@ const login = async () => {
       alert(result.message)
 
       localStorage.setItem("user", result.username)
+      localStorage.setItem("userId", result.username)
+      localStorage.setItem("userRole", result.role || "student")
 
-      router.push("/dashboard")
+      window.location.href = '/dashboard'
     } else {
       alert(result.message)
     }
