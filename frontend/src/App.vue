@@ -1,16 +1,19 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch} from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import axios from 'axios'
 
 const isMenuOpen = ref(false)
 const router = useRouter()
 const route = useRoute()
 
 const user = ref({
-  name: 'student',
+  name: '',
+  user_id: '',
+  role: '',
   level: 7,
   score: 10172,
-  maxScore: 15000
+  maxScore: 15000,
 })
 
 // 課程列表（
@@ -32,6 +35,35 @@ const logout = () => {
   router.push('/login')
 }
 
+const loadUser = async() => {
+  const stored = localStorage.getItem("user")
+  if (!stored) {
+    router.push('/login')
+    return
+  }
+  user.value.user_id = stored
+  try {
+    const res = await axios.get('http://localhost:5000/api/user_inf', {
+      params: {
+        user_id: user.value.user_id
+    }})
+    user.value.role = res.data.role
+
+    const user_inf = res.data.user
+    user.value.name = user_inf.name
+    // if(user.value.role == 'student' || user.value.role == 'ta' ){ 
+    // }else{    }
+    
+
+  } catch (err) {
+    console.error('取得使用者資訊失敗')
+  }
+}
+
+watch(() => route.path, () => {
+  loadUser()
+})
+
 </script>
 
 <template>
@@ -43,7 +75,7 @@ const logout = () => {
         <div class="relative">
 
           <span class="cursor-pointer hover:text-blue-600" @click="isMenuOpen = !isMenuOpen">
-            {{ user.name }} ▾
+            {{ user.role }} ▾
           </span>
 
           <div v-if="isMenuOpen" class="absolute right-0 mt-4 w-32 bg-white border border-gray-200 shadow-lg z-50">
@@ -79,6 +111,7 @@ const logout = () => {
           <div class="p-4 flex flex-col items-center">
             <div class="w-20 h-20 bg-gray-200 rounded-full mb-3"></div>
             <div class="font-bold text-sm">{{ user.name }}</div>
+            <div class="font-bold text-sm">{{ user.user_id }}</div>
             <div class="text-xs text-gray-500 mb-2 mt-1">等級 {{ user.level }}</div>
             <div class="w-full text-right text-xs text-blue-600 mb-1 font-bold">
               {{ user.score }} 分 >

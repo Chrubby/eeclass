@@ -91,6 +91,7 @@
           >
             <option value="student">學生</option>
             <option value="teacher">老師</option>
+            <option value="ta">助教</option>
           </select>
         </div>
 

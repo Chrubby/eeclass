@@ -4,7 +4,7 @@ import mysql.connector
 conn = mysql.connector.connect(
     host="localhost",
     user="root",
-    password="a7385966"
+    password="Evan+921003"
 )
 
 cursor = conn.cursor()
@@ -195,13 +195,13 @@ CREATE TABLE IF NOT EXISTS threads (
 """)
 
 # 權限表
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS roles (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    role_name VARCHAR(50) UNIQUE NOT NULL,
-    description VARCHAR(255)
-)
-""")
+# cursor.execute("""
+# CREATE TABLE IF NOT EXISTS roles (
+#     id INT AUTO_INCREMENT PRIMARY KEY,
+#     role_name VARCHAR(50) UNIQUE NOT NULL,
+#     description VARCHAR(255)
+# )
+# """)
 
 # 帳號表
 cursor.execute("""
@@ -210,22 +210,24 @@ CREATE TABLE IF NOT EXISTS accounts (
     username VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     email VARCHAR(100) UNIQUE,
+    role ENUM('student', 'teacher', 'ta') DEFAULT 'student',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)
 
 # 帳號-權限關聯表
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS account_roles (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    account_id INT,
-    role_id INT,
-    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE ON UPDATE CASCADE
-)
-""")
+# cursor.execute("""
+# CREATE TABLE IF NOT EXISTS account_roles (
+#     id INT AUTO_INCREMENT PRIMARY KEY,
+#     account_id INT,
+#     role_id INT,
+#     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+#     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE ON UPDATE CASCADE,
+#     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE ON UPDATE CASCADE
+# )
+# """)
 
+# 課程公告
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS announcements (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -244,6 +246,7 @@ CREATE TABLE IF NOT EXISTS announcements (
 )
 """)
 
+# 課程公告是否讀過
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS announcement_reads (
     id INT AUTO_INCREMENT PRIMARY KEY,

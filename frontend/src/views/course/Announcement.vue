@@ -5,12 +5,24 @@ import axios from 'axios'
 
 const route = useRoute()
 const courseCode = route.params.id
-const user_id = ref(null)
 const announcements = ref([])
 const selectedAnnouncement = ref(null)
 const showModal = ref(false)
+const showAddAnnouncementModal = ref(false)
 
-const loadUser = () => {
+const user = ref({
+  name: '',
+  user_id: '',
+  role: '',
+})
+
+const newAnnouncement = ref({
+  title: '',
+  content: '',
+  is_pinned: false
+})
+
+const loadUser = async() => {
   const stored = localStorage.getItem("user")
 
   if (!stored) {
@@ -18,7 +30,24 @@ const loadUser = () => {
     return
   }
 
-  user_id.value = stored
+  user.value.user_id = stored
+
+  try {
+    const res = await axios.get('http://localhost:5000/api/user_inf', {
+      params: {
+        user_id: user.value.user_id
+    }})
+    user.value.role = res.data.role
+
+    const user_inf = res.data.user
+    user.value.name = user_inf.name
+    // if(user.value.role == 'student' || user.value.role == 'ta' ){ 
+    // }else{    }
+    
+
+  } catch (err) {
+    console.error('取得使用者資訊失敗')
+  }
 }
 
 const fetchAnnouncements = async () => {
@@ -28,7 +57,7 @@ const fetchAnnouncements = async () => {
     const res = await axios.get('http://localhost:5000/api/announcements', {
       params: {
         course_code: courseCode,
-        student_id: user_id.value
+        student_id: user.value.user_id
       }
     })
 
@@ -76,7 +105,7 @@ const markAsRead = async (announcementId) => {
   try {
 
     await axios.post('http://localhost:5000/api/announcements/read', {
-      student_id: user_id.value,
+      student_id: user.value.user_id,
       announcement_id: announcementId
     })
 
@@ -85,8 +114,34 @@ const markAsRead = async (announcementId) => {
   }
 }
 
-onMounted(() => {
-  loadUser()
+const createAnnouncement = async () => {
+  if (!newAnnouncement.value.title || !newAnnouncement.value.content) {
+    alert('請填寫標題和內容')
+    return
+  }
+
+  try {
+    await axios.post('http://localhost:5000/api/announcements/create', {
+      course_code: courseCode,
+      teacher_id: user.value.user_id,
+      title: newAnnouncement.value.title,
+      content: newAnnouncement.value.content,
+      is_pinned: newAnnouncement.value.is_pinned
+    })
+
+    alert('公告新增成功')
+    showAddAnnouncementModal.value = false
+    newAnnouncement.value = { title: '', content: '', is_pinned: false }
+    fetchAnnouncements()
+
+  } catch (err) {
+    console.error('新增公告失敗', err)
+    alert('新增公告失敗')
+  }
+}
+
+onMounted(async() => {
+  await loadUser()
   fetchAnnouncements()
 })
 </script>
@@ -99,6 +154,13 @@ onMounted(() => {
         課程公告
       </h2>
     </div>
+    <button
+      v-if="user.role === 'teacher'"
+      @click="showAddAnnouncementModal = true"
+      class="bg-blue-300 text-white px-3 py-1 rounded text-sm hover:bg-blue-400"
+    >
+      新增公告
+    </button>
 
     <div class="bg-white border rounded shadow-sm overflow-hidden">
       
@@ -174,6 +236,46 @@ onMounted(() => {
         </div>
       </div>
     </div>
-
   </div>
+
+  <div v-if="showAddAnnouncementModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
+    <div class="bg-white p-6 rounded shadow-lg w-96 text-sm">
+
+      <h3 class="font-bold mb-3">新增公告</h3>
+
+      <!-- 公告標題 -->
+      <input
+        v-model="newAnnouncement.title"
+        placeholder="公告標題"
+        class="border p-2 w-full mb-2"
+      />
+
+      <!-- 公告內容 -->
+      <textarea
+        v-model="newAnnouncement.content"
+        placeholder="公告內容"
+        class="border p-2 w-full mb-2"
+        rows="4"
+      ></textarea>
+
+      <!-- 是否置頂 -->
+      <label class="flex items-center gap-2 mb-2">
+        <input type="checkbox" v-model="newAnnouncement.is_pinned" />
+        置頂公告
+      </label>
+
+      <!-- 按鈕 -->
+      <div class="flex justify-end gap-2 mt-4">
+        <button @click="showAddAnnouncementModal = false" class="px-3 py-1 border rounded">
+          取消
+        </button>
+
+        <button @click="createAnnouncement" class="px-3 py-1 bg-green-500 text-white rounded">
+          新增公告
+        </button>
+      </div>
+
+    </div>
+  </div>
+
 </template>

@@ -5,7 +5,7 @@ from werkzeug.security import generate_password_hash
 conn = mysql.connector.connect(
     host="localhost",
     user="root",
-    password="a7385966",
+    password="Evan+921003",
     database="classroom_data"
 )
 
@@ -13,25 +13,26 @@ cursor = conn.cursor()
 
 # -------------------------
 # 🔹 roles
-roles = [
-    ("student", "學生"),
-    ("teacher", "老師")
-]
+# roles = [
+#     ("student", "學生"),
+#     ("teacher", "老師")
+# ]
 
-cursor.executemany(
-    "INSERT INTO roles (role_name, description) VALUES (%s, %s)",
-    roles
-)
+# cursor.executemany(
+#     "INSERT INTO roles (role_name, description) VALUES (%s, %s)",
+#     roles
+# )
 
 # -------------------------
 # 🔹 accounts
 accounts = [
-    ("s001", generate_password_hash("123456"), "s001@test.com"),
-    ("t001", generate_password_hash("123456"), "t001@test.com")
+    ("s001", generate_password_hash("123456"), "s001@test.com", "student"),
+    ("t001", generate_password_hash("123456"), "t001@test.com", "teacher"),
+    ("s002", generate_password_hash("123456"), "s002@test.com", "ta"),
 ]
 
 cursor.executemany(
-    "INSERT INTO accounts (username, password_hash, email) VALUES (%s, %s, %s)",
+    "INSERT INTO accounts (username, password_hash, email, role) VALUES (%s, %s, %s, %s)",
     accounts
 )
 
@@ -39,6 +40,7 @@ cursor.executemany(
 # 🔹 students
 students = [
     ("王小明", "s001"),
+    ("陳小明", "s002"),
 ]
 
 cursor.executemany(
