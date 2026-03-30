@@ -159,7 +159,7 @@ onMounted(async() => {
       </h2>
     </div>
     <button
-      v-if="user.role === 'teacher'"
+      v-if="user.role === 'teacher'||user.role === 'ta'"
       @click="showAddAnnouncementModal = true"
       class="bg-blue-300 text-white px-3 py-1 rounded text-sm hover:bg-blue-400"
     >

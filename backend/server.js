@@ -474,10 +474,10 @@ app.post("/api/announcements/read", async (req, res) => {
   }
 });
 
-// 老師新增公告
+// 老師或助教新增公告
 app.post("/api/announcements/create", async (req, res) => {
-  const { course_code: courseCode, teacher_id: teacherAccount, title, content, is_pinned: isPinned = false } = req.body;
-  if (!courseCode || !teacherAccount || !title) return res.status(400).json({ message: "缺少必要參數" });
+  const { course_code: courseCode, teacher_id: accountId, title, content, is_pinned: isPinned = false } = req.body;
+  if (!courseCode || !accountId || !title) return res.status(400).json({ message: "缺少必要參數" });
 
   let connection;
   try {
@@ -486,13 +486,31 @@ app.post("/api/announcements/create", async (req, res) => {
 
     const [courseRows] = await connection.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
     if (courseRows.length === 0) throw new Error("找不到課程");
+    const courseId = courseRows[0].id;
 
-    const [teacherRows] = await connection.execute("SELECT id FROM teachers WHERE teacher_id = ?", [teacherAccount]);
-    if (teacherRows.length === 0) throw new Error("找不到老師");
+    let finalTeacherId;
+
+    const [teacherRows] = await connection.execute("SELECT id FROM teachers WHERE teacher_id = ?", [accountId]);
+
+    if (teacherRows.length > 0) {
+      finalTeacherId = teacherRows[0].id;
+    } else {
+      const [courseTeacherRows] = await connection.execute(
+        "SELECT teacher_id FROM teacher_courses WHERE course_id = ? LIMIT 1",
+        [courseId]
+      );
+
+
+      if (courseTeacherRows.length > 0 && courseTeacherRows[0].teacher_id) {
+        finalTeacherId = courseTeacherRows[0].teacher_id;
+      } else {
+         throw new Error("找不到這門課的授課老師，因此助教無法代發公告");
+      }
+    }
 
     await connection.execute(
       `INSERT INTO announcements (course_id, teacher_id, title, content, is_pinned) VALUES (?, ?, ?, ?, ?)`,
-      [courseRows[0].id, teacherRows[0].id, title, content || "", Boolean(isPinned)]
+      [courseId, finalTeacherId, title, content || "", Boolean(isPinned)]
     );
 
     await connection.commit();
@@ -504,7 +522,6 @@ app.post("/api/announcements/create", async (req, res) => {
     if (connection) connection.release();
   }
 });
-
 
 // 老師發布作業
 app.post("/api/courses/:courseId/homework", upload.any(), async (req, res) => {

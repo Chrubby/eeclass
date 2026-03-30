@@ -53,7 +53,7 @@
           </div>
 
           <div v-else>
-            <label class="block text-xs font-bold text-gray-500 mb-1">上傳檔案 (PDF)</label>
+            <label class="block text-xs font-bold text-gray-500 mb-1">上傳檔案</label>
             <input type="file" @change="handleFileChange(index, $event)" class="block w-full text-xs text-gray-600" />
 
             <div v-if="homeworkData.isSubmitted && homeworkData.submittedFileName" class="mt-2 text-xs font-bold text-green-600 bg-green-50 p-2 rounded border border-green-200 inline-block">
