@@ -25,7 +25,7 @@ app.use("/uploads", express.static(uploadsRoot));
 const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
+  password: process.env.DB_PASSWORD || "Evan+921003", // 換回你原本的密碼
   database: process.env.DB_NAME || "classroom_data",
 };
 
@@ -44,9 +44,91 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// 自動初始化資料庫表格
 const initDB = async () => {
-  // 作業主表
+  // 1. 帳號表
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      username VARCHAR(50) UNIQUE NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      email VARCHAR(100),
+      role VARCHAR(20) NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 2. 學生表
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS students (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(50) NOT NULL,
+      student_id VARCHAR(50) UNIQUE NOT NULL
+    )
+  `);
+
+  // 3. 老師表
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS teachers (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(50) NOT NULL,
+      teacher_id VARCHAR(50) UNIQUE NOT NULL
+    )
+  `);
+
+  // 4. 課程主表
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS courses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      course_name VARCHAR(100) NOT NULL,
+      course_code VARCHAR(50) UNIQUE NOT NULL,
+      description TEXT,
+      academic_year VARCHAR(20),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 5. 老師與課程關聯表
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS teacher_courses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      teacher_id INT NOT NULL,
+      course_id INT NOT NULL
+    )
+  `);
+
+  // 6. 學生選課表
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS enrollments (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      student_id INT NOT NULL,
+      course_id INT NOT NULL
+    )
+  `);
+
+  // 7. 公告表
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS announcements (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      course_id INT NOT NULL,
+      teacher_id INT NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      content TEXT,
+      is_pinned BOOLEAN DEFAULT FALSE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 8. 公告已讀紀錄表
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS announcement_reads (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      student_id INT NOT NULL,
+      announcement_id INT NOT NULL,
+      UNIQUE KEY uniq_student_announcement (student_id, announcement_id)
+    )
+  `);
+
+  // 9. 作業主表
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS homeworks (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -57,7 +139,7 @@ const initDB = async () => {
     )
   `);
 
-  // 題目明細表 (支援一個作業多個題目)
+  // 10. 作業題目表
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS homework_questions (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -72,7 +154,7 @@ const initDB = async () => {
     )
   `);
 
-  // 學生繳交紀錄表
+  // 11. 作業繳交紀錄表
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS homework_submissions (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -88,9 +170,22 @@ const initDB = async () => {
       UNIQUE KEY uniq_hw_student (homework_id, student_id)
     )
   `);
+
+  try {
+    await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
+  } catch (e) { /* 欄位已存在就忽略 */ }
+
+  try {
+    await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
+  } catch (e) { /* 欄位已存在就忽略 */ }
+  try {
+    await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
+  } catch (e) { /* 欄位已存在就忽略 */ }
+
   console.log("資料庫檢查與初始化完成");
 };
 await initDB();
+
 
 // 註冊功能
 app.post("/api/register", async (req, res) => {
@@ -102,38 +197,314 @@ app.post("/api/register", async (req, res) => {
   try {
     const passwordHash = await bcrypt.hash(password, 10);
     await pool.execute(
-      "INSERT INTO accounts (username, password_hash, email) VALUES (?, ?, ?)",
-      [username, passwordHash, email]
+      "INSERT INTO accounts (username, password_hash, email, role) VALUES (?, ?, ?, ?)",
+      [username, passwordHash, email, role]
     );
 
-    if (role === "student") {
+    // TA
+    if (role === "student" || role === "ta") {
       await pool.execute("INSERT INTO students (name, student_id) VALUES (?, ?)", [name, username]);
-    } else {
+    } else if (role === "teacher") {
       await pool.execute("INSERT INTO teachers (name, teacher_id) VALUES (?, ?)", [name, username]);
     }
     res.json({ message: "註冊成功！" });
   } catch (error) {
-    res.status(400).json({ message: "註冊失敗，帳號可能重複" });
+    res.status(400).json({ message: `註冊失敗，帳號或信箱可能重複：${error.message}` });
   }
 });
 
 // 登入功能
 app.post("/api/login", async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } = req.body; // 這裡的 username 可能是信箱或帳號
   try {
-    const [rows] = await pool.execute("SELECT * FROM accounts WHERE username = ?", [username]);
+    // 支援信箱或帳號登入 (對齊 app.py)
+    const [rows] = await pool.execute(
+      "SELECT * FROM accounts WHERE username = ? OR email = ?",
+      [username, username]
+    );
     const account = rows[0];
+
     if (account && await bcrypt.compare(password, account.password_hash)) {
-      const [t] = await pool.execute("SELECT * FROM teachers WHERE teacher_id = ?", [username]);
-      const role = t.length > 0 ? "teacher" : "student";
-      res.json({ message: "登入成功！", username: account.username, role });
+      res.json({
+        message: "登入成功！",
+        username: account.username,
+        role: account.role
+      });
     } else {
-      res.status(401).json({ message: "帳號或密碼錯誤" });
+      res.status(401).json({ message: "帳號、信箱或密碼錯誤！" });
     }
   } catch (error) {
-    res.status(500).json({ message: "登入失敗" });
+    res.status(500).json({ message: `資料庫錯誤：${error.message}` });
   }
 });
+
+// 取得使用者身分與基本資料
+app.get("/api/user_inf", async (req, res) => {
+  const userId = req.query.user_id;
+  if (!userId) return res.status(400).json({ message: "缺少user_id" });
+
+  try {
+    const [roleRows] = await pool.execute("SELECT role FROM accounts WHERE username = ?", [userId]);
+    if (roleRows.length === 0) return res.status(404).json({ message: "找不到使用者" });
+
+    const role = roleRows[0].role;
+    let userRows;
+    if (role === "student" || role === "ta") {
+      [userRows] = await pool.execute("SELECT * FROM students WHERE student_id = ?", [userId]);
+    } else {
+      [userRows] = await pool.execute("SELECT * FROM teachers WHERE teacher_id = ?", [userId]);
+    }
+
+    return res.json({ role, user: userRows[0] || null });
+  } catch (error) {
+    return res.status(500).json({ message: "讀取使用者資料失敗" });
+  }
+});
+
+// 搜尋課程
+app.get("/api/courses", async (req, res) => {
+  const courseCode = req.query.code;
+  const courseName = req.query.name;
+
+  if (!courseCode && !courseName) return res.status(404).json({ message: "找不到課程" });
+
+  try {
+    let courseRows;
+    if (courseCode) {
+      [courseRows] = await pool.execute(
+        `SELECT c.* FROM courses c WHERE c.course_code = ? ORDER BY c.created_at DESC LIMIT 1`,
+        [courseCode]
+      );
+    } else {
+      [courseRows] = await pool.execute(
+        `SELECT c.* FROM courses c WHERE c.course_name LIKE ? ORDER BY c.created_at DESC LIMIT 1`,
+        [`%${courseName}%`]
+      );
+    }
+
+    if (courseRows.length === 0) return res.status(404).json({ message: "找不到課程" });
+
+    const course = courseRows[0];
+    const [teacherRows] = await pool.execute(
+      `SELECT t.id, t.name, t.teacher_id FROM teachers t
+       JOIN teacher_courses tc ON t.id = tc.teacher_id
+       WHERE tc.course_id = ?`,
+      [course.id]
+    );
+
+    course.teachers = teacherRows;
+    return res.json(course);
+  } catch (error) {
+    return res.status(500).json({ message: "課程查詢失敗" });
+  }
+});
+
+// 學生選課
+app.post("/api/enroll", async (req, res) => {
+  const { student_id: studentIdentifier, course_code: courseCode } = req.body;
+  if (!studentIdentifier || !courseCode) return res.status(400).json({ message: "缺少參數" });
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [studentRows] = await connection.execute("SELECT id FROM students WHERE student_id = ?", [studentIdentifier]);
+    if (studentRows.length === 0) throw new Error("找不到學生");
+    const studentId = studentRows[0].id;
+
+    const [courseRows] = await connection.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+    if (courseRows.length === 0) throw new Error("找不到課程");
+    const courseId = courseRows[0].id;
+
+    const [existRows] = await connection.execute("SELECT id FROM enrollments WHERE student_id = ? AND course_id = ?", [studentId, courseId]);
+    if (existRows.length > 0) throw new Error("已經選過此課程");
+
+    await connection.execute("INSERT INTO enrollments (student_id, course_id) VALUES (?, ?)", [studentId, courseId]);
+    await connection.commit();
+    return res.json({ message: "選課成功！" });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    return res.status(error.message.includes("已經選過") ? 400 : 404).json({ message: error.message || "選課失敗" });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// 取得使用者課程列表
+app.get("/api/user_courses", async (req, res) => {
+  const { user_id: userId, role } = req.query;
+  if (!userId || !role) return res.status(400).json({ message: "缺少 user_id 或 role" });
+
+  try {
+    let userRows;
+    if (role === "student" || role === "ta") {
+      [userRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [userId]);
+    } else if (role === "teacher") {
+      [userRows] = await pool.execute("SELECT id FROM teachers WHERE teacher_id = ?", [userId]);
+    } else {
+      return res.status(400).json({ message: "role 無效" });
+    }
+
+    if (userRows.length === 0) return res.status(404).json({ message: `找不到 ${role}` });
+    const userDbId = userRows[0].id;
+
+    let courses;
+    if (role === "student" || role === "ta") {
+      [courses] = await pool.execute(
+        `SELECT c.* FROM courses c JOIN enrollments e ON c.id = e.course_id WHERE e.student_id = ?`,
+        [userDbId]
+      );
+    } else {
+      [courses] = await pool.execute(
+        `SELECT c.* FROM courses c JOIN teacher_courses tc ON c.id = tc.course_id WHERE tc.teacher_id = ?`,
+        [userDbId]
+      );
+    }
+
+    for (const course of courses) {
+      const [teacherRows] = await pool.execute(
+        `SELECT t.id, t.name, t.teacher_id FROM teachers t JOIN teacher_courses tc ON t.id = tc.teacher_id WHERE tc.course_id = ?`,
+        [course.id]
+      );
+      course.teachers = teacherRows;
+    }
+
+    return res.json(courses);
+  } catch (error) {
+    return res.status(500).json({ message: "讀取課程失敗" });
+  }
+});
+
+// 老師建立課程
+app.post("/api/create_course", async (req, res) => {
+  const { teacher_id: teacherAccount, course_name: courseName, course_code: courseCode, description, academic_year: academicYear } = req.body;
+  if (!teacherAccount || !courseName || !courseCode || !academicYear) return res.status(400).json({ message: "缺少必要欄位" });
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [existRows] = await connection.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+    if (existRows.length > 0) throw new Error("課程代碼已存在");
+
+    const [courseResult] = await connection.execute(
+      `INSERT INTO courses (course_name, course_code, description, academic_year) VALUES (?, ?, ?, ?)`,
+      [courseName, courseCode, description || "", academicYear]
+    );
+    const courseId = courseResult.insertId;
+
+    const [teacherRows] = await connection.execute("SELECT id FROM teachers WHERE teacher_id = ?", [teacherAccount]);
+    if (teacherRows.length === 0) throw new Error("找不到該老師");
+
+    await connection.execute("INSERT INTO teacher_courses (teacher_id, course_id) VALUES (?, ?)", [teacherRows[0].id, courseId]);
+    await connection.commit();
+    return res.json({ message: "課程建立成功", course_id: courseId });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    return res.status(400).json({ message: error.message || "課程建立失敗" });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// 取得課程公告
+app.get("/api/announcements", async (req, res) => {
+  const { course_code: courseCode, student_id: studentIdentifier } = req.query;
+  if (!courseCode) return res.status(400).json({ message: "缺少 course_code" });
+
+  try {
+    const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+    if (courseRows.length === 0) return res.status(404).json({ message: "找不到課程" });
+    const courseId = courseRows[0].id;
+
+    let studentDbId = null;
+    if (studentIdentifier) {
+      const [studentRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [studentIdentifier]);
+      if (studentRows.length > 0) studentDbId = studentRows[0].id;
+    }
+
+    let announcementRows;
+    if (studentDbId) {
+      [announcementRows] = await pool.execute(
+        `SELECT a.id, a.title, a.content, a.is_pinned, a.created_at, t.name AS teacher_name,
+                CASE WHEN ar.id IS NULL THEN FALSE ELSE TRUE END AS is_read
+         FROM announcements a
+         LEFT JOIN teachers t ON a.teacher_id = t.id
+         LEFT JOIN announcement_reads ar ON a.id = ar.announcement_id AND ar.student_id = ?
+         WHERE a.course_id = ?
+         ORDER BY a.is_pinned DESC, a.created_at DESC`,
+        [studentDbId, courseId]
+      );
+    } else {
+      [announcementRows] = await pool.execute(
+        `SELECT a.id, a.title, a.content, a.is_pinned, a.created_at, t.name AS teacher_name, TRUE AS is_read
+         FROM announcements a
+         LEFT JOIN teachers t ON a.teacher_id = t.id
+         WHERE a.course_id = ?
+         ORDER BY a.is_pinned DESC, a.created_at DESC`,
+        [courseId]
+      );
+    }
+
+    const announcements = announcementRows.map((item) => ({ ...item, isNew: !item.is_read }));
+    return res.json({ course_code: courseCode, course_id: courseId, student_id: studentDbId, announcements });
+  } catch (error) {
+    return res.status(500).json({ message: "讀取公告失敗" });
+  }
+});
+
+// 記錄公告已讀
+app.post("/api/announcements/read", async (req, res) => {
+  const { student_id: studentIdentifier, announcement_id: announcementId } = req.body;
+  if (!studentIdentifier || !announcementId) return res.status(400).json({ message: "缺少必要參數" });
+
+  try {
+    const [studentRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [studentIdentifier]);
+    if (studentRows.length === 0) return res.status(404).json({ message: "找不到學生" });
+
+    await pool.execute(
+      "INSERT IGNORE INTO announcement_reads (student_id, announcement_id) VALUES (?, ?)",
+      [studentRows[0].id, announcementId]
+    );
+    return res.json({ message: "已記錄已讀" });
+  } catch (error) {
+    return res.status(500).json({ message: "紀錄已讀失敗" });
+  }
+});
+
+// 老師新增公告
+app.post("/api/announcements/create", async (req, res) => {
+  const { course_code: courseCode, teacher_id: teacherAccount, title, content, is_pinned: isPinned = false } = req.body;
+  if (!courseCode || !teacherAccount || !title) return res.status(400).json({ message: "缺少必要參數" });
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [courseRows] = await connection.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+    if (courseRows.length === 0) throw new Error("找不到課程");
+
+    const [teacherRows] = await connection.execute("SELECT id FROM teachers WHERE teacher_id = ?", [teacherAccount]);
+    if (teacherRows.length === 0) throw new Error("找不到老師");
+
+    await connection.execute(
+      `INSERT INTO announcements (course_id, teacher_id, title, content, is_pinned) VALUES (?, ?, ?, ?, ?)`,
+      [courseRows[0].id, teacherRows[0].id, title, content || "", Boolean(isPinned)]
+    );
+
+    await connection.commit();
+    return res.json({ message: "公告新增成功" });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    return res.status(400).json({ message: error.message || "公告新增失敗" });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 
 // 老師發布作業
 app.post("/api/courses/:courseId/homework", upload.any(), async (req, res) => {

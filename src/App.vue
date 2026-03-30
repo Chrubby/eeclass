@@ -1,20 +1,16 @@
 <script setup>
-import { ref, computed, onMounted, watch} from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
 
 const isMenuOpen = ref(false)
 const router = useRouter()
 const route = useRoute()
 
 const user = ref({
-  //name: localStorage.getItem('user') || '尚未登入',
-  name: '',
-  user_id: '',
-  role: '',
+  name: 'student',
   level: 7,
   score: 10172,
-  maxScore: 15000,
+  maxScore: 15000
 })
 
 // 課程列表（
@@ -33,38 +29,8 @@ const isAuthPage = computed(() => ["Login", "Register"].includes(route.name))
 
 const logout = () => {
   isMenuOpen.value = false
-  localStorage.clear()
-  window.location.href = '/login'
+  router.push('/login')
 }
-
-const loadUser = async() => {
-  const stored = localStorage.getItem("user")
-  if (!stored) {
-    router.push('/login')
-    return
-  }
-  user.value.user_id = stored
-  try {
-    const res = await axios.get('http://localhost:5000/api/user_inf', {
-      params: {
-        user_id: user.value.user_id
-    }})
-    user.value.role = res.data.role
-
-    const user_inf = res.data.user
-    user.value.name = user_inf.name
-    // if(user.value.role == 'student' || user.value.role == 'ta' ){
-    // }else{    }
-
-
-  } catch (err) {
-    console.error('取得使用者資訊失敗')
-  }
-}
-
-watch(() => route.path, () => {
-  loadUser()
-})
 
 </script>
 
@@ -77,7 +43,7 @@ watch(() => route.path, () => {
         <div class="relative">
 
           <span class="cursor-pointer hover:text-blue-600" @click="isMenuOpen = !isMenuOpen">
-            {{ user.role }} ▾
+            {{ user.name }} ▾
           </span>
 
           <div v-if="isMenuOpen" class="absolute right-0 mt-4 w-32 bg-white border border-gray-200 shadow-lg z-50">
@@ -113,7 +79,6 @@ watch(() => route.path, () => {
           <div class="p-4 flex flex-col items-center">
             <div class="w-20 h-20 bg-gray-200 rounded-full mb-3"></div>
             <div class="font-bold text-sm">{{ user.name }}</div>
-            <div class="font-bold text-sm">{{ user.user_id }}</div>
             <div class="text-xs text-gray-500 mb-2 mt-1">等級 {{ user.level }}</div>
             <div class="w-full text-right text-xs text-blue-600 mb-1 font-bold">
               {{ user.score }} 分 >
@@ -160,7 +125,7 @@ watch(() => route.path, () => {
         </ul>
 
 <ul v-else class="bg-white text-[15px] text-gray-700 py-2">
-
+          
           <router-link :to="`/course/${courseId}`" custom v-slot="{ navigate, isExactActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isExactActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
               公告
@@ -168,7 +133,7 @@ watch(() => route.path, () => {
           </router-link>
 
           <router-link :to="`/course/${courseId}/material`" custom v-slot="{ navigate, isActive }">
-            <li @click="navigate"
+            <li @click="navigate" 
                 :class="['px-6 py-2.5 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']"
                 :style="isActive ? 'border-left-style: solid;' : ''">
               教材
@@ -182,7 +147,7 @@ watch(() => route.path, () => {
           </router-link>
 
           <router-link :to="`/course/${courseId}/exam`" custom v-slot="{ navigate, isActive }">
-            <li @click="navigate"
+            <li @click="navigate" 
                 :class="['px-6 py-2.5 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']"
                 :style="isActive ? 'border-left-style: solid;' : ''">
               考試

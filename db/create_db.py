@@ -4,7 +4,7 @@ import mysql.connector
 conn = mysql.connector.connect(
     host="localhost",
     user="root",
-    password="a7385966"
+    password="Evan+921003"
 )
 
 cursor = conn.cursor()
@@ -12,9 +12,13 @@ cursor = conn.cursor()
 # 資料庫名稱
 dbname = "classroom_data"
 
-# 建立資料庫
-cursor.execute(f"CREATE DATABASE IF NOT EXISTS {dbname}")
-print("資料庫建立成功！")
+# ⚠️ 先刪除資料庫（如果存在）
+cursor.execute(f"DROP DATABASE IF EXISTS {dbname}")
+print("舊資料庫已刪除")
+
+# ✅ 重新建立資料庫
+cursor.execute(f"CREATE DATABASE {dbname}")
+print("資料庫重新建立成功！")
 
 cursor.execute(f"USE {dbname}")
 
@@ -46,6 +50,7 @@ cursor.execute("""
 CREATE TABLE IF NOT EXISTS courses (
     id INT AUTO_INCREMENT PRIMARY KEY,
     course_name VARCHAR(100) NOT NULL,
+    course_code VARCHAR(20) UNIQUE,
     description TEXT,
     academic_year VARCHAR(20),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -190,13 +195,13 @@ CREATE TABLE IF NOT EXISTS threads (
 """)
 
 # 權限表
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS roles (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    role_name VARCHAR(50) UNIQUE NOT NULL,
-    description VARCHAR(255)
-)
-""")
+# cursor.execute("""
+# CREATE TABLE IF NOT EXISTS roles (
+#     id INT AUTO_INCREMENT PRIMARY KEY,
+#     role_name VARCHAR(50) UNIQUE NOT NULL,
+#     description VARCHAR(255)
+# )
+# """)
 
 # 帳號表
 cursor.execute("""
@@ -204,19 +209,58 @@ CREATE TABLE IF NOT EXISTS accounts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
+    email VARCHAR(100) UNIQUE,
+    role ENUM('student', 'teacher', 'ta') DEFAULT 'student',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)
 
 # 帳號-權限關聯表
+# cursor.execute("""
+# CREATE TABLE IF NOT EXISTS account_roles (
+#     id INT AUTO_INCREMENT PRIMARY KEY,
+#     account_id INT,
+#     role_id INT,
+#     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+#     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE ON UPDATE CASCADE,
+#     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE ON UPDATE CASCADE
+# )
+# """)
+
+# 課程公告
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS account_roles (
+CREATE TABLE IF NOT EXISTS announcements (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    account_id INT,
-    role_id INT,
-    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE ON UPDATE CASCADE
+    course_id INT NOT NULL,
+    teacher_id INT,
+    title VARCHAR(255) NOT NULL,
+    content TEXT,
+    is_pinned BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (course_id) REFERENCES courses(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    FOREIGN KEY (teacher_id) REFERENCES teachers(id)
+        ON DELETE SET NULL ON UPDATE CASCADE
+)
+""")
+
+# 課程公告是否讀過
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS announcement_reads (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    announcement_id INT NOT NULL,
+    read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE KEY unique_read (student_id, announcement_id),
+
+    FOREIGN KEY (student_id) REFERENCES students(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    FOREIGN KEY (announcement_id) REFERENCES announcements(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
 )
 """)
 
