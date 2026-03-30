@@ -522,20 +522,22 @@ app.post("/api/courses/:courseId/homework", upload.any(), async (req, res) => {
     const hwId = hwResult.insertId;
 
     if (questions) {
-      const parsedQuestions = JSON.parse(questions);
-      for (let i = 0; i < parsedQuestions.length; i++) {
-        const q = parsedQuestions[i];
-        const fileKey = `file_${i}`;
-        const file = req.files ? req.files.find(f => f.fieldname === fileKey) : null;
+          const parsedQuestions = JSON.parse(questions);
+          for (let i = 0; i < parsedQuestions.length; i++) {
+            const q = parsedQuestions[i];
+            const fileKey = `file_${i}`;
+            const file = req.files ? req.files.find(f => f.fieldname === fileKey) : null;
 
-        await connection.execute(
-          `INSERT INTO homework_questions
-           (homework_id, question_order, title, description, answer_format, has_attachment, file_name, file_path)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [hwId, i + 1, q.title, q.description || '', q.answerFormat, q.hasAttachment ? 1 : 0, file ? file.originalname : null, file ? `/uploads/${file.filename}` : null]
-        );
-      }
-    }
+            const correctFileName = file ? Buffer.from(file.originalname, 'latin1').toString('utf8') : null;
+
+            await connection.execute(
+              `INSERT INTO homework_questions
+              (homework_id, question_order, title, description, answer_format, has_attachment, file_name, file_path)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [hwId, i + 1, q.title, q.description || '', q.answerFormat, q.hasAttachment ? 1 : 0, correctFileName, file ? `/uploads/${file.filename}` : null]
+            );
+          }
+        }
     await connection.commit();
     res.json({ message: "作業發布成功！" });
   } catch (error) {
@@ -561,11 +563,27 @@ app.get("/api/courses/:courseId/homework", async (req, res) => {
           "SELECT id as submissionId, score, feedback FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
           [hw.id, userId]
         );
+
         if (subs.length > 0) {
           hw.submissionId = subs[0].submissionId;
           hw.score = subs[0].score;
           hw.feedback = subs[0].feedback;
         }
+      }
+    }
+
+    else if (role === 'teacher') {
+      for (let hw of homeworks) {
+        const [subStats] = await pool.execute(
+          `SELECT
+             COUNT(*) as submitCount,
+             SUM(CASE WHEN score IS NOT NULL THEN 1 ELSE 0 END) as gradedCount
+           FROM homework_submissions
+           WHERE homework_id = ?`,
+          [hw.id]
+        );
+        hw.submitCount = subStats[0].submitCount || 0;
+        hw.gradedCount = subStats[0].gradedCount || 0;
       }
     }
     res.json(homeworks);
@@ -597,6 +615,7 @@ app.post("/api/homework/:hwId/submit", upload.single("file"), async (req, res) =
   const { hwId } = req.params;
   const { studentId, answerText } = req.body;
   try {
+    const correctFileName = req.file ? Buffer.from(req.file.originalname, 'latin1').toString('utf8') : null;
     const sql = `
       INSERT INTO homework_submissions (homework_id, student_id, answer_text, file_name, file_path)
       VALUES (?, ?, ?, ?, ?)
@@ -612,6 +631,22 @@ app.post("/api/homework/:hwId/submit", upload.single("file"), async (req, res) =
     res.json({ message: "作業繳交成功！" });
   } catch (error) {
     res.status(500).json({ message: "繳交失敗: " + error.message });
+  }
+});
+
+// 學生讀取自己的繳交紀錄
+app.get("/api/homework/:hwId/my-submission", async (req, res) => {
+  const { hwId } = req.params;
+  const { studentId } = req.query;
+  try {
+    const [rows] = await pool.execute(
+      "SELECT answer_text, file_name, file_path, score, feedback FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
+      [hwId, studentId]
+    );
+    if (rows.length === 0) return res.json(null); // 代表還沒繳交過
+    res.json(rows[0]);
+  } catch (error) {
+    res.status(500).json({ message: "讀取繳交紀錄失敗" });
   }
 });
 

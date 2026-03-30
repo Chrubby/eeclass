@@ -120,7 +120,6 @@ watch(() => route.path, () => {
           <div class="p-4 flex flex-col items-center">
             <div class="w-20 h-20 bg-gray-200 rounded-full mb-3"></div>
             <div class="font-bold text-sm">{{ user.name }}</div>
-            <div class="font-bold text-sm">{{ user.user_id }}</div>
             <div class="text-xs text-gray-500 mb-2 mt-1">等級 {{ user.level }}</div>
             <div class="w-full text-right text-xs text-blue-600 mb-1 font-bold">
               {{ user.score }} 分 >

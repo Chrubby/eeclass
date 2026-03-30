@@ -15,14 +15,15 @@
           <h4 class="font-bold text-[#337ab7] mb-2 text-[16px]">{{ q.title }}</h4>
           <p class="text-[15px] text-gray-700 mb-3 whitespace-pre-line">{{ q.description || '（無題目說明）' }}</p>
 
-          <div v-if="q.hasAttachment && q.filePath" class="flex items-start gap-2 border-t pt-3 mt-1 border-gray-200">
+          <div v-if="q.has_attachment && q.file_path" class="flex items-start gap-2 border-t pt-3 mt-1 border-gray-200">
             <span class="text-[14px] font-bold text-gray-700 mt-1">題目附件：</span>
             <a
-              :href="`${API_BASE_URL}${q.filePath}`"
+              :href="`${API_BASE_URL}${q.file_path}`"
               target="_blank"
+              :download="q.file_name"
               class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 text-gray-600 text-sm rounded shadow-sm transition-colors"
             >
-              {{ q.fileName || '下載附件' }}
+              {{ q.file_name || '下載附件' }}
             </a>
           </div>
         </div>
@@ -38,7 +39,7 @@
       <table class="w-full text-left text-[15px]">
         <thead class="bg-gray-50 text-gray-700 border-b">
           <tr>
-            <th class="p-3 pl-5">學號 / 姓名</th>
+            <th class="p-3 pl-5">學號</th>
             <th class="p-3">繳交時間</th>
             <th class="p-3">分數</th>
             <th class="p-3 pr-5">操作</th>
@@ -100,9 +101,11 @@ const loadData = async () => {
     const subs = await subRes.json()
     if (!hwRes.ok) throw new Error(hw.message || '讀取作業失敗')
     if (!subRes.ok) throw new Error(subs.message || '讀取繳交資料失敗')
+
     homeworkTitle.value = hw.title
     homeworkDeadline.value = formatDate(hw.deadline)
     questions.value = hw.questions || []
+
     submissions.value = subs.map((s) => ({
       ...s,
       uploadedAt: formatDate(s.submittedAt),

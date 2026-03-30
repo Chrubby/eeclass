@@ -89,9 +89,9 @@ const loadHomeworkList = async () => {
       statusText:
         userRole.value === 'teacher'
           ? `已繳交 ${item.submitCount || 0} / 已批改 ${item.gradedCount || 0}`
-          : item.status === 'graded'
+          : item.score
             ? '已批改'
-            : item.status === 'submitted'
+            : item.submissionId
               ? '待批改'
               : '未繳交',
     }))

@@ -28,7 +28,7 @@
       </div>
     </div>
 
-<div v-if="!homeworkData.isGraded" class="bg-white border rounded shadow-sm overflow-hidden">
+    <div v-if="!homeworkData.isGraded" class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700">作業題目內容</div>
 
       <div class="p-5 space-y-8">
@@ -55,6 +55,10 @@
           <div v-else>
             <label class="block text-xs font-bold text-gray-500 mb-1">上傳檔案 (PDF)</label>
             <input type="file" @change="handleFileChange(index, $event)" class="block w-full text-xs text-gray-600" />
+
+            <div v-if="homeworkData.isSubmitted && homeworkData.submittedFileName" class="mt-2 text-xs font-bold text-green-600 bg-green-50 p-2 rounded border border-green-200 inline-block">
+              已繳交檔案：{{ homeworkData.submittedFileName }}
+            </div>
           </div>
         </div>
       </div>
@@ -84,25 +88,28 @@ const homeworkData = ref({
   title: '',
   description: '',
   deadlineText: '-',
-  questions: [], // 這裡會存多道題目
+  questions: [],
   isGraded: false,
   isSubmitted: false,
   score: null,
-  feedback: ''
+  feedback: '',
+  submittedFileName: null
 })
 
-// 準備儲存每一題的答案
 const answers = ref([]) // 存文字
 const files = ref([])   // 存檔案
 
 const loadData = async () => {
   try {
-    const [hwRes, listRes] = await Promise.all([
+    const [hwRes, listRes, mySubRes] = await Promise.all([
       fetch(`${API_BASE_URL}/api/homework/${hwId}`),
       fetch(`${API_BASE_URL}/api/courses/${route.params.id}/homework?userId=${encodeURIComponent(studentId)}&role=student`),
+      fetch(`${API_BASE_URL}/api/homework/${hwId}/my-submission?studentId=${encodeURIComponent(studentId)}`)
     ])
+
     const hw = await hwRes.json()
     const list = await listRes.json()
+    const mySub = await mySubRes.json()
 
     const current = list.find((x) => Number(x.id) === Number(hwId))
 
@@ -112,13 +119,26 @@ const loadData = async () => {
       isSubmitted: Boolean(current?.submissionId),
       isGraded: Boolean(current?.score),
       score: current?.score || null,
-      feedback: current?.feedback || ''
+      feedback: current?.feedback || '',
+      submittedFileName: mySub?.file_name || null
     }
 
-    // 初始化答案陣列
     if (hw.questions) {
       answers.value = new Array(hw.questions.length).fill('')
       files.value = new Array(hw.questions.length).fill(null)
+
+      if (mySub && mySub.answer_text) {
+        try {
+          const savedAnswers = JSON.parse(mySub.answer_text)
+          for(let i = 0; i < savedAnswers.length; i++) {
+            if (savedAnswers[i]) {
+              answers.value[i] = savedAnswers[i]
+            }
+          }
+        } catch (e) {
+          console.error("解析舊文字答案失敗", e)
+        }
+      }
     }
   } catch (error) {
     console.error(error)
@@ -134,10 +154,8 @@ const submitHomework = async () => {
     const formData = new FormData()
     formData.append('studentId', studentId)
 
-    // 將所有文字答案打包成 JSON 送出
     formData.append('answerText', JSON.stringify(answers.value))
 
-    // 如果有檔案，也一併附加 (目前後端 submit 僅支援單檔，若要多檔需再改後端)
     if (files.value.some(f => f !== null)) {
       const firstFile = files.value.find(f => f !== null)
       formData.append('file', firstFile)
@@ -155,6 +173,7 @@ const submitHomework = async () => {
     alert(error.message)
   }
 }
+
 const unsubmitHomework = async () => {
   if (!confirm('確定要收回作業嗎？')) {
     return
@@ -170,14 +189,17 @@ const unsubmitHomework = async () => {
     const result = await response.json()
     if (!response.ok) throw new Error(result.message || '收回失敗')
 
-    //清空
     alert(result.message)
-    textAnswer.value = ''
-    selectedFile.value = null
+
+    answers.value = new Array(answers.value.length).fill('')
+    files.value = new Array(files.value.length).fill(null)
+    homeworkData.value.submittedFileName = null
+
     await loadData()
   } catch (error) {
     alert(error.message)
   }
 }
+
 onMounted(loadData)
 </script>
