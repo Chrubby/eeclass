@@ -171,6 +171,33 @@ const initDB = async () => {
     )
   `);
 
+  // 12. 討論區
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS discussion_rooms (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      course_id INT NOT NULL,
+      room_name VARCHAR(100),
+      title VARCHAR(200),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+    )
+  `);
+
+  // 13. 討論區留言
+  await pool.execute(`
+  CREATE TABLE IF NOT EXISTS threads (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    room_id INT NOT NULL,
+    student_id VARCHAR(50) NOT NULL,
+    content TEXT NOT NULL,
+    parent_thread_id INT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (room_id) REFERENCES discussion_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_thread_id) REFERENCES threads(id) ON DELETE CASCADE
+  )
+`);
+
   try {
     await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
   } catch (e) { /* 欄位已存在就忽略 */ }
@@ -180,6 +207,11 @@ const initDB = async () => {
   } catch (e) { /* 欄位已存在就忽略 */ }
   try {
     await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
+  } catch (e) { /* 欄位已存在就忽略 */ }
+
+  //討論區內容
+  try {
+    await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN content TEXT");
   } catch (e) { /* 欄位已存在就忽略 */ }
 
   console.log("資料庫檢查與初始化完成");
@@ -505,6 +537,100 @@ app.post("/api/announcements/create", async (req, res) => {
   }
 });
 
+// 取得課程討論區列表
+app.get("/api/courses/:courseCode/discussions", async (req, res) => {
+  const { courseCode } = req.params;
+  try {
+    const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+    
+    if (courseRows.length === 0) {
+      return res.status(404).json({ message: "找不到課程" });
+    }
+    const courseId = courseRows[0].id;
+
+    const [rows] = await pool.execute(
+      `SELECT id, title, created_at as date, '教授' as author 
+       FROM discussion_rooms 
+       WHERE course_id = ? 
+       ORDER BY created_at DESC`,
+      [courseId]
+    );
+    
+    res.json(rows);
+  } catch (error) {
+    console.error("資料庫查詢失敗:", error.message);
+    res.status(500).json({ message: "讀取討論區失敗", error: error.message });
+  }
+});
+
+// 老師新增討論主題
+app.post("/api/discussions/create", async (req, res) => {
+  const { course_code, title, content } = req.body; // 接收 content
+  if (!course_code || !title) return res.status(400).json({ message: "缺少必要參數" });
+
+  try {
+    const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [course_code]);
+    if (courseRows.length === 0) throw new Error("找不到課程");
+    const courseId = courseRows[0].id;
+
+    await pool.execute(
+      "INSERT INTO discussion_rooms (course_id, title, content) VALUES (?, ?, ?)",
+      [courseId, title, content || ""]
+    );
+    res.json({ message: "討論區建立成功" });
+  } catch (error) {
+    res.status(500).json({ message: "建立失敗: " + error.message });
+  }
+});
+
+// 取得特定討論區的主題內容與所有留言
+app.get("/api/discussions/:roomId/threads", async (req, res) => {
+  const { roomId } = req.params;
+  try {
+    const [room] = await pool.execute(
+      "SELECT title, content FROM discussion_rooms WHERE id = ?", [roomId]
+    );
+    
+    const [threads] = await pool.execute(`
+      SELECT t.*, a.role, 
+             CASE WHEN a.role = 'teacher' THEN (SELECT name FROM teachers WHERE teacher_id = a.username)
+                  ELSE (SELECT name FROM students WHERE student_id = a.username)
+             END as author_name
+      FROM threads t
+      JOIN accounts a ON t.student_id = a.id
+      WHERE t.room_id = ?
+      ORDER BY t.created_at ASC
+    `, [roomId]);
+
+    res.json({ room: room[0], threads });
+  } catch (error) {
+    res.status(500).json({ message: "讀取內容失敗" });
+  }
+});
+
+// 新增留言
+app.post("/api/discussions/:roomId/threads", async (req, res) => {
+  const { roomId } = req.params;
+  const { user_id, content, parent_thread_id } = req.body;
+
+  if (!content) return res.status(400).json({ message: "內容不能為空" });
+
+  try {
+
+    const [acc] = await pool.execute("SELECT id FROM accounts WHERE username = ?", [user_id]);
+    if (acc.length === 0) return res.status(404).json({ message: "找不到使用者" });
+
+    await pool.execute(
+      "INSERT INTO threads (room_id, student_id, content, parent_thread_id) VALUES (?, ?, ?, ?)",
+      [roomId, acc[0].id, content, parent_thread_id || null]
+    );
+
+    res.json({ message: "發表成功" });
+  } catch (error) {
+    console.error("發表留言失敗:", error.message);
+    res.status(500).json({ message: "伺服器錯誤" });
+  }
+});
 
 // 老師發布作業
 app.post("/api/courses/:courseId/homework", upload.any(), async (req, res) => {
