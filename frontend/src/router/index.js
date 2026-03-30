@@ -9,12 +9,12 @@ const router = createRouter({
   routes: [
     { path: "/", redirect: "/login" },
     { path: '/dashboard', name: 'Home', component: Home },
-    { path: '/course/:id', name: 'Course', component: Course,  // :id 代表課程代碼 
+    { path: '/course/:id', name: 'Course', component: Course,
       children: [
         {
-          path: '', 
+          path: '',
           name: 'CourseAnnouncement',
-          component: () => import('../views/course/Announcement.vue') 
+          component: () => import('../views/course/Announcement.vue')
         },
         {
           path: 'material',
@@ -68,16 +68,14 @@ const router = createRouter({
   ]
 })
 
-export default router
+router.beforeEach((to, from) => {
+  const userRole = localStorage.getItem('userRole') || 'student'
 
-router.beforeEach((to, from, next) => {
-  const userRole = localStorage.getItem('userRole') || 'student' // Test!!! 將值改為 student 或是 teacher 檢視不同頁面
-
-  // 訪問頁面身份必須為老師
   if (to.meta.requiresTeacher && userRole !== 'teacher') {
     alert('無法訪問此頁面。')
-    next(false)
-  } else {
-    next()
+    return false
   }
+
 })
+
+export default router

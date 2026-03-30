@@ -1,9 +1,11 @@
 <script setup>
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
 const route = useRoute()
+const router = useRouter()
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const courseCode = route.params.id
 const announcements = ref([])
 const selectedAnnouncement = ref(null)
@@ -33,7 +35,7 @@ const loadUser = async() => {
   user.value.user_id = stored
 
   try {
-    const res = await axios.get('http://localhost:5000/api/user_inf', {
+    const res = await axios.get(`${API_BASE_URL}/api/user_inf`, {
       params: {
         user_id: user.value.user_id
     }})
@@ -41,9 +43,9 @@ const loadUser = async() => {
 
     const user_inf = res.data.user
     user.value.name = user_inf.name
-    // if(user.value.role == 'student' || user.value.role == 'ta' ){ 
+    // if(user.value.role == 'student' || user.value.role == 'ta' ){
     // }else{    }
-    
+
 
   } catch (err) {
     console.error('取得使用者資訊失敗')
@@ -52,9 +54,9 @@ const loadUser = async() => {
 
 const fetchAnnouncements = async () => {
   try {
-    
 
-    const res = await axios.get('http://localhost:5000/api/announcements', {
+
+    const res = await axios.get(`${API_BASE_URL}/api/announcements`, {
       params: {
         course_code: courseCode,
         student_id: user.value.user_id
@@ -71,8 +73,10 @@ const fetchAnnouncements = async () => {
 const openAnnouncement = async (item) => {
   selectedAnnouncement.value = item
   showModal.value = true
-  await markAsRead(item.id)
-  item.isNew = false
+  if (user.value.role !== 'teacher') {
+    await markAsRead(item.id)
+    item.isNew = false
+  }
 }
 
 const closeModal = () => {
@@ -104,7 +108,7 @@ const formatDate = (datetime) => {
 const markAsRead = async (announcementId) => {
   try {
 
-    await axios.post('http://localhost:5000/api/announcements/read', {
+    await axios.post(`${API_BASE_URL}/api/announcements/read`, {
       student_id: user.value.user_id,
       announcement_id: announcementId
     })
@@ -121,7 +125,7 @@ const createAnnouncement = async () => {
   }
 
   try {
-    await axios.post('http://localhost:5000/api/announcements/create', {
+    await axios.post(`${API_BASE_URL}/api/announcements/create`, {
       course_code: courseCode,
       teacher_id: user.value.user_id,
       title: newAnnouncement.value.title,
@@ -163,7 +167,7 @@ onMounted(async() => {
     </button>
 
     <div class="bg-white border rounded shadow-sm overflow-hidden">
-      
+
       <div class="flex bg-gray-100 text-sm font-bold text-gray-700 p-3 border-b">
         <div class="flex-1">標題</div>
         <div class="w-32 text-center">發布者</div>
@@ -171,14 +175,14 @@ onMounted(async() => {
       </div>
 
       <ul class="divide-y divide-gray-200">
-        <li 
-          v-for="item in announcements" 
+        <li
+          v-for="item in announcements"
           :key="item.id"
           class="flex p-3 hover:bg-blue-50 cursor-pointer items-center text-[15px]"
           @click="openAnnouncement(item)"
         >
           <div class="flex-1 text-[#337ab7] hover:underline truncate pr-4">
-            
+
             <span v-if="item.isNew" class="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded mr-2">
               NEW
             </span>
@@ -201,12 +205,12 @@ onMounted(async() => {
       </div>
     </div>
 
-    <div 
-      v-if="showModal" 
+    <div
+      v-if="showModal"
       class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
       @click="closeModal"
     >
-      <div 
+      <div
         class="bg-white p-6 rounded shadow-lg w-96"
         @click.stop
       >
@@ -227,7 +231,7 @@ onMounted(async() => {
         </div>
 
         <div class="flex justify-end mt-4">
-          <button 
+          <button
             class="px-3 py-1 bg-blue-500 text-white rounded"
             @click="closeModal"
           >

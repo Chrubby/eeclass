@@ -6,6 +6,7 @@ import axios from 'axios'
 const isMenuOpen = ref(false)
 const router = useRouter()
 const route = useRoute()
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 const user = ref({
   //name: localStorage.getItem('user') || '尚未登入',
@@ -39,13 +40,19 @@ const logout = () => {
 
 const loadUser = async() => {
   const stored = localStorage.getItem("user")
-  if (!stored) {
+  const isAuthRoute = route.path === '/login' || route.path === '/register'
+
+  if (!stored && !isAuthRoute) {
     router.push('/login')
+    return
+  }
+
+  if (!stored) {
     return
   }
   user.value.user_id = stored
   try {
-    const res = await axios.get('http://localhost:5000/api/user_inf', {
+    const res = await axios.get(`${API_BASE_URL}/api/user_inf`, {
       params: {
         user_id: user.value.user_id
     }})

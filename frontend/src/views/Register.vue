@@ -154,7 +154,7 @@ const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 
 const router = useRouter()
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000"
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 const register = async () => {
   if (password.value !== confirmPassword.value) {

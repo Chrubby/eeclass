@@ -61,7 +61,7 @@ const courseId = route.params.id
 
 const userRole = ref(localStorage.getItem('userRole') || 'student')
 const userId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000"
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const isLoading = ref(false)
 
 const homeworkList = ref([])

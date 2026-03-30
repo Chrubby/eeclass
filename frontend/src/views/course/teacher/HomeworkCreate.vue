@@ -3,7 +3,6 @@
 
     <div class="bg-white border rounded shadow-sm overflow-hidden">
 
-      <!-- 作業基本資料 -->
       <div class="p-6 flex flex-col gap-5">
         <div>
           <label class="block text-[15px] font-bold text-gray-700 mb-1.5">
@@ -42,7 +41,6 @@
       </div>
     </div>
 
-    <!-- 設定題目 -->
     <div class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700 flex justify-between items-center">
         <span>題目設定</span>
@@ -166,21 +164,18 @@ const router = useRouter()
 const route = useRoute()
 const courseId = route.params.id
 
-// 抓取後端網址與老師的帳號
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000"
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const teacherId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
 
-// 表單整體資料狀態
 const form = ref({
   title: '',
   deadline: '',
   description: '',
-  // 儲存多道題目 預設一題空白
   questions: [
     {
       title: '',
       description: '',
-      answerFormat: 'file', // 預設上傳檔案
+      answerFormat: 'file',
       attachment: null
     }
   ]
@@ -200,14 +195,12 @@ const addQuestion = () => {
   })
 }
 
-// 移除指定的題目
 const removeQuestion = (index) => {
   if (confirm('確定要移除這道題目嗎？')) {
     form.value.questions.splice(index, 1)
   }
 }
 
-// 處理個別題目的附件上傳
 const handleQuestionFile = (index, event) => {
   const file = event.target.files[0]
   if (file) {
@@ -218,8 +211,8 @@ const handleQuestionFile = (index, event) => {
 }
 
 // 提交表單給後端
+// 提交表單給後端
 const submitAssignment = async () => {
-  // 檢查必填欄位
   if (!form.value.title || !form.value.deadline) {
     alert('請填寫作業名稱與截止日期！')
     return
@@ -231,36 +224,85 @@ const submitAssignment = async () => {
     return
   }
 
-  // 1. 建立一個虛擬的包裹 (FormData)
   const formData = new FormData()
 
-  // 2. 把基本資料放進包裹
   formData.append('title', form.value.title)
-  formData.append('deadline', form.value.deadline)
+
+  // 🛑 修正 1：把時間格式 "YYYY-MM-DDThh:mm" 轉成 MySQL 專用的 "YYYY-MM-DD hh:mm:00"
+  const formattedDeadline = form.value.deadline.replace('T', ' ') + ':00'
+  formData.append('deadline', formattedDeadline)
+
   formData.append('description', form.value.description || '')
   formData.append('teacherId', teacherId)
 
-  // 3. 把題目的「文字內容」轉成字串放進包裹
   const questionsData = form.value.questions.map(q => ({
     title: q.title,
     description: q.description,
     answerFormat: q.answerFormat,
-    hasAttachment: !!q.attachment // 紀錄這題有沒有附帶檔案
+    hasAttachment: !!q.attachment
   }))
   formData.append('questions', JSON.stringify(questionsData))
 
-  // 4. 把「實體檔案」依照題號放進包裹（命名為 file_0, file_1...）
   form.value.questions.forEach((q, index) => {
     if (q.attachment) {
       formData.append(`file_${index}`, q.attachment)
     }
   })
 
-  // 5. 把包裹寄給後端
+  try {
+    // 🛑 修正 2：強制指定打給 localhost:5000，避開前端代理
+    const response = await fetch(`http://localhost:5000/api/courses/${courseId}/homework`, {
+      method: 'POST',
+      body: formData
+    })
+
+    // 先讀取純文字，避免因為空字串導致 JSON 解析崩潰
+    const text = await response.text()
+    if (!text) throw new Error('伺服器沒有回傳任何資料 (後端可能崩潰了)')
+
+    const result = JSON.parse(text)
+
+    if (!response.ok) throw new Error(result.message || '作業發布失敗')
+
+    alert('作業發布成功！')
+    goBack()
+
+  } catch (error) {
+    alert('發布失敗：' + error.message)
+    console.error("詳細錯誤:", error)
+  }
+}
+
+  const hasEmptyQuestion = form.value.questions.some(q => !q.title)
+  if (hasEmptyQuestion) {
+    alert('每道題目都必須填寫「題目標題」！')
+    return
+  }
+
+  const formData = new FormData()
+
+  formData.append('title', form.value.title)
+  formData.append('deadline', form.value.deadline)
+  formData.append('description', form.value.description || '')
+  formData.append('teacherId', teacherId)
+
+  const questionsData = form.value.questions.map(q => ({
+    title: q.title,
+    description: q.description,
+    answerFormat: q.answerFormat,
+    hasAttachment: !!q.attachment
+  }))
+  formData.append('questions', JSON.stringify(questionsData))
+
+  form.value.questions.forEach((q, index) => {
+    if (q.attachment) {
+      formData.append(`file_${index}`, q.attachment)
+    }
+  })
+
   try {
     const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/homework`, {
       method: 'POST',
-      // 注意：寄送 FormData 時，不能寫 'Content-Type'，瀏覽器會自己處理
       body: formData
     })
 
