@@ -165,7 +165,7 @@ watch(() => route.path, () => {
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer">教學評量</li>
         </ul>
 
-<ul v-else class="bg-white text-[15px] text-gray-700 py-2">
+        <ul v-else class="bg-white text-[15px] text-gray-700 py-2">
 
           <router-link :to="`/course/${courseId}`" custom v-slot="{ navigate, isExactActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isExactActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">

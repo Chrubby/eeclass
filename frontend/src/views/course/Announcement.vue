@@ -2,6 +2,7 @@
 import { useRoute, useRouter } from 'vue-router'
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import ChatBot from '@/components/ChatBot.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -278,8 +279,9 @@ onMounted(async() => {
           新增公告
         </button>
       </div>
-
     </div>
   </div>
+
+  <ChatBot :courseCode="courseCode" :studentCode="user.user_id" />
 
 </template>

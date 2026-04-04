@@ -25,7 +25,7 @@ app.use("/uploads", express.static(uploadsRoot));
 const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "Evan+921003", // 換回你原本的密碼
+  password: process.env.DB_PASSWORD, // 換回你原本的密碼
   database: process.env.DB_NAME || "classroom_data",
 };
 
@@ -169,6 +169,21 @@ const initDB = async () => {
       graded_at DATETIME NULL,
       UNIQUE KEY uniq_hw_student (homework_id, student_id)
     )
+  `);
+
+  // 12. 新增課程AI聊天
+  await pool.execute(`
+  CREATE TABLE IF NOT EXISTS ai_chat_messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    course_id INT NOT NULL,
+    student_id INT NOT NULL,
+    role ENUM('user', 'assistant') NOT NULL,
+    message TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+  )
   `);
 
   try {
@@ -724,6 +739,293 @@ app.post("/api/submissions/:submissionId/grade", async (req, res) => {
     res.json({ message: "批改完成！" });
   } catch (error) {
     res.status(500).json({ message: "評分失敗" });
+  }
+});
+
+// 儲存聊天紀錄
+app.post("/api/ai-chat", async (req, res) => {
+  const { course_code, student_code, role, message } = req.body;
+
+  try {
+    const [courseRows] = await pool.execute(
+      "SELECT id FROM courses WHERE course_code = ?",
+      [course_code]
+    );
+
+    if (courseRows.length === 0) {
+      return res.status(404).json({ message: "找不到課程" });
+    }
+
+    const course_id = courseRows[0].id;
+
+    const [studentRows] = await pool.execute(
+      "SELECT id FROM students WHERE student_id = ?",
+      [student_code]
+    );
+
+    if (studentRows.length === 0) {
+      return res.status(404).json({ message: "找不到學生" });
+    }
+
+    const student_id = studentRows[0].id;
+
+    await pool.execute(
+      `INSERT INTO ai_chat_messages 
+       (course_id, student_id, role, message) 
+       VALUES (?, ?, ?, ?)`,
+      [course_id, student_id, role, message]
+    );
+
+    res.json({ message: "聊天紀錄已儲存" });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "寫入失敗" });
+  }
+});
+
+// 回傳聊天紀錄
+app.get("/api/ai-chat/by-code/:courseCode/:studentCode", async (req, res) => {
+  const { courseCode, studentCode } = req.params;
+
+  try {
+    // 1️⃣ 找 course_id
+    const [courseRows] = await pool.execute(
+      "SELECT id FROM courses WHERE course_code = ?",
+      [courseCode]
+    );
+
+    if (courseRows.length === 0) {
+      return res.status(404).json({ message: "找不到課程" });
+    }
+
+    const course_id = courseRows[0].id;
+
+    const [studentRows] = await pool.execute(
+      "SELECT id FROM students WHERE student_id = ?",
+      [studentCode]
+    );
+
+    if (studentRows.length === 0) {
+      return res.status(404).json({ message: "找不到學生" });
+    }
+
+    const student_id = studentRows[0].id;
+
+    const [chatRows] = await pool.execute(
+      `SELECT * FROM ai_chat_messages
+       WHERE course_id = ? AND student_id = ?
+       ORDER BY created_at ASC`,
+      [course_id, student_id]
+    );
+
+    res.json({
+      course_id,
+      student_id,
+      chats: chatRows
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "讀取聊天紀錄失敗" });
+  }
+});
+
+// 詢問AI
+app.post("/api/ai/ask", async (req, res) => {
+  const { course_code, student_code, message } = req.body;
+
+  if (!course_code || !student_code || !message) {
+    return res.status(400).json({ 
+      message: "缺少必要參數", 
+      errorStep: "param_check" 
+    });
+  }
+
+  let course, student, history, reply;
+
+  try {
+    const [courseRows] = await pool.execute(
+      `SELECT id FROM courses WHERE course_code = ?`,
+      [course_code]
+    );
+    if (!courseRows.length) {
+      return res.status(400).json({ 
+        message: "找不到課程", 
+        errorStep: "query_course" 
+      });
+    }
+    course = courseRows[0];
+
+    const [studentRows] = await pool.execute(
+      `SELECT id FROM students WHERE student_id = ?`,
+      [student_code]
+    );
+    if (!studentRows.length) {
+      return res.status(400).json({ 
+        message: "找不到學生", 
+        errorStep: "query_student" 
+      });
+    }
+    student = studentRows[0];
+
+    const [historyRows] = await pool.execute(
+      `SELECT role, message 
+       FROM ai_chat_messages 
+       WHERE course_id = ? AND student_id = ? 
+       ORDER BY created_at ASC 
+       LIMIT 10`,
+      [course.id, student.id]
+    );
+    history = historyRows.map(r => ({ role: r.role, content: r.message }));
+
+    await pool.execute(
+      `INSERT INTO ai_chat_messages (course_id, student_id, role, message) VALUES (?, ?, 'user', ?)`,
+      [course.id, student.id, message]
+    );
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system", 
+            content: "你是一位大學課程助教，請用繁體中文回答，並使用 '\\n' 來換行，保持訊息條列與換行，不要用 HTML 標籤。"
+          },
+          ...history,
+          { role: "user", content: message + "\n請用條列和換行整理回答" }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("OpenAI API Error:", text);
+      return res.status(500).json({ 
+        message: "OpenAI API 回覆失敗", 
+        errorStep: "openai_api", 
+        errorMessage: text 
+      });
+    }
+
+    const data = await response.json();
+    reply = data.choices?.[0]?.message?.content;
+
+    if (!reply) {
+      return res.status(500).json({ 
+        message: "OpenAI 回覆內容為空", 
+        errorStep: "openai_parse" 
+      });
+    }
+
+    await pool.execute(
+      `INSERT INTO ai_chat_messages (course_id, student_id, role, message) VALUES (?, ?, 'assistant', ?)`,
+      [course.id, student.id, reply]
+    );
+
+    res.json({ reply });
+
+  } catch (err) {
+    console.error("AI /ask 錯誤:", err);
+    res.status(500).json({
+      message: "AI 回覆失敗",
+      errorStep: "catch_all",
+      errorMessage: err.message,
+      stack: err.stack
+    });
+  }
+});
+
+// AI作業提醒
+app.post("/api/ai/remind-homework", async (req, res) => {
+  const { course_code, student_code } = req.body;
+  const courseCodeTrimmed = course_code?.trim();
+  const studentCodeTrimmed = student_code?.trim();
+
+  if (!courseCodeTrimmed || !studentCodeTrimmed)
+    return res.status(400).json({ message: "缺少必要參數" });
+
+  try {
+
+    // 3️⃣ 查所有未過期作業
+    const [homeworks] = await pool.execute(
+      `SELECT h.id, h.title, h.deadline
+       FROM homeworks h
+       WHERE h.course_id = ? AND h.deadline >= NOW()
+       ORDER BY h.deadline ASC`,
+      [course_code]
+    );
+
+    if (homeworks.length === 0)
+      return res.json({ reply: "👍 目前沒有任何尚未截止的作業！" });
+
+    // 4️⃣ 查學生已繳交作業
+    const hwIds = homeworks.map(hw => hw.id);
+    const [submitted] = await pool.execute(
+      `SELECT homework_id FROM homework_submissions
+      WHERE student_id = ? AND homework_id IN (${hwIds.map(() => '?').join(',')})`,
+      [student_code, ...hwIds]
+    );
+
+    const submittedIds = submitted.map(s => s.homework_id);
+
+    // 5️⃣ 篩選出未繳交作業
+    const pending = homeworks.filter(hw => !submittedIds.includes(hw.id));
+
+    if (pending.length === 0)
+      return res.json({ reply: "👍 你已完成所有尚未截止的作業，辛苦了！" });
+
+    // 6️⃣ 將作業整理成文字
+    const hwListText = pending
+      .map(hw => `• ${hw.title}，截止日期：${hw.deadline.toISOString().split("T")[0]}`)
+      .join("\n");
+
+    const userPrompt = `
+      你是一位大學課程助教。
+      提醒學生下列尚未繳交的作業：
+      ${hwListText}
+      請簡短、不用太正式
+      請使用 Markdown 格式，每個作業換行顯示。
+      `;
+
+    // 7️⃣ 呼叫 OpenAI
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "你是一位大學課程助教，用繁體中文回答。" },
+          { role: "user", content: userPrompt }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("OpenAI API Error:", text);
+      return res.status(500).json({ message: "OpenAI 回覆失敗", error: text });
+    }
+
+    const data = await response.json();
+    const reply = data.choices?.[0]?.message?.content;
+
+    if (!reply)
+      return res.status(500).json({ message: "OpenAI 回覆內容為空" });
+
+    res.json({ reply });
+
+  } catch (err) {
+    console.error("remind-homework 錯誤:", err);
+    res.status(500).json({ message: "系統錯誤", error: err.message });
   }
 });
 
