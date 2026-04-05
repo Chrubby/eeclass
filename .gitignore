@@ -40,3 +40,9 @@ __screenshots__/
 
 .env
 backend/.env
+
+
+node_modules
+node_modules/
+
+frontend/node_modules/.vite/deps/_metadata.json

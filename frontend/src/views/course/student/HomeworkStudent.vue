@@ -28,7 +28,7 @@
       </div>
     </div>
 
-    <div v-if="!homeworkData.isGraded" class="bg-white border rounded shadow-sm overflow-hidden">
+    <div  class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700">作業題目內容</div>
 
       <div class="p-5 space-y-8">
@@ -47,6 +47,7 @@
             <textarea
               v-model="answers[index]"
               rows="4"
+              :disabled="homeworkData.isGraded"
               placeholder="請在此輸入答案..."
               class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors resize-y"
             ></textarea>
@@ -54,16 +55,21 @@
 
           <div v-else>
             <label class="block text-xs font-bold text-gray-500 mb-1">上傳檔案</label>
-            <input type="file" @change="handleFileChange(index, $event)" class="block w-full text-xs text-gray-600" />
+            <input type="file" accept=".pdf" @change="handleFileChange(index, $event)" :disabled="homeworkData.isGraded" class="block w-full text-xs text-gray-600" />
 
             <div v-if="homeworkData.isSubmitted && homeworkData.submittedFileName" class="mt-2 text-xs font-bold text-green-600 bg-green-50 p-2 rounded border border-green-200 inline-block">
               已繳交檔案：{{ homeworkData.submittedFileName }}
             </div>
           </div>
+
+          <div v-if="homeworkData.isGraded && homeworkData.gradedDetails && homeworkData.gradedDetails[index]" class="mt-4 bg-green-50 p-4 rounded border border-green-200">
+             <div class="font-bold text-green-700 mb-1">此題得分：{{ homeworkData.gradedDetails[index].score || '未給分' }}</div>
+             <div class="text-green-800 text-sm whitespace-pre-line">此題評語：<br>{{ homeworkData.gradedDetails[index].feedback || '無' }}</div>
+          </div>
         </div>
       </div>
 
-      <div class="bg-gray-50 px-5 py-4 border-t flex justify-end gap-3">
+      <div v-if="!homeworkData.isGraded" class="bg-gray-50 px-5 py-4 border-t flex justify-end gap-3">
         <button v-if="homeworkData.isSubmitted" @click="unsubmitHomework" class="bg-red-500 text-white px-8 py-2.5 rounded text-[16px] hover:bg-red-600 transition-colors">
           收回作業
         </button>
@@ -113,6 +119,11 @@ const loadData = async () => {
 
     const current = list.find((x) => Number(x.id) === Number(hwId))
 
+    let gradedDetails = []
+    try {
+      if (mySub?.graded_details) gradedDetails = JSON.parse(mySub.graded_details)
+    } catch(e) {}
+
     homeworkData.value = {
       ...hw,
       deadlineText: hw.deadline ? new Date(hw.deadline).toLocaleString() : '-',
@@ -120,7 +131,8 @@ const loadData = async () => {
       isGraded: Boolean(current?.score),
       score: current?.score || null,
       feedback: current?.feedback || '',
-      submittedFileName: mySub?.file_name || null
+      submittedFileName: mySub?.file_name || null,
+      gradedDetails: gradedDetails // 新增這行
     }
 
     if (hw.questions) {
@@ -146,7 +158,14 @@ const loadData = async () => {
 }
 
 const handleFileChange = (index, event) => {
-  files.value[index] = event.target.files[0] || null
+  const file = event.target.files[0]
+  if (file && file.type !== 'application/pdf') {
+    alert('只能上傳 PDF 檔案！')
+    event.target.value = ''
+    files.value[index] = null
+    return
+  }
+  files.value[index] = file || null
 }
 
 const submitHomework = async () => {

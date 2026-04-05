@@ -203,6 +203,10 @@ const initDB = async () => {
   } catch (e) { /* 欄位已存在就忽略 */ }
 
   try {
+    await pool.execute("ALTER TABLE homework_submissions ADD COLUMN graded_details TEXT");
+  } catch (e) { /* 欄位已存在就忽略 */ }
+
+  try {
     await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
   } catch (e) { /* 欄位已存在就忽略 */ }
   try {
@@ -784,7 +788,7 @@ app.get("/api/homework/:hwId/my-submission", async (req, res) => {
   const { studentId } = req.query;
   try {
     const [rows] = await pool.execute(
-      "SELECT answer_text, file_name, file_path, score, feedback FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
+      "SELECT answer_text, file_name, file_path, score, feedback, graded_details FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
       [hwId, studentId]
     );
     if (rows.length === 0) return res.json(null); // 代表還沒繳交過
@@ -842,14 +846,20 @@ app.get("/api/submissions/:submissionId", async (req, res) => {
 // 老師批改評分
 app.post("/api/submissions/:submissionId/grade", async (req, res) => {
   const { submissionId } = req.params;
-  const { score, feedback } = req.body;
+  const { score, feedback, gradedDetails } = req.body;
   try {
     await pool.execute(
-      "UPDATE homework_submissions SET score = ?, feedback = ?, graded_at = CURRENT_TIMESTAMP WHERE id = ?",
-      [score, feedback, submissionId]
+      "UPDATE homework_submissions SET score = ?, feedback = ?, graded_details = ?, graded_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [
+        score ?? null,
+        feedback ?? null,
+        gradedDetails ? JSON.stringify(gradedDetails) : null,
+        submissionId
+      ]
     );
     res.json({ message: "批改完成！" });
   } catch (error) {
+    console.error("詳細錯誤：", error);
     res.status(500).json({ message: "評分失敗" });
   }
 });

@@ -40,14 +40,25 @@
                 </div>
               </div>
 
-              <div class="mt-5 border-t border-gray-200 pt-4 flex items-center justify-end gap-3">
-                <span class="text-[14px] font-bold text-gray-700">此題得分：</span>
-                <input
-                  v-model="ans.score"
-                  type="number"
-                  min="0"
-                  class="w-24 border border-gray-300 rounded px-2 py-1 text-center text-blue-600 font-bold focus:border-blue-400 focus:outline-none"
-                />
+              <div class="mt-5 border-t border-gray-200 pt-4 flex flex-col gap-3">
+                <div class="flex items-center justify-end gap-3">
+                  <span class="text-[14px] font-bold text-gray-700">此題得分：</span>
+                  <input
+                    v-model="ans.score"
+                    type="number"
+                    min="0"
+                    class="w-24 border border-gray-300 rounded px-2 py-1 text-center text-blue-600 font-bold focus:border-blue-400 focus:outline-none"
+                  />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <span class="text-[14px] font-bold text-gray-700">此題評語：</span>
+                  <textarea
+                    v-model="ans.feedback"
+                    rows="2"
+                    placeholder="針對這題給點建議..."
+                    class="border border-gray-300 rounded p-2 text-sm w-full outline-none focus:border-blue-400"
+                  ></textarea>
+                </div>
               </div>
 
             </div>
@@ -196,7 +207,15 @@ const loadData = async () => {
       console.error("解析學生答案失敗", e)
     }
 
+    let gradedDetails = []
+    try {
+      if (subData.graded_details) gradedDetails = JSON.parse(subData.graded_details)
+    } catch (e) {
+      console.error("解析每題評分失敗", e)
+    }
+
     studentAnswers.value = (hwData.questions || []).map((q, index) => {
+      const detail = gradedDetails[index] || {}
       return {
         id: q.id || index,
         questionTitle: q.title,
@@ -205,7 +224,8 @@ const loadData = async () => {
         textAnswer: parsedAnswers[index] || '',
         fileName: q.answerFormat === 'file' ? subData.file_name : null,
         filePath: q.answerFormat === 'file' ? subData.file_path : null,
-        score: '' // 預設單題為空字串
+        score: detail.score || '',
+        feedback: detail.feedback || ''
       }
     })
 
@@ -219,7 +239,13 @@ const submitGrade = async () => {
   try {
     const payload = {
       score: String(gradingForm.value.score),
-      feedback: gradingForm.value.feedback
+      feedback: gradingForm.value.feedback,
+      // 1. 名字改成 gradedDetails，對齊後端 server.js
+      // 2. 拿掉 JSON.stringify，因為後端已經有寫轉 JSON 的功能了
+      gradedDetails: studentAnswers.value.map(ans => ({
+        score: ans.score,
+        feedback: ans.feedback
+      }))
     }
 
     const response = await fetch(`${API_BASE_URL}/api/submissions/${submissionId}/grade`, {
