@@ -162,9 +162,9 @@ onMounted(async() => {
     <button
       v-if="user.role === 'teacher'||user.role === 'ta'"
       @click="showAddAnnouncementModal = true"
-      class="bg-blue-300 text-white px-3 py-1 rounded text-sm hover:bg-blue-400"
+      class="bg-[#337ab7] text-white px-4 py-1.5 rounded text-sm font-bold tracking-wide hover:bg-[#285e8e] shadow-sm transition-colors flex items-center gap-1 mb-4"
     >
-      新增公告
+      ＋ 新增公告
     </button>
 
     <div class="bg-white border rounded shadow-sm overflow-hidden">

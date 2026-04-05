@@ -171,20 +171,32 @@ const initDB = async () => {
     )
   `);
 
-  // 12. 新增課程AI聊天
+  // 12. 討論區
   await pool.execute(`
-  CREATE TABLE IF NOT EXISTS ai_chat_messages (
+    CREATE TABLE IF NOT EXISTS discussion_rooms (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      course_id INT NOT NULL,
+      room_name VARCHAR(100),
+      title VARCHAR(200),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+    )
+  `);
+
+  // 13. 討論區留言
+  await pool.execute(`
+  CREATE TABLE IF NOT EXISTS threads (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    course_id INT NOT NULL,
-    student_id INT NOT NULL,
-    role ENUM('user', 'assistant') NOT NULL,
-    message TEXT NOT NULL,
+    room_id INT NOT NULL,
+    student_id VARCHAR(50) NOT NULL,
+    content TEXT NOT NULL,
+    parent_thread_id INT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
-    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+    FOREIGN KEY (room_id) REFERENCES discussion_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_thread_id) REFERENCES threads(id) ON DELETE CASCADE
   )
-  `);
+`);
 
   try {
     await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
@@ -195,6 +207,11 @@ const initDB = async () => {
   } catch (e) { /* 欄位已存在就忽略 */ }
   try {
     await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
+  } catch (e) { /* 欄位已存在就忽略 */ }
+
+  //討論區內容
+  try {
+    await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN content TEXT");
   } catch (e) { /* 欄位已存在就忽略 */ }
 
   console.log("資料庫檢查與初始化完成");
@@ -538,6 +555,101 @@ app.post("/api/announcements/create", async (req, res) => {
   }
 });
 
+// 取得課程討論區列表
+app.get("/api/courses/:courseCode/discussions", async (req, res) => {
+  const { courseCode } = req.params;
+  try {
+    const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+
+    if (courseRows.length === 0) {
+      return res.status(404).json({ message: "找不到課程" });
+    }
+    const courseId = courseRows[0].id;
+
+    const [rows] = await pool.execute(
+      `SELECT id, title, created_at as date, '教授' as author
+       FROM discussion_rooms
+       WHERE course_id = ?
+       ORDER BY created_at DESC`,
+      [courseId]
+    );
+
+    res.json(rows);
+  } catch (error) {
+    console.error("資料庫查詢失敗:", error.message);
+    res.status(500).json({ message: "讀取討論區失敗", error: error.message });
+  }
+});
+
+// 老師新增討論主題
+app.post("/api/discussions/create", async (req, res) => {
+  const { course_code, title, content } = req.body; // 接收 content
+  if (!course_code || !title) return res.status(400).json({ message: "缺少必要參數" });
+
+  try {
+    const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [course_code]);
+    if (courseRows.length === 0) throw new Error("找不到課程");
+    const courseId = courseRows[0].id;
+
+    await pool.execute(
+      "INSERT INTO discussion_rooms (course_id, title, content) VALUES (?, ?, ?)",
+      [courseId, title, content || ""]
+    );
+    res.json({ message: "討論區建立成功" });
+  } catch (error) {
+    res.status(500).json({ message: "建立失敗: " + error.message });
+  }
+});
+
+// 取得特定討論區的主題內容與所有留言
+app.get("/api/discussions/:roomId/threads", async (req, res) => {
+  const { roomId } = req.params;
+  try {
+    const [room] = await pool.execute(
+      "SELECT title, content FROM discussion_rooms WHERE id = ?", [roomId]
+    );
+
+    const [threads] = await pool.execute(`
+      SELECT t.*, a.role,
+             CASE WHEN a.role = 'teacher' THEN (SELECT name FROM teachers WHERE teacher_id = a.username)
+                  ELSE (SELECT name FROM students WHERE student_id = a.username)
+             END as author_name
+      FROM threads t
+      JOIN accounts a ON t.student_id = a.id
+      WHERE t.room_id = ?
+      ORDER BY t.created_at ASC
+    `, [roomId]);
+
+    res.json({ room: room[0], threads });
+  } catch (error) {
+    res.status(500).json({ message: "讀取內容失敗" });
+  }
+});
+
+// 新增留言
+app.post("/api/discussions/:roomId/threads", async (req, res) => {
+  const { roomId } = req.params;
+  const { user_id, content, parent_thread_id } = req.body;
+
+  if (!content) return res.status(400).json({ message: "內容不能為空" });
+
+  try {
+
+    const [acc] = await pool.execute("SELECT id FROM accounts WHERE username = ?", [user_id]);
+    if (acc.length === 0) return res.status(404).json({ message: "找不到使用者" });
+
+    await pool.execute(
+      "INSERT INTO threads (room_id, student_id, content, parent_thread_id) VALUES (?, ?, ?, ?)",
+      [roomId, acc[0].id, content, parent_thread_id || null]
+    );
+
+    res.json({ message: "發表成功" });
+  } catch (error) {
+    console.error("發表留言失敗:", error.message);
+    res.status(500).json({ message: "伺服器錯誤" });
+  }
+});
+
 // 老師發布作業
 app.post("/api/courses/:courseId/homework", upload.any(), async (req, res) => {
   const courseId = req.params.courseId;
@@ -770,8 +882,8 @@ app.post("/api/ai-chat", async (req, res) => {
     const student_id = studentRows[0].id;
 
     await pool.execute(
-      `INSERT INTO ai_chat_messages 
-       (course_id, student_id, role, message) 
+      `INSERT INTO ai_chat_messages
+       (course_id, student_id, role, message)
        VALUES (?, ?, ?, ?)`,
       [course_id, student_id, role, message]
     );
@@ -836,9 +948,9 @@ app.post("/api/ai/ask", async (req, res) => {
   const { course_code, student_code, message } = req.body;
 
   if (!course_code || !student_code || !message) {
-    return res.status(400).json({ 
-      message: "缺少必要參數", 
-      errorStep: "param_check" 
+    return res.status(400).json({
+      message: "缺少必要參數",
+      errorStep: "param_check"
     });
   }
 
@@ -850,9 +962,9 @@ app.post("/api/ai/ask", async (req, res) => {
       [course_code]
     );
     if (!courseRows.length) {
-      return res.status(400).json({ 
-        message: "找不到課程", 
-        errorStep: "query_course" 
+      return res.status(400).json({
+        message: "找不到課程",
+        errorStep: "query_course"
       });
     }
     course = courseRows[0];
@@ -862,18 +974,18 @@ app.post("/api/ai/ask", async (req, res) => {
       [student_code]
     );
     if (!studentRows.length) {
-      return res.status(400).json({ 
-        message: "找不到學生", 
-        errorStep: "query_student" 
+      return res.status(400).json({
+        message: "找不到學生",
+        errorStep: "query_student"
       });
     }
     student = studentRows[0];
 
     const [historyRows] = await pool.execute(
-      `SELECT role, message 
-       FROM ai_chat_messages 
-       WHERE course_id = ? AND student_id = ? 
-       ORDER BY created_at ASC 
+      `SELECT role, message
+       FROM ai_chat_messages
+       WHERE course_id = ? AND student_id = ?
+       ORDER BY created_at ASC
        LIMIT 10`,
       [course.id, student.id]
     );
@@ -894,7 +1006,7 @@ app.post("/api/ai/ask", async (req, res) => {
         model: "gpt-4o-mini",
         messages: [
           {
-            role: "system", 
+            role: "system",
             content: "你是一位大學課程助教，請用繁體中文回答，並使用 '\\n' 來換行，保持訊息條列與換行，不要用 HTML 標籤。"
           },
           ...history,
@@ -906,10 +1018,10 @@ app.post("/api/ai/ask", async (req, res) => {
     if (!response.ok) {
       const text = await response.text();
       console.error("OpenAI API Error:", text);
-      return res.status(500).json({ 
-        message: "OpenAI API 回覆失敗", 
-        errorStep: "openai_api", 
-        errorMessage: text 
+      return res.status(500).json({
+        message: "OpenAI API 回覆失敗",
+        errorStep: "openai_api",
+        errorMessage: text
       });
     }
 
@@ -917,9 +1029,9 @@ app.post("/api/ai/ask", async (req, res) => {
     reply = data.choices?.[0]?.message?.content;
 
     if (!reply) {
-      return res.status(500).json({ 
-        message: "OpenAI 回覆內容為空", 
-        errorStep: "openai_parse" 
+      return res.status(500).json({
+        message: "OpenAI 回覆內容為空",
+        errorStep: "openai_parse"
       });
     }
 
