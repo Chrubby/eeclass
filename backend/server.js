@@ -217,6 +217,9 @@ const initDB = async () => {
   try {
     await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN content TEXT");
   } catch (e) { /* 欄位已存在就忽略 */ }
+  try {
+    await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN ai_prompt TEXT;");
+  } catch (e) { /* 欄位已存在就忽略 */ }
 
   console.log("資料庫檢查與初始化完成");
 };
@@ -585,9 +588,9 @@ app.get("/api/courses/:courseCode/discussions", async (req, res) => {
   }
 });
 
-// 老師新增討論主題
+// 新增討論主題
 app.post("/api/discussions/create", async (req, res) => {
-  const { course_code, title, content } = req.body; // 接收 content
+  const { course_code, title, content, ai_prompt } = req.body; // 接收 content
   if (!course_code || !title) return res.status(400).json({ message: "缺少必要參數" });
 
   try {
@@ -596,14 +599,31 @@ app.post("/api/discussions/create", async (req, res) => {
     const courseId = courseRows[0].id;
 
     await pool.execute(
-      "INSERT INTO discussion_rooms (course_id, title, content) VALUES (?, ?, ?)",
-      [courseId, title, content || ""]
+      "INSERT INTO discussion_rooms (course_id, title, content, ai_prompt) VALUES (?, ?, ?, ?)",
+      [courseId, title, content || "", ai_prompt || ""]
     );
     res.json({ message: "討論區建立成功" });
   } catch (error) {
     res.status(500).json({ message: "建立失敗: " + error.message });
   }
 });
+
+//刪除討論區
+app.delete('/api/discussions/:id', async (req, res) => {
+  const { id } = req.params
+
+  try {
+    await pool.execute(
+      'DELETE FROM discussion_rooms WHERE id = ?',
+      [id]
+    )
+
+    res.json({ message: '刪除成功' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: '刪除失敗' })
+  }
+})
 
 // 取得特定討論區的主題內容與所有留言
 app.get("/api/discussions/:roomId/threads", async (req, res) => {
@@ -614,12 +634,14 @@ app.get("/api/discussions/:roomId/threads", async (req, res) => {
     );
 
     const [threads] = await pool.execute(`
-      SELECT t.*, a.role,
-             CASE WHEN a.role = 'teacher' THEN (SELECT name FROM teachers WHERE teacher_id = a.username)
-                  ELSE (SELECT name FROM students WHERE student_id = a.username)
+      SELECT t.*, 
+             IFNULL(a.role, 'ai') as role,
+             CASE WHEN t.student_id = 'AI' THEN 'AI 助教'
+                  WHEN a.role = 'teacher' THEN (SELECT name FROM teachers WHERE teacher_id = a.username LIMIT 1)
+                  ELSE (SELECT name FROM students WHERE student_id = a.username LIMIT 1)
              END as author_name
       FROM threads t
-      JOIN accounts a ON t.student_id = a.id
+      LEFT JOIN accounts a ON t.student_id != 'AI' AND t.student_id = a.id
       WHERE t.room_id = ?
       ORDER BY t.created_at ASC
     `, [roomId]);
@@ -642,10 +664,46 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
     const [acc] = await pool.execute("SELECT id FROM accounts WHERE username = ?", [user_id]);
     if (acc.length === 0) return res.status(404).json({ message: "找不到使用者" });
 
-    await pool.execute(
+    const [insertResult] = await pool.execute(
       "INSERT INTO threads (room_id, student_id, content, parent_thread_id) VALUES (?, ?, ?, ?)",
       [roomId, acc[0].id, content, parent_thread_id || null]
     );
+
+    const [roomRows] = await pool.execute("SELECT ai_prompt FROM discussion_rooms WHERE id = ?", [roomId]);
+    const aiPrompt = roomRows[0]?.ai_prompt;
+
+    if (aiPrompt) {
+      // 呼叫 OpenAI API
+      const messages = [
+        { role: "system", content: aiPrompt },
+        { role: "user", content }
+      ];
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages
+        })
+      });
+
+      const data = await response.json();
+      const aiReply = data.choices?.[0]?.message?.content;
+
+      if (aiReply) {
+        // 存 AI 回覆
+        const aiParentId = parent_thread_id ? parent_thread_id : insertResult.insertId;
+
+        await pool.execute(
+          "INSERT INTO threads (room_id, student_id, content, parent_thread_id) VALUES (?, ?, ?, ?)",
+          [roomId, "AI", aiReply, aiParentId] // AI 回覆指向原留言
+        );
+      }
+    }
 
     res.json({ message: "發表成功" });
   } catch (error) {

@@ -7,7 +7,6 @@
     </div>
 
     <button
-      v-if="user.role === 'teacher'"
       @click="showAddModal = true"
       class="bg-[#337ab7] text-white px-4 py-1.5 rounded text-sm font-bold tracking-wide hover:bg-[#285e8e] shadow-sm transition-colors flex items-center gap-1 mb-4"
     >
@@ -33,6 +32,14 @@
           </div>
           <div class="w-32 text-center text-gray-600 text-sm">{{ item.author || '教授' }}</div>
           <div class="w-32 text-center text-gray-500 text-sm">{{ formatDate(item.date) }}</div>
+
+          <button
+            v-if="user.role === 'teacher'"
+            @click.stop="deleteDiscussion(item.id)"
+            class="ml-2 text-red-500 hover:text-red-700 text-sm"
+          >
+            刪除
+          </button>
         </li>
       </ul>
 
@@ -59,6 +66,15 @@
             <textarea
                 v-model="newDiscussion.content"
                 placeholder="請輸入此討論區的說明或規則..."
+                class="border p-2 w-full rounded h-32 focus:ring-2 focus:ring-blue-500 outline-none"
+            ></textarea>
+            </div>
+
+            <div class="mb-4">
+            <label class="block text-gray-700 font-bold mb-1">AI Prompt</label>
+            <textarea
+                v-model="newDiscussion.ai_prompt"
+                placeholder="請輸入此討論區AI助手的提示詞..."
                 class="border p-2 w-full rounded h-32 focus:ring-2 focus:ring-blue-500 outline-none"
             ></textarea>
             </div>
@@ -102,7 +118,8 @@ const user = ref({
 
 const newDiscussion = ref({
   title: '',
-  content: ''
+  content: '',
+  ai_prompt: ''
 })
 
 // 取得使用者資訊
@@ -148,17 +165,34 @@ const createDiscussion = async () => {
     await axios.post(`${API_BASE_URL}/api/discussions/create`, {
       course_code: courseCode,
       title: newDiscussion.value.title,
-      content: newDiscussion.value.content
+      content: newDiscussion.value.content,
+      ai_prompt: newDiscussion.value.ai_prompt
     })
     
     alert('討論主題建立成功')
     showAddModal.value = false
     newDiscussion.value.title = ''
     newDiscussion.value.content = ''
+    newDiscussion.value.ai_prompt = ''
     fetchDiscussions()
   } catch (err) {
     console.error('建立討論主題失敗', err)
     alert('建立失敗，請稍後再試')
+  }
+}
+
+//刪除
+const deleteDiscussion = async (id) => {
+  if (!confirm('確定要刪除這個討論嗎？')) return
+
+  try {
+    await axios.delete(`${API_BASE_URL}/api/discussions/${id}`)
+
+    alert('刪除成功')
+    fetchDiscussions()
+  } catch (err) {
+    console.error('刪除失敗', err)
+    alert('刪除失敗')
   }
 }
 
