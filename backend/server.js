@@ -661,7 +661,7 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
 
   try {
 
-    const [acc] = await pool.execute("SELECT id FROM accounts WHERE username = ?", [user_id]);
+    const [acc] = await pool.execute("SELECT id, role FROM accounts WHERE username = ?", [user_id]);
     if (acc.length === 0) return res.status(404).json({ message: "找不到使用者" });
 
     const [insertResult] = await pool.execute(
@@ -669,14 +669,66 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
       [roomId, acc[0].id, content, parent_thread_id || null]
     );
 
-    const [roomRows] = await pool.execute("SELECT ai_prompt FROM discussion_rooms WHERE id = ?", [roomId]);
+    const [roomRows] = await pool.execute("SELECT title, content, ai_prompt FROM discussion_rooms WHERE id = ?", [roomId]);
+    const roomInfo = roomRows[0];
     const aiPrompt = roomRows[0]?.ai_prompt;
 
     if (aiPrompt) {
+      let currentUserRoleStr = "學生";
+      if (acc[0].role === "teacher") currentUserRoleStr = "老師";
+      else if (acc[0].role === "ta") currentUserRoleStr = "助教";
+
+      // 放入最新留言
+      let threadChain = [{
+        role: currentUserRoleStr,
+        content: content
+      }];
+
+      // 往上追溯所有的父留言
+      let currentParentId = parent_thread_id;
+      while (currentParentId) {
+        const [parentRows] = await pool.execute(
+          `SELECT t.parent_thread_id, t.content, t.student_id, a.role as acc_role
+           FROM threads t
+           LEFT JOIN accounts a ON t.student_id != 'AI' AND t.student_id = a.id
+           WHERE t.id = ?`,
+          [currentParentId]
+        );
+
+        if (parentRows.length === 0) break;
+        const pRow = parentRows[0];
+
+        // 轉換父留言的身分
+        let pRoleStr = "學生";
+        if (pRow.student_id === "AI") pRoleStr = "AI";
+        else if (pRow.acc_role === "teacher") pRoleStr = "老師";
+        else if (pRow.acc_role === "ta") pRoleStr = "助教";
+
+        // 將父留言推入陣列
+        threadChain.push({
+          role: pRoleStr,
+          content: pRow.content
+        });
+
+        // 將指標移到上一層的 parent_thread_id 繼續找
+        currentParentId = pRow.parent_thread_id;
+      }
+
+      // 反轉陣列
+      threadChain.reverse();
+
+      let formattedConversation = "";
+      threadChain.forEach((msg, index) => {
+        formattedConversation += `(${msg.role}): ${msg.content}\n`;
+      });
+
+      // 最終要傳給 AI 的完整內容
+      const finalUserPrompt = `{\n主題:${roomInfo.title}\n內容:${roomInfo.content || ''}\n${formattedConversation}}`;
+      
       // 呼叫 OpenAI API
       const messages = [
         { role: "system", content: aiPrompt },
-        { role: "user", content }
+        { role: "user", content: finalUserPrompt}
       ];
 
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -696,7 +748,7 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
 
       if (aiReply) {
         // 存 AI 回覆
-        const aiParentId = parent_thread_id ? parent_thread_id : insertResult.insertId;
+        const aiParentId = insertResult.insertId;
 
         await pool.execute(
           "INSERT INTO threads (room_id, student_id, content, parent_thread_id) VALUES (?, ?, ?, ?)",

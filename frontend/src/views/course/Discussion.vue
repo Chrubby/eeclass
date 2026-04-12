@@ -70,7 +70,7 @@
             ></textarea>
             </div>
 
-            <div class="mb-4">
+            <div v-if="user.role === 'teacher'" class="mb-4">
             <label class="block text-gray-700 font-bold mb-1">AI Prompt</label>
             <textarea
                 v-model="newDiscussion.ai_prompt"
