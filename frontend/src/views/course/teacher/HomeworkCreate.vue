@@ -38,6 +38,21 @@
             class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors resize-y"
           ></textarea>
         </div>
+
+        <div>
+          <label class="block text-[15px] font-bold text-gray-700 mb-1.5">
+            統一附件 <span class="text-gray-500 font-normal text-sm">（選填，供全班學生下載，可複選）</span>
+          </label>
+          <input
+            type="file"
+            multiple
+            @change="onHomeworkFilesChange"
+            class="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+          />
+          <ul v-if="homeworkFiles.length" class="mt-2 text-xs text-green-700 space-y-0.5 list-disc list-inside">
+            <li v-for="(f, i) in homeworkFiles" :key="i">{{ f.name }}</li>
+          </ul>
+        </div>
       </div>
     </div>
 
@@ -90,37 +105,61 @@
               ></textarea>
             </div>
 
-            <div class="grid grid-cols-2 gap-6">
-              <div>
-                <label class="block text-sm font-bold text-gray-700 mb-2">
-                  學生作答形式 <span class="text-red-500">*</span>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-2">
+                學生作答形式 <span class="text-red-500">*</span>
+              </label>
+              <div class="flex gap-4">
+                <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+                  <input type="radio" v-model="q.answerFormat" value="file" class="cursor-pointer" />
+                  上傳檔案 (PDF)
                 </label>
-                <div class="flex gap-4">
-                  <label class="flex items-center gap-1.5 cursor-pointer text-sm">
-                    <input type="radio" v-model="q.answerFormat" value="file" class="cursor-pointer" />
-                    上傳檔案 (PDF)
-                  </label>
-                  <label class="flex items-center gap-1.5 cursor-pointer text-sm">
-                    <input type="radio" v-model="q.answerFormat" value="text" class="cursor-pointer" />
-                    文字輸入框
-                  </label>
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1">
-                  題目附件 <span class="text-gray-500 font-normal">(選填，提供給學生下載)</span>
+                <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+                  <input type="radio" v-model="q.answerFormat" value="text" class="cursor-pointer" />
+                  文字輸入框
                 </label>
-                <input
-                  type="file"
-                  @change="handleQuestionFile(index, $event)"
-                  class="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                />
-                <div v-if="q.attachment" class="text-xs text-green-600 mt-1">
-                  已選擇：{{ q.attachment.name }}
-                </div>
               </div>
             </div>
+
+            <details class="border border-indigo-100 rounded-lg bg-indigo-50/40 overflow-hidden">
+              <summary class="cursor-pointer select-none px-3 py-2 text-sm font-bold text-indigo-800 bg-indigo-100/80">
+                AI 評分準則配置（給 AI 與助教用，學生端不會直接看到原文）
+              </summary>
+              <div class="p-3 space-y-2 border-t border-indigo-100 bg-white">
+                <p class="text-[11px] text-gray-500">
+                  此段會存入資料庫並用於 AI 預評分與學生 AI 助教（後端會隱藏細則，不讓學生看到評分標準）。
+                </p>
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    class="text-[11px] px-2 py-0.5 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                    @click.prevent="applyPromptTemplate(index, 'socratic')"
+                  >
+                    範本：蘇格拉底式引導
+                  </button>
+                  <button
+                    type="button"
+                    class="text-[11px] px-2 py-0.5 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                    @click.prevent="applyPromptTemplate(index, 'strict')"
+                  >
+                    範本：嚴格評分（教師內部）
+                  </button>
+                  <button
+                    type="button"
+                    class="text-[11px] px-2 py-0.5 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                    @click.prevent="applyPromptTemplate(index, 'logic')"
+                  >
+                    範本：僅邏輯提示
+                  </button>
+                </div>
+                <textarea
+                  v-model="q.aiPrompt"
+                  rows="4"
+                  placeholder="例如：著重概念完整性；若缺邊界條件需扣點；允許等第制參考…"
+                  class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs text-gray-800 focus:border-indigo-400 focus:outline-none resize-y"
+                />
+              </div>
+            </details>
 
           </div>
         </div>
@@ -167,6 +206,9 @@ const courseId = route.params.id
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const teacherId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
 
+/** 作業層級附件（後端欄位 homework_files） */
+const homeworkFiles = ref([])
+
 const form = ref({
   title: '',
   deadline: '',
@@ -176,7 +218,7 @@ const form = ref({
       title: '',
       description: '',
       answerFormat: 'file',
-      attachment: null
+      aiPrompt: '',
     }
   ]
 })
@@ -191,22 +233,34 @@ const addQuestion = () => {
     title: '',
     description: '',
     answerFormat: 'file',
-    attachment: null
+    aiPrompt: '',
   })
+}
+
+const onHomeworkFilesChange = (event) => {
+  const list = event.target.files ? Array.from(event.target.files) : []
+  homeworkFiles.value = list
+}
+
+const PROMPT_TEMPLATES = {
+  socratic:
+    '以蘇格拉底式提問引導思考：不直接給答案；若推理跳步請追問「依據是什麼」；鼓勸學生自行檢驗邊界案例。',
+  strict:
+    '嚴格對照題意：完全正確才給滿分；每缺一小項扣固定比例；錯誤類型需標註（概念／計算／格式）。此段僅供教師與 AI 評分參考，勿對學生揭露細則。',
+  logic:
+    '僅就邏輯與結構點評：是否自洽、前提是否充分、結論是否過度推論；不暗示具體得分或配分。',
+}
+
+const applyPromptTemplate = (index, key) => {
+  const t = PROMPT_TEMPLATES[key]
+  if (!t) return
+  const cur = form.value.questions[index].aiPrompt || ''
+  form.value.questions[index].aiPrompt = cur ? `${cur}\n\n${t}` : t
 }
 
 const removeQuestion = (index) => {
   if (confirm('確定要移除這道題目嗎？')) {
     form.value.questions.splice(index, 1)
-  }
-}
-
-const handleQuestionFile = (index, event) => {
-  const file = event.target.files[0]
-  if (file) {
-    form.value.questions[index].attachment = file
-  } else {
-    form.value.questions[index].attachment = null
   }
 }
 
@@ -238,18 +292,16 @@ const submitAssignment = async () => {
     title: q.title,
     description: q.description,
     answerFormat: q.answerFormat,
-    hasAttachment: !!q.attachment
+    aiPrompt: q.aiPrompt || '',
   }))
   formData.append('questions', JSON.stringify(questionsData))
 
-  form.value.questions.forEach((q, index) => {
-    if (q.attachment) {
-      formData.append(`file_${index}`, q.attachment)
-    }
+  homeworkFiles.value.forEach((file) => {
+    formData.append('homework_files', file)
   })
 
   try {
-    const response = await fetch(`http://localhost:5000/api/courses/${courseId}/homework`, {
+    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/homework`, {
       method: 'POST',
       body: formData
     })

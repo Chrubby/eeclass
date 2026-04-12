@@ -8,6 +8,21 @@
       </div>
     </div>
 
+    <div v-if="homeworkAttachments.length" class="bg-white border rounded shadow-sm overflow-hidden">
+      <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700">作業附件（全班統一下載）</div>
+      <div class="p-5 space-y-2">
+        <a
+          v-for="(att, i) in homeworkAttachments"
+          :key="i"
+          :href="`${API_BASE_URL}${att.file_path || att.filePath}`"
+          target="_blank"
+          class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-800 text-sm rounded hover:bg-blue-100"
+        >
+          📎 {{ att.file_name || att.fileName || '附件' }}
+        </a>
+      </div>
+    </div>
+
     <div class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700">作業題目與要求</div>
       <div class="p-5 space-y-4">
@@ -32,8 +47,16 @@
     </div>
 
     <div class="bg-white border rounded shadow-sm overflow-hidden">
-      <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700 flex justify-between items-center">
+      <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700 flex justify-between items-center flex-wrap gap-2">
         <span>學生繳交清單</span>
+        <button
+          type="button"
+          :disabled="batchLoading || submissions.length === 0"
+          class="text-xs font-bold px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          @click="runBatchAiGrade"
+        >
+          {{ batchLoading ? '全班預評分中…' : '一鍵全班 AI 預評分' }}
+        </button>
       </div>
 
       <table class="w-full text-left text-[15px]">
@@ -66,6 +89,41 @@
       </table>
       <div v-if="submissions.length === 0" class="p-6 text-center text-gray-500">目前尚無學生繳交</div>
     </div>
+
+    <div
+      v-if="batchModalOpen"
+      class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      @click.self="batchModalOpen = false"
+    >
+      <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col border">
+        <div class="px-4 py-3 border-b font-bold text-gray-800 flex justify-between items-center">
+          <span>全班 AI 預評分結果</span>
+          <button type="button" class="text-gray-500 hover:text-gray-800 text-xl leading-none" @click="batchModalOpen = false">×</button>
+        </div>
+        <div class="overflow-y-auto p-3 text-sm space-y-2">
+          <div
+            v-for="row in batchResults"
+            :key="row.submissionId"
+            class="border rounded p-2"
+          >
+            <div class="font-bold text-[#337ab7]">
+              學號 {{ row.studentId }}
+              <span v-if="row.error" class="text-red-600 text-xs ml-2">{{ row.error }}</span>
+              <span v-else class="text-indigo-600 text-xs ml-2">建議分：{{ row.suggested_score }}</span>
+            </div>
+            <p v-if="!row.error && row.reason" class="text-gray-600 text-xs mt-1">{{ row.reason }}</p>
+            <div v-if="!row.error && row.perQuestion && row.perQuestion.length" class="mt-2 pl-2 border-l-2 border-indigo-200 space-y-1">
+              <div v-for="pq in row.perQuestion" :key="pq.questionId" class="text-[11px] text-gray-700">
+                <span class="font-bold text-indigo-800">子題 {{ pq.question_order ?? pq.questionId }}</span>
+                <span v-if="pq.error" class="text-red-600 ml-1">{{ pq.error }}</span>
+                <span v-else class="ml-1">建議 {{ pq.suggested_score }} / {{ pq.max_score }}</span>
+              </div>
+            </div>
+            <p v-else-if="!row.error && row.feedback" class="text-gray-700 text-xs mt-1 whitespace-pre-line">{{ row.feedback }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -81,8 +139,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 const homeworkTitle = ref('')
 const homeworkDeadline = ref('')
+const homeworkAttachments = ref([])
 const questions = ref([])
 const submissions = ref([])
+const batchLoading = ref(false)
+const batchModalOpen = ref(false)
+const batchResults = ref([])
 
 const formatDate = (raw) => (raw ? new Date(raw).toLocaleString() : '-')
 const progressText = computed(() => {
@@ -105,6 +167,10 @@ const loadData = async () => {
     homeworkTitle.value = hw.title
     homeworkDeadline.value = formatDate(hw.deadline)
     questions.value = hw.questions || []
+    const raw = hw.attachments
+    if (Array.isArray(raw) && raw.length) homeworkAttachments.value = raw
+    else if (hw.attachment_url) homeworkAttachments.value = [{ file_path: hw.attachment_url, file_name: '附件' }]
+    else homeworkAttachments.value = []
 
     submissions.value = subs.map((s) => ({
       ...s,
@@ -112,6 +178,27 @@ const loadData = async () => {
     }))
   } catch (error) {
     alert(error.message)
+  }
+}
+
+const runBatchAiGrade = async () => {
+  if (!submissions.value.length) return
+  batchLoading.value = true
+  batchResults.value = []
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/homework/${hwId}/ai-grade-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || '批次預評分失敗')
+    batchResults.value = data.results || []
+    batchModalOpen.value = true
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    batchLoading.value = false
   }
 }
 
