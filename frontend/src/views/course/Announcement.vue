@@ -282,6 +282,10 @@ onMounted(async() => {
     </div>
   </div>
 
-  <ChatBot :courseCode="courseCode" :studentCode="user.user_id" />
+  <ChatBot
+    :courseCode="courseCode"
+    :studentCode="user.user_id"
+    :role="user.role"
+  />
 
 </template>

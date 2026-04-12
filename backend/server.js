@@ -231,7 +231,33 @@ const initDB = async () => {
     FOREIGN KEY (room_id) REFERENCES discussion_rooms(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_thread_id) REFERENCES threads(id) ON DELETE CASCADE
   )
-`);
+  `);
+
+  // 14. 新增課程AI聊天
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS ai_chat_messages (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      course_id INT NOT NULL,
+      student_id INT NOT NULL,
+      role ENUM('user', 'assistant') NOT NULL,
+      message TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+      FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+      FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+  )
+  `);
+
+  // 15. 建立課程AI_Prompts
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS course_ai_prompts (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      course_id INT NOT NULL,
+      chat_prompt TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+    )
+  `)
 
   try {
     await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
@@ -460,32 +486,77 @@ app.get("/api/user_courses", async (req, res) => {
 
 // 老師建立課程
 app.post("/api/create_course", async (req, res) => {
-  const { teacher_id: teacherAccount, course_name: courseName, course_code: courseCode, description, academic_year: academicYear } = req.body;
-  if (!teacherAccount || !courseName || !courseCode || !academicYear) return res.status(400).json({ message: "缺少必要欄位" });
+  const {
+    teacher_id: teacherAccount,
+    course_name: courseName,
+    course_code: courseCode,
+    description,
+    academic_year: academicYear
+  } = req.body;
+
+  if (!teacherAccount || !courseName || !courseCode || !academicYear)
+    return res.status(400).json({ message: "缺少必要欄位" });
 
   let connection;
+
   try {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    const [existRows] = await connection.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+    // 1️⃣ 檢查課號是否存在
+    const [existRows] = await connection.execute(
+      "SELECT id FROM courses WHERE course_code = ?",
+      [courseCode]
+    );
+
     if (existRows.length > 0) throw new Error("課程代碼已存在");
 
+    // 2️⃣ 建立課程
     const [courseResult] = await connection.execute(
-      `INSERT INTO courses (course_name, course_code, description, academic_year) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO courses (course_name, course_code, description, academic_year)
+       VALUES (?, ?, ?, ?)`,
       [courseName, courseCode, description || "", academicYear]
     );
+
     const courseId = courseResult.insertId;
 
-    const [teacherRows] = await connection.execute("SELECT id FROM teachers WHERE teacher_id = ?", [teacherAccount]);
+    // 3️⃣ 找老師
+    const [teacherRows] = await connection.execute(
+      "SELECT id FROM teachers WHERE teacher_id = ?",
+      [teacherAccount]
+    );
+
     if (teacherRows.length === 0) throw new Error("找不到該老師");
 
-    await connection.execute("INSERT INTO teacher_courses (teacher_id, course_id) VALUES (?, ?)", [teacherRows[0].id, courseId]);
+    // 4️⃣ 綁定老師與課程
+    await connection.execute(
+      "INSERT INTO teacher_courses (teacher_id, course_id) VALUES (?, ?)",
+      [teacherRows[0].id, courseId]
+    );
+
+    // 5️⃣ ⭐ 新增 AI prompt（你要的重點）
+    const defaultPrompt =
+      "你是一位大學課程助教，請用繁體中文回答，並使用 '\\n' 來換行，保持訊息條列與換行，不要用 HTML 標籤。";
+
+    await connection.execute(
+      `INSERT INTO course_ai_prompts (course_id, chat_prompt)
+       VALUES (?, ?)`,
+      [courseId, defaultPrompt]
+    );
+
+    // 6️⃣ commit
     await connection.commit();
-    return res.json({ message: "課程建立成功", course_id: courseId });
+
+    return res.json({
+      message: "課程建立成功",
+      course_id: courseId
+    });
+
   } catch (error) {
     if (connection) await connection.rollback();
-    return res.status(400).json({ message: error.message || "課程建立失敗" });
+    return res.status(400).json({
+      message: error.message || "課程建立失敗"
+    });
   } finally {
     if (connection) connection.release();
   }
@@ -586,7 +657,7 @@ app.post("/api/announcements/create", async (req, res) => {
       if (courseTeacherRows.length > 0 && courseTeacherRows[0].teacher_id) {
         finalTeacherId = courseTeacherRows[0].teacher_id;
       } else {
-         throw new Error("找不到這門課的授課老師，因此助教無法代發公告");
+        throw new Error("找不到這門課的授課老師，因此助教無法代發公告");
       }
     }
 
@@ -767,11 +838,11 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
 
       // 最終要傳給 AI 的完整內容
       const finalUserPrompt = `{\n主題:${roomInfo.title}\n內容:${roomInfo.content || ''}\n${formattedConversation}}`;
-      
+
       // 呼叫 OpenAI API
       const messages = [
         { role: "system", content: aiPrompt },
-        { role: "user", content: finalUserPrompt}
+        { role: "user", content: finalUserPrompt }
       ];
 
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -1142,33 +1213,55 @@ app.post("/api/ai/ask", async (req, res) => {
     });
   }
 
-  let course, student, history, reply;
+  let course, student, history, systemPrompt, reply;
 
   try {
+    // 1️⃣ 取得課程
     const [courseRows] = await pool.execute(
       `SELECT id FROM courses WHERE course_code = ?`,
       [course_code]
     );
+
     if (!courseRows.length) {
       return res.status(400).json({
         message: "找不到課程",
         errorStep: "query_course"
       });
     }
+
     course = courseRows[0];
 
+    // 2️⃣ 取得學生
     const [studentRows] = await pool.execute(
       `SELECT id FROM students WHERE student_id = ?`,
       [student_code]
     );
+
     if (!studentRows.length) {
       return res.status(400).json({
         message: "找不到學生",
         errorStep: "query_student"
       });
     }
+
     student = studentRows[0];
 
+    // 3️⃣ ⭐ 取得課程 AI prompt（重點）
+    const [promptRows] = await pool.execute(
+      `
+      SELECT chat_prompt
+      FROM course_ai_prompts
+      WHERE course_id = ?
+      `,
+      [course.id]
+    );
+
+    systemPrompt =
+      promptRows.length > 0
+        ? promptRows[0].chat_prompt
+        : "你是一位大學課程助教，請用繁體中文回答，並使用 '\\n' 來換行，保持訊息條列與換行，不要用 HTML 標籤。";
+
+    // 4️⃣ 取得歷史紀錄
     const [historyRows] = await pool.execute(
       `SELECT role, message
        FROM ai_chat_messages
@@ -1177,13 +1270,20 @@ app.post("/api/ai/ask", async (req, res) => {
        LIMIT 10`,
       [course.id, student.id]
     );
-    history = historyRows.map(r => ({ role: r.role, content: r.message }));
 
+    history = historyRows.map(r => ({
+      role: r.role,
+      content: r.message
+    }));
+
+    // 5️⃣ 存 user message
     await pool.execute(
-      `INSERT INTO ai_chat_messages (course_id, student_id, role, message) VALUES (?, ?, 'user', ?)`,
+      `INSERT INTO ai_chat_messages (course_id, student_id, role, message)
+       VALUES (?, ?, 'user', ?)`,
       [course.id, student.id, message]
     );
 
+    // 6️⃣ 呼叫 OpenAI
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -1195,10 +1295,17 @@ app.post("/api/ai/ask", async (req, res) => {
         messages: [
           {
             role: "system",
-            content: "你是一位大學課程助教，請用繁體中文回答，並使用 '\\n' 來換行，保持訊息條列與換行，不要用 HTML 標籤。"
+            content: systemPrompt
+          },
+          {
+            role: "system",
+            content: "請務必遵守：使用繁體中文、條列式、用 \\n 換行"
           },
           ...history,
-          { role: "user", content: message + "\n請用條列和換行整理回答" }
+          {
+            role: "user",
+            content: message
+          }
         ]
       })
     });
@@ -1206,6 +1313,7 @@ app.post("/api/ai/ask", async (req, res) => {
     if (!response.ok) {
       const text = await response.text();
       console.error("OpenAI API Error:", text);
+
       return res.status(500).json({
         message: "OpenAI API 回覆失敗",
         errorStep: "openai_api",
@@ -1223,8 +1331,10 @@ app.post("/api/ai/ask", async (req, res) => {
       });
     }
 
+    // 7️⃣ 存 assistant reply
     await pool.execute(
-      `INSERT INTO ai_chat_messages (course_id, student_id, role, message) VALUES (?, ?, 'assistant', ?)`,
+      `INSERT INTO ai_chat_messages (course_id, student_id, role, message)
+       VALUES (?, ?, 'assistant', ?)`,
       [course.id, student.id, reply]
     );
 
@@ -1232,6 +1342,7 @@ app.post("/api/ai/ask", async (req, res) => {
 
   } catch (err) {
     console.error("AI /ask 錯誤:", err);
+
     res.status(500).json({
       message: "AI 回覆失敗",
       errorStep: "catch_all",
@@ -1326,6 +1437,146 @@ app.post("/api/ai/remind-homework", async (req, res) => {
   } catch (err) {
     console.error("remind-homework 錯誤:", err);
     res.status(500).json({ message: "系統錯誤", error: err.message });
+  }
+});
+
+// 獲得課程AI_Prompt
+app.post("/api/ai/get_prompt", async (req, res) => {
+  const { course_code } = req.body;
+
+  if (!course_code) {
+    return res.status(400).json({
+      message: "缺少 course_code",
+      errorStep: "param_check"
+    });
+  }
+
+  try {
+    // 1️⃣ course_code → course_id
+    const [courseRows] = await pool.execute(
+      `SELECT id FROM courses WHERE course_code = ?`,
+      [course_code]
+    );
+
+    if (!courseRows.length) {
+      return res.status(400).json({
+        message: "找不到課程",
+        errorStep: "course_not_found"
+      });
+    }
+
+    const courseId = courseRows[0].id;
+
+    // 2️⃣ 取得 prompt（全部歷史 or 最新）
+    const [promptRows] = await pool.execute(
+      `
+      SELECT id, chat_prompt, updated_at
+      FROM course_ai_prompts
+      WHERE course_id = ?
+      ORDER BY updated_at DESC
+      `,
+      [courseId]
+    );
+
+    return res.json({
+      course_id: courseId,
+      prompts: promptRows
+    });
+
+  } catch (err) {
+    console.error("get_prompt error:", err);
+
+    return res.status(500).json({
+      message: "取得 prompt 失敗",
+      errorStep: "catch_all",
+      errorMessage: err.message
+    });
+  }
+});
+
+// 更新課程chat_AI_Prompt
+app.post("/api/ai/prompt/update", async (req, res) => {
+  const { course_code, chat_prompt, role } = req.body;
+
+  // 1️⃣ 權限檢查（一定要是 teacher）
+  if (role !== "teacher") {
+    return res.status(403).json({
+      message: "沒有權限修改 prompt",
+      errorStep: "permission_denied"
+    });
+  }
+
+  if (!course_code || !chat_prompt) {
+    return res.status(400).json({
+      message: "缺少必要參數",
+      errorStep: "param_check"
+    });
+  }
+
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    // 2️⃣ course_code → course_id
+    const [courseRows] = await connection.execute(
+      `SELECT id FROM courses WHERE course_code = ?`,
+      [course_code]
+    );
+
+    if (!courseRows.length) {
+      return res.status(400).json({
+        message: "找不到課程",
+        errorStep: "course_not_found"
+      });
+    }
+
+    const courseId = courseRows[0].id;
+
+    // 3️⃣ 檢查是否已有 prompt
+    const [promptRows] = await connection.execute(
+      `SELECT id FROM course_ai_prompts WHERE course_id = ?`,
+      [courseId]
+    );
+
+    if (promptRows.length > 0) {
+      // ✔ 更新
+      await connection.execute(
+        `UPDATE course_ai_prompts
+         SET chat_prompt = ?
+         WHERE course_id = ?`,
+        [chat_prompt, courseId]
+      );
+    } else {
+      // ✔ 新增
+      await connection.execute(
+        `INSERT INTO course_ai_prompts (course_id, chat_prompt)
+         VALUES (?, ?)`,
+        [courseId, chat_prompt]
+      );
+    }
+
+    await connection.commit();
+
+    return res.json({
+      message: "Prompt 更新成功",
+      course_id: courseId
+    });
+
+  } catch (err) {
+    if (connection) await connection.rollback();
+
+    console.error("prompt update error:", err);
+
+    return res.status(500).json({
+      message: "更新 prompt 失敗",
+      errorStep: "catch_all",
+      errorMessage: err.message
+    });
+
+  } finally {
+    if (connection) connection.release();
   }
 });
 
