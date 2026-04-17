@@ -45,21 +45,40 @@
       </div>
 
       <!-- 👨‍🏫 teacher prompt 編輯 -->
-      <div v-if="role === 'teacher'" class="mt-2">
-        <div class="text-xs text-gray-600 mb-1">AI Prompt（課程設定）</div>
+      <div v-if="role === 'teacher'" class="mt-2 space-y-2">
+        <div class="text-xs text-gray-600">AI Prompt（課程設定）</div>
 
         <textarea
           v-model="teacherPrompt"
           class="w-full text-sm border rounded p-2"
-          rows="3"
+          rows="5"
+          placeholder="請輸入課程 AI Prompt..."
         ></textarea>
+
+        <!-- 三個布林設定 -->
+        <div class="grid grid-cols-1 gap-2 text-sm text-gray-700">
+          <label class="flex items-center gap-2">
+            <input type="checkbox" v-model="sendAnnouncements" />
+            傳送公告資料給 AI
+          </label>
+
+          <label class="flex items-center gap-2">
+            <input type="checkbox" v-model="sendAssignments" />
+            傳送作業資料給 AI
+          </label>
+
+          <label class="flex items-center gap-2">
+            <input type="checkbox" v-model="sendStudentInfo" />
+            傳送學生資訊給 AI
+          </label>
+        </div>
 
         <div class="flex justify-end mt-1">
           <button
-            class="text-xs text-green-600"
+            class="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
             @click="savePrompt"
           >
-            儲存
+            儲存設定
           </button>
         </div>
       </div>
@@ -146,6 +165,9 @@ const loading = ref(false)
 const chatContainer = ref(null)
 const reminder = ref('')
 const teacherPrompt = ref('')
+const sendAnnouncements = ref(false)
+const sendAssignments = ref(false)
+const sendStudentInfo = ref(false)
 
 /* ======================
    Utils
@@ -155,8 +177,10 @@ const formatTime = (iso) => {
   return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
 }
 
-const renderMarkdown = (text) =>
-  marked.parse(text || '', { breaks: true })
+const renderMarkdown = (text) => {
+  const fixed = (text || '').replace(/\\n/g, '\n')
+  return marked.parse(fixed, { breaks: true })
+}
 
 /* ======================
    日期分隔
@@ -253,7 +277,11 @@ const savePrompt = async () => {
       body: JSON.stringify({
         course_code: props.courseCode,
         chat_prompt: teacherPrompt.value,
-        role: props.role
+        role: props.role,
+
+        send_announcements: sendAnnouncements.value,
+        send_assignments: sendAssignments.value,
+        send_student_info: sendStudentInfo.value
       })
     })
 
@@ -264,8 +292,6 @@ const savePrompt = async () => {
     }
 
     alert("✅ Prompt 更新成功")
-
-    // 關閉視窗（可選）
     open.value = false
 
   } catch (err) {
@@ -274,6 +300,9 @@ const savePrompt = async () => {
   }
 }
 
+// ======================
+// fetchTeacherPrompt
+// ======================
 const fetchTeacherPrompt = async () => {
   if (props.role !== 'teacher') return
 
@@ -294,14 +323,20 @@ const fetchTeacherPrompt = async () => {
       throw new Error(data.message)
     }
 
-    // 👉 取最新一筆 prompt
     const latest = data.prompts?.[0]
 
     teacherPrompt.value = latest?.chat_prompt || ''
+    sendAnnouncements.value = !!latest?.send_announcements
+    sendAssignments.value = !!latest?.send_assignments
+    sendStudentInfo.value = !!latest?.send_student_info
 
   } catch (err) {
     console.error('抓 prompt 失敗:', err)
+
     teacherPrompt.value = ''
+    sendAnnouncements.value = false
+    sendAssignments.value = false
+    sendStudentInfo.value = false
   }
 }
 
