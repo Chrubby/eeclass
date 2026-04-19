@@ -3,6 +3,20 @@
     <div class="bg-white p-6 rounded shadow-sm border mb-6">
       <h1 class="text-2xl font-bold text-gray-800 mb-2">{{ room.title }}</h1>
       <p class="text-gray-600 whitespace-pre-line">{{ room.content }}</p>
+
+      <div v-if="room.file_path" class="mt-5 pt-4 border-t border-gray-100">
+        <span class="text-sm font-bold text-gray-700 mr-3">附件：</span>
+        <a 
+          :href="`${API_BASE_URL}/${room.file_path}`" 
+          target="_blank"
+          class="inline-flex items-center gap-1.5 text-sm font-bold text-[#337ab7] bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+          </svg>
+          檢視 PDF 檔案
+        </a>
+      </div>
     </div>
 
     <div class="mb-8">

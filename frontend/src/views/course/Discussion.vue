@@ -70,6 +70,17 @@
             ></textarea>
             </div>
 
+            <div class="mb-4">
+              <label class="block text-gray-700 font-bold mb-1">上傳 PDF 附件 (選填)</label>
+              <input
+                type="file"
+                accept=".pdf"
+                ref="fileInputRef"
+                @change="handleFileChange"
+                class="border p-2 w-full rounded block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+              />
+            </div>
+
             <div v-if="user.role === 'teacher'" class="mb-4">
             <label class="block text-gray-700 font-bold mb-1">AI Prompt</label>
             <textarea
@@ -115,12 +126,27 @@ const user = ref({
   role: '',
   name: ''
 })
+const fileInputRef = ref(null)
 
 const newDiscussion = ref({
   title: '',
   content: '',
-  ai_prompt: ''
+  ai_prompt: '',
+  file: null
 })
+
+const handleFileChange = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    if (file.type !== 'application/pdf') {
+      alert('請上傳 PDF 格式的檔案')
+      event.target.value = '' // 清除不合法的檔案
+      newDiscussion.value.file = null
+      return
+    }
+    newDiscussion.value.file = file
+  }
+}
 
 // 取得使用者資訊
 const loadUser = async () => {
@@ -162,18 +188,37 @@ const createDiscussion = async () => {
   }
 
   try {
-    await axios.post(`${API_BASE_URL}/api/discussions/create`, {
-      course_code: courseCode,
-      title: newDiscussion.value.title,
-      content: newDiscussion.value.content,
-      ai_prompt: newDiscussion.value.ai_prompt
+    // 使用 FormData 才能傳送檔案
+    const formData = new FormData()
+    formData.append('course_code', courseCode)
+    formData.append('title', newDiscussion.value.title)
+    formData.append('content', newDiscussion.value.content)
+    formData.append('ai_prompt', newDiscussion.value.ai_prompt)
+    
+    // 如果有選擇檔案，則加入 FormData
+    if (newDiscussion.value.file) {
+      formData.append('file', newDiscussion.value.file)
+    }
+
+    // Axios post 傳送 FormData (Content-Type 會自動設定為 multipart/form-data)
+    await axios.post(`${API_BASE_URL}/api/discussions/create`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
     })
     
     alert('討論主題建立成功')
     showAddModal.value = false
+    
+    // 重置表單狀態
     newDiscussion.value.title = ''
     newDiscussion.value.content = ''
     newDiscussion.value.ai_prompt = ''
+    newDiscussion.value.file = null
+    if (fileInputRef.value) {
+      fileInputRef.value.value = '' // 清空檔案選擇器畫面
+    }
+    
     fetchDiscussions()
   } catch (err) {
     console.error('建立討論主題失敗', err)

@@ -8,6 +8,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+
+import { DOMMatrix } from "canvas";
+
+globalThis.DOMMatrix = DOMMatrix;
+
 dotenv.config();
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
@@ -70,6 +76,11 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsRoot),
   filename: (_req, file, cb) => {
@@ -78,6 +89,19 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
+
+const uploadPdf = multer({
+  storage: storage, // 沿用上面的 storage
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      // 如果不是 PDF，拒絕上傳
+      cb(new Error("只允許上傳 PDF 檔案"), false);
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 限制 10MB
+});
 
 const initDB = async () => {
   // 1. 帳號表
@@ -280,6 +304,9 @@ const initDB = async () => {
   } catch (e) { /* 欄位已存在就忽略 */ }
   try {
     await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN ai_prompt TEXT;");
+  } catch (e) { /* 欄位已存在就忽略 */ }
+  try {
+    await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN file_path VARCHAR(255) DEFAULT NULL;");
   } catch (e) { /* 欄位已存在就忽略 */ }
 
   try {
@@ -724,8 +751,9 @@ app.get("/api/courses/:courseCode/discussions", async (req, res) => {
 });
 
 // 新增討論主題
-app.post("/api/discussions/create", async (req, res) => {
+app.post("/api/discussions/create", uploadPdf.single("file"), async (req, res) => {
   const { course_code, title, content, ai_prompt } = req.body; // 接收 content
+  const file = req.file; //取出檔案
   if (!course_code || !title) return res.status(400).json({ message: "缺少必要參數" });
 
   try {
@@ -733,9 +761,11 @@ app.post("/api/discussions/create", async (req, res) => {
     if (courseRows.length === 0) throw new Error("找不到課程");
     const courseId = courseRows[0].id;
 
+    const filePath = file ? `uploads/${file.filename}` : null;
+
     await pool.execute(
-      "INSERT INTO discussion_rooms (course_id, title, content, ai_prompt) VALUES (?, ?, ?, ?)",
-      [courseId, title, content || "", ai_prompt || ""]
+      "INSERT INTO discussion_rooms (course_id, title, content, ai_prompt, file_path) VALUES (?, ?, ?, ?, ?)",
+      [courseId, title, content || "", ai_prompt || "", filePath]
     );
     res.json({ message: "討論區建立成功" });
   } catch (error) {
@@ -765,7 +795,7 @@ app.get("/api/discussions/:roomId/threads", async (req, res) => {
   const { roomId } = req.params;
   try {
     const [room] = await pool.execute(
-      "SELECT title, content FROM discussion_rooms WHERE id = ?", [roomId]
+      "SELECT title, content, file_path FROM discussion_rooms WHERE id = ?", [roomId]
     );
 
     const [threads] = await pool.execute(`
@@ -804,7 +834,10 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
       [roomId, acc[0].id, content, parent_thread_id || null]
     );
 
-    const [roomRows] = await pool.execute("SELECT title, content, ai_prompt FROM discussion_rooms WHERE id = ?", [roomId]);
+    const [roomRows] = await pool.execute(
+      "SELECT title, content, ai_prompt, file_path FROM discussion_rooms WHERE id = ?", 
+      [roomId]
+    );
     const roomInfo = roomRows[0];
     const aiPrompt = roomRows[0]?.ai_prompt;
 
@@ -812,6 +845,41 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
       let currentUserRoleStr = "學生";
       if (acc[0].role === "teacher") currentUserRoleStr = "老師";
       else if (acc[0].role === "ta") currentUserRoleStr = "助教";
+
+      //讀取並解析 PDF 內容
+      let pdfText = "";
+      if (roomInfo.file_path) {
+        try {
+          const fullPath = path.resolve(roomInfo.file_path); 
+          if (fs.existsSync(fullPath)) {
+            
+            const dataBuffer = new Uint8Array(fs.readFileSync(fullPath));
+            
+            // 載入 PDF 文件
+            const loadingTask = pdfjsLib.getDocument({ data: dataBuffer });
+            const pdfDocument = await loadingTask.promise;
+
+            // 為了避免 Token 爆掉，我們設定最多只讀取前 10 頁 (可自行調整)
+            const maxPages = Math.min(pdfDocument.numPages, 10);
+
+            // 逐頁取出文字
+            for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+              const page = await pdfDocument.getPage(pageNum);
+              const textContent = await page.getTextContent();
+              
+              // 將該頁的所有文字片段組合起來
+              const pageText = textContent.items.map(item => item.str).join(" ");
+              pdfText += pageText + "\n";
+            }
+
+            // 最後再加一道保險，限制總字數不超過 10000 字
+            pdfText = pdfText.substring(0, 10000);
+          }
+        } catch (pdfErr) {
+          console.error("PDF 解析失敗 (pdfjs-dist):", pdfErr.message);
+          // 就算解析失敗，程式依然會繼續執行，只是沒有附件內容
+        }
+      }
 
       // 放入最新留言
       let threadChain = [{
@@ -858,7 +926,12 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
       });
 
       // 最終要傳給 AI 的完整內容
-      const finalUserPrompt = `{\n主題:${roomInfo.title}\n內容:${roomInfo.content || ''}\n${formattedConversation}}`;
+      let contextString = `主題:${roomInfo.title}\n內容:${roomInfo.content || ''}\n`;
+      if (pdfText) {
+        contextString += `\n【附件PDF內容】:\n${pdfText}\n`;
+      }
+
+      const finalUserPrompt = `{\n${contextString}\n【歷史討論紀錄】:\n${formattedConversation}}`;
 
       // 呼叫 OpenAI API
       const messages = [
