@@ -8,6 +8,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+
+import { DOMMatrix } from "canvas";
+
+globalThis.DOMMatrix = DOMMatrix;
+
 dotenv.config();
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
@@ -91,6 +97,11 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsRoot),
   filename: (_req, file, cb) => {
@@ -99,6 +110,19 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
+
+const uploadPdf = multer({
+  storage: storage, // 沿用上面的 storage
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      // 如果不是 PDF，拒絕上傳
+      cb(new Error("只允許上傳 PDF 檔案"), false);
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 限制 10MB
+});
 
 const initDB = async () => {
   // 1. 帳號表
@@ -325,6 +349,9 @@ const initDB = async () => {
   try {
     await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN ai_prompt TEXT;");
   } catch (e) { /* 欄位已存在就忽略 */ }
+  try {
+    await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN file_path VARCHAR(255) DEFAULT NULL;");
+  } catch (e) { /* 欄位已存在就忽略 */ }
 
   try {
     await pool.execute("ALTER TABLE homework_questions ADD COLUMN ai_prompt TEXT");
@@ -338,19 +365,24 @@ const initDB = async () => {
   } catch (e) { /* 欄位已存在就忽略 */ }
 
   try {
-    await pool.execute("ALTER TABLE course_ai_prompts ADD COLUMN discussion_prompt TEXT");
+    await pool.execute(`
+      ALTER TABLE course_ai_prompts
+      ADD COLUMN send_announcements BOOLEAN NOT NULL DEFAULT FALSE
+    `)
   } catch (e) { /* 欄位已存在就忽略 */ }
+
   try {
-    await pool.execute("ALTER TABLE course_ai_prompts ADD COLUMN grading_prompt TEXT");
+    await pool.execute(`
+      ALTER TABLE course_ai_prompts
+      ADD COLUMN send_assignments BOOLEAN NOT NULL DEFAULT FALSE
+    `)
   } catch (e) { /* 欄位已存在就忽略 */ }
+
   try {
-    await pool.execute("ALTER TABLE homework_submissions ADD COLUMN ai_estimated_score DECIMAL(8,2) NULL");
-  } catch (e) { /* 欄位已存在就忽略 */ }
-  try {
-    await pool.execute("ALTER TABLE homework_submissions ADD COLUMN ai_estimated_reason TEXT");
-  } catch (e) { /* 欄位已存在就忽略 */ }
-  try {
-    await pool.execute("ALTER TABLE homework_submissions ADD COLUMN ai_estimated_at DATETIME NULL");
+    await pool.execute(`
+      ALTER TABLE course_ai_prompts
+      ADD COLUMN send_student_info BOOLEAN NOT NULL DEFAULT FALSE
+    `)
   } catch (e) { /* 欄位已存在就忽略 */ }
 
   console.log("資料庫檢查與初始化完成");
@@ -766,8 +798,9 @@ app.get("/api/courses/:courseCode/discussions", async (req, res) => {
 });
 
 // 新增討論主題
-app.post("/api/discussions/create", async (req, res) => {
+app.post("/api/discussions/create", uploadPdf.single("file"), async (req, res) => {
   const { course_code, title, content, ai_prompt } = req.body; // 接收 content
+  const file = req.file; //取出檔案
   if (!course_code || !title) return res.status(400).json({ message: "缺少必要參數" });
 
   try {
@@ -775,9 +808,11 @@ app.post("/api/discussions/create", async (req, res) => {
     if (courseRows.length === 0) throw new Error("找不到課程");
     const courseId = courseRows[0].id;
 
+    const filePath = file ? `uploads/${file.filename}` : null;
+
     await pool.execute(
-      "INSERT INTO discussion_rooms (course_id, title, content, ai_prompt) VALUES (?, ?, ?, ?)",
-      [courseId, title, content || "", ai_prompt || ""]
+      "INSERT INTO discussion_rooms (course_id, title, content, ai_prompt, file_path) VALUES (?, ?, ?, ?, ?)",
+      [courseId, title, content || "", ai_prompt || "", filePath]
     );
     res.json({ message: "討論區建立成功" });
   } catch (error) {
@@ -807,7 +842,7 @@ app.get("/api/discussions/:roomId/threads", async (req, res) => {
   const { roomId } = req.params;
   try {
     const [room] = await pool.execute(
-      "SELECT title, content FROM discussion_rooms WHERE id = ?", [roomId]
+      "SELECT title, content, file_path FROM discussion_rooms WHERE id = ?", [roomId]
     );
 
     const [threads] = await pool.execute(`
@@ -846,7 +881,10 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
       [roomId, acc[0].id, content, parent_thread_id || null]
     );
 
-    const [roomRows] = await pool.execute("SELECT title, content, ai_prompt FROM discussion_rooms WHERE id = ?", [roomId]);
+    const [roomRows] = await pool.execute(
+      "SELECT title, content, ai_prompt, file_path FROM discussion_rooms WHERE id = ?",
+      [roomId]
+    );
     const roomInfo = roomRows[0];
     const aiPrompt = roomRows[0]?.ai_prompt;
 
@@ -854,6 +892,41 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
       let currentUserRoleStr = "學生";
       if (acc[0].role === "teacher") currentUserRoleStr = "老師";
       else if (acc[0].role === "ta") currentUserRoleStr = "助教";
+
+      //讀取並解析 PDF 內容
+      let pdfText = "";
+      if (roomInfo.file_path) {
+        try {
+          const fullPath = path.resolve(roomInfo.file_path);
+          if (fs.existsSync(fullPath)) {
+
+            const dataBuffer = new Uint8Array(fs.readFileSync(fullPath));
+
+            // 載入 PDF 文件
+            const loadingTask = pdfjsLib.getDocument({ data: dataBuffer });
+            const pdfDocument = await loadingTask.promise;
+
+            // 為了避免 Token 爆掉，我們設定最多只讀取前 10 頁 (可自行調整)
+            const maxPages = Math.min(pdfDocument.numPages, 10);
+
+            // 逐頁取出文字
+            for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+              const page = await pdfDocument.getPage(pageNum);
+              const textContent = await page.getTextContent();
+
+              // 將該頁的所有文字片段組合起來
+              const pageText = textContent.items.map(item => item.str).join(" ");
+              pdfText += pageText + "\n";
+            }
+
+            // 最後再加一道保險，限制總字數不超過 10000 字
+            pdfText = pdfText.substring(0, 10000);
+          }
+        } catch (pdfErr) {
+          console.error("PDF 解析失敗 (pdfjs-dist):", pdfErr.message);
+          // 就算解析失敗，程式依然會繼續執行，只是沒有附件內容
+        }
+      }
 
       // 放入最新留言
       let threadChain = [{
@@ -900,7 +973,12 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
       });
 
       // 最終要傳給 AI 的完整內容
-      const finalUserPrompt = `{\n主題:${roomInfo.title}\n內容:${roomInfo.content || ''}\n${formattedConversation}}`;
+      let contextString = `主題:${roomInfo.title}\n內容:${roomInfo.content || ''}\n`;
+      if (pdfText) {
+        contextString += `\n【附件PDF內容】:\n${pdfText}\n`;
+      }
+
+      const finalUserPrompt = `{\n${contextString}\n【歷史討論紀錄】:\n${formattedConversation}}`;
 
       // 呼叫 OpenAI API
       const messages = [
@@ -1338,9 +1416,8 @@ app.post("/api/ai/ask", async (req, res) => {
   let course, student, history, systemPrompt, reply;
 
   try {
-    // 1️⃣ 取得課程
     const [courseRows] = await pool.execute(
-      `SELECT id FROM courses WHERE course_code = ?`,
+      `SELECT id, course_name FROM courses WHERE course_code = ?`,
       [course_code]
     );
 
@@ -1353,9 +1430,8 @@ app.post("/api/ai/ask", async (req, res) => {
 
     course = courseRows[0];
 
-    // 2️⃣ 取得學生
     const [studentRows] = await pool.execute(
-      `SELECT id FROM students WHERE student_id = ?`,
+      `SELECT id, name, student_id FROM students WHERE student_id = ?`,
       [student_code]
     );
 
@@ -1367,20 +1443,38 @@ app.post("/api/ai/ask", async (req, res) => {
     }
 
     student = studentRows[0];
+    const [promptRows] = await pool.execute(
+      `
+      SELECT
+        chat_prompt,
+        send_announcements,
+        send_assignments,
+        send_student_info
+      FROM course_ai_prompts
+      WHERE course_id = ?
+      LIMIT 1
+      `,
+      [course.id]
+    );
 
-    // 3️⃣ ⭐ 取得課程 AI discussion_prompt
-    const prompts = await getCoursePromptsByCourseId(course.id);
+    const promptData = promptRows[0] || {};
+
     systemPrompt =
-      prompts.discussion_prompt ||
+      promptData.chat_prompt ||
       "你是一位大學課程助教，請用繁體中文回答，並使用 '\\n' 來換行，保持訊息條列與換行，不要用 HTML 標籤。";
 
-    // 4️⃣ 取得歷史紀錄
+    const sendAnnouncements = !!promptData.send_announcements;
+    const sendAssignments = !!promptData.send_assignments;
+    const sendStudentInfo = !!promptData.send_student_info;
+
     const [historyRows] = await pool.execute(
-      `SELECT role, message
-       FROM ai_chat_messages
-       WHERE course_id = ? AND student_id = ?
-       ORDER BY created_at ASC
-       LIMIT 10`,
+      `
+      SELECT role, message
+      FROM ai_chat_messages
+      WHERE course_id = ? AND student_id = ?
+      ORDER BY created_at ASC
+      LIMIT 10
+      `,
       [course.id, student.id]
     );
 
@@ -1389,43 +1483,159 @@ app.post("/api/ai/ask", async (req, res) => {
       content: r.message
     }));
 
-    // 5️⃣ 存 user message
+    let extraInfo = "";
+
+    if (sendAnnouncements) {
+      const [rows] = await pool.execute(
+        `
+        SELECT title, content, created_at
+        FROM announcements
+        WHERE course_id = ?
+        ORDER BY created_at DESC
+        LIMIT 5
+        `,
+        [course.id]
+      );
+
+      if (rows.length) {
+        extraInfo += `\n【近期公告】\n`;
+        rows.forEach((a, i) => {
+          extraInfo += `${i + 1}. ${a.title}\n${a.content || ""}\n`;
+        });
+      }
+    }
+
+    if (sendAssignments) {
+      const [rows] = await pool.execute(
+        `
+        SELECT id, title, description, deadline
+        FROM homeworks
+        WHERE course_id = ?
+        ORDER BY deadline ASC
+        LIMIT 5
+        `,
+        [course_code]
+      );
+
+      if (rows.length) {
+        extraInfo += `\n【近期作業】\n`;
+
+        for (const hw of rows) {
+          extraInfo += `\n作業：${hw.title}\n`;
+          extraInfo += `截止：${hw.deadline || "未設定"}\n`;
+          extraInfo += `說明：${hw.description || "無"}\n`;
+
+          const [qs] = await pool.execute(
+            `
+            SELECT question_order, title, description, answer_format
+            FROM homework_questions
+            WHERE homework_id = ?
+            ORDER BY question_order ASC
+            `,
+            [hw.id]
+          );
+
+          for (const q of qs) {
+            extraInfo += `
+    題目${q.question_order}：
+    標題：${q.title}
+    內容：${q.description}
+    格式：${q.answer_format}
+    `;
+          }
+        }
+      }
+    }
+
+    if (sendStudentInfo) {
+      const [submitted] = await pool.execute(
+        `
+        SELECT h.title
+        FROM homework_submissions s
+        JOIN homeworks h ON h.id = s.homework_id
+        WHERE s.student_id = ?
+        `,
+        [student_code]
+      );
+
+      const [missing] = await pool.execute(
+        `
+        SELECT h.id, h.title, h.deadline
+        FROM homeworks h
+        WHERE h.course_id = ?
+        AND h.id NOT IN (
+          SELECT homework_id
+          FROM homework_submissions
+          WHERE student_id = ?
+        )
+        `,
+        [course_code, student_code]
+      );
+
+      extraInfo += `
+    【學生資訊】
+    姓名：${student.name}
+    學號：${student.student_id}
+
+    已交作業：
+    `;
+
+      submitted.forEach(r => {
+        extraInfo += `- ${r.title}\n`;
+      });
+
+      extraInfo += `\n未交作業：\n`;
+
+      missing.forEach(r => {
+        extraInfo += `- ${r.title}（截止 ${r.deadline || "未設定"}）\n`;
+      });
+    }
+
     await pool.execute(
-      `INSERT INTO ai_chat_messages (course_id, student_id, role, message)
-       VALUES (?, ?, 'user', ?)`,
+      `
+      INSERT INTO ai_chat_messages (course_id, student_id, role, message)
+      VALUES (?, ?, 'user', ?)
+      `,
       [course.id, student.id, message]
     );
 
-    // 6️⃣ 呼叫 OpenAI
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "system",
-            content: "請務必遵守：使用繁體中文、條列式、用 \\n 換行"
-          },
-          ...history,
-          {
-            role: "user",
-            content: message
-          }
-        ]
-      })
-    });
+    const response = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: systemPrompt
+            },
+            {
+              role: "system",
+              content: "請務必遵守：使用繁體中文、條列式、用 \\n 換行"
+            },
+            ...(extraInfo
+              ? [{
+                  role: "system",
+                  content: `以下是可參考課程資料：\n${extraInfo}`
+                }]
+              : []),
+            ...history,
+            {
+              role: "user",
+              content: message
+            }
+          ]
+        })
+      }
+    );
 
     if (!response.ok) {
       const text = await response.text();
-      console.error("OpenAI API Error:", text);
 
       return res.status(500).json({
         message: "OpenAI API 回覆失敗",
@@ -1444,10 +1654,11 @@ app.post("/api/ai/ask", async (req, res) => {
       });
     }
 
-    // 7️⃣ 存 assistant reply
     await pool.execute(
-      `INSERT INTO ai_chat_messages (course_id, student_id, role, message)
-       VALUES (?, ?, 'assistant', ?)`,
+      `
+      INSERT INTO ai_chat_messages (course_id, student_id, role, message)
+      VALUES (?, ?, 'assistant', ?)
+      `,
       [course.id, student.id, reply]
     );
 
@@ -1459,8 +1670,7 @@ app.post("/api/ai/ask", async (req, res) => {
     res.status(500).json({
       message: "AI 回覆失敗",
       errorStep: "catch_all",
-      errorMessage: err.message,
-      stack: err.stack
+      errorMessage: err.message
     });
   }
 });
@@ -1476,7 +1686,6 @@ app.post("/api/ai/remind-homework", async (req, res) => {
 
   try {
 
-    // 3️⃣ 查所有未過期作業
     const [homeworks] = await pool.execute(
       `SELECT h.id, h.title, h.deadline
        FROM homeworks h
@@ -1488,7 +1697,6 @@ app.post("/api/ai/remind-homework", async (req, res) => {
     if (homeworks.length === 0)
       return res.json({ reply: "👍 目前沒有任何尚未截止的作業！" });
 
-    // 4️⃣ 查學生已繳交作業
     const hwIds = homeworks.map(hw => hw.id);
     const [submitted] = await pool.execute(
       `SELECT homework_id FROM homework_submissions
@@ -1498,13 +1706,11 @@ app.post("/api/ai/remind-homework", async (req, res) => {
 
     const submittedIds = submitted.map(s => s.homework_id);
 
-    // 5️⃣ 篩選出未繳交作業
     const pending = homeworks.filter(hw => !submittedIds.includes(hw.id));
 
     if (pending.length === 0)
       return res.json({ reply: "👍 你已完成所有尚未截止的作業，辛苦了！" });
 
-    // 6️⃣ 將作業整理成文字
     const hwListText = pending
       .map(hw => `• ${hw.title}，截止日期：${hw.deadline.toISOString().split("T")[0]}`)
       .join("\n");
@@ -1580,10 +1786,16 @@ app.post("/api/ai/get_prompt", async (req, res) => {
 
     const courseId = courseRows[0].id;
 
-    // 2️⃣ 取得 prompt（全部歷史 or 最新）
+    // 2️⃣ 取得 prompt（連同三個 bool 一起拿）
     const [promptRows] = await pool.execute(
       `
-      SELECT id, chat_prompt, discussion_prompt, grading_prompt, updated_at
+      SELECT
+        id,
+        chat_prompt,
+        send_announcements,
+        send_assignments,
+        send_student_info,
+        updated_at
       FROM course_ai_prompts
       WHERE course_id = ?
       ORDER BY updated_at DESC
