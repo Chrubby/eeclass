@@ -67,6 +67,33 @@
       </div>
     </div>
 
+    <div v-if="homeworkData.isSubmitted && !homeworkData.isGraded" class="bg-indigo-50 border border-indigo-200 rounded p-5 shadow-sm">
+      <h3 class="text-lg font-bold text-indigo-800 mb-3 border-b border-indigo-200 pb-2">AI 預估評分</h3>
+      <div class="mb-3">
+        <button
+          type="button"
+          class="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+          :disabled="estimating"
+          @click="estimateMyScore"
+        >
+          {{ estimating ? '預估中...' : '產生我的預估評分' }}
+        </button>
+      </div>
+      <div v-if="homeworkData.aiEstimatedScore !== null && homeworkData.aiEstimatedScore !== undefined">
+      <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <p class="text-xs text-indigo-700">最後一次 AI 預估分數（僅供參考，不代表最終成績）</p>
+          <p class="text-3xl font-black text-indigo-600 mt-1">{{ homeworkData.aiEstimatedScore }}</p>
+        </div>
+        <p class="text-xs text-indigo-700">{{ homeworkData.aiEstimatedAt ? `更新時間：${homeworkData.aiEstimatedAt}` : '' }}</p>
+      </div>
+      <p v-if="homeworkData.aiEstimatedReason" class="text-sm text-indigo-900 bg-white border border-indigo-100 rounded p-3 mt-3 whitespace-pre-line">
+        {{ homeworkData.aiEstimatedReason }}
+      </p>
+      </div>
+      <p v-else class="text-sm text-indigo-700">尚未產生預估評分，請先點擊上方按鈕。</p>
+    </div>
+
     <div  class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700">作業題目內容</div>
 
@@ -228,6 +255,7 @@ const legacyQuestionAttachment = (q) =>
 
 const answers = ref([]) // 存文字
 const files = ref([])   // 存檔案
+const estimating = ref(false)
 
 const chatOpen = ref(false)
 const chatInput = ref('')
@@ -330,7 +358,10 @@ const loadData = async () => {
       score: current?.score || null,
       feedback: current?.feedback || '',
       submittedFileName: mySub?.file_name || null,
-      gradedDetails: gradedDetails // 新增這行
+      gradedDetails: gradedDetails,
+      aiEstimatedScore: mySub?.ai_estimated_score ?? null,
+      aiEstimatedReason: mySub?.ai_estimated_reason || '',
+      aiEstimatedAt: mySub?.ai_estimated_at ? new Date(mySub.ai_estimated_at).toLocaleString() : '',
     }
 
     if (hw.questions) {
@@ -388,6 +419,30 @@ const submitHomework = async () => {
     await loadData()
   } catch (error) {
     alert(error.message)
+  }
+}
+
+const estimateMyScore = async () => {
+  if (!homeworkData.value.isSubmitted) {
+    alert('請先送出作業後再進行預估評分')
+    return
+  }
+  estimating.value = true
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/homework/${hwId}/self-estimate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || '預估評分失敗')
+    homeworkData.value.aiEstimatedScore = data.suggested_score
+    homeworkData.value.aiEstimatedReason = data.reason || ''
+    homeworkData.value.aiEstimatedAt = new Date().toLocaleString()
+  } catch (error) {
+    alert(error.message)
+  } finally {
+    estimating.value = false
   }
 }
 

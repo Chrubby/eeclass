@@ -49,14 +49,6 @@
     <div class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700 flex justify-between items-center flex-wrap gap-2">
         <span>學生繳交清單</span>
-        <button
-          type="button"
-          :disabled="batchLoading || submissions.length === 0"
-          class="text-xs font-bold px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          @click="runBatchAiGrade"
-        >
-          {{ batchLoading ? '全班預評分中…' : '一鍵全班 AI 預評分' }}
-        </button>
       </div>
 
       <table class="w-full text-left text-[15px]">
@@ -64,7 +56,7 @@
           <tr>
             <th class="p-3 pl-5">學號</th>
             <th class="p-3">繳交時間</th>
-            <th class="p-3">分數</th>
+            <th class="p-3">成績</th>
             <th class="p-3 pr-5">操作</th>
           </tr>
         </thead>
@@ -77,12 +69,22 @@
               <span v-else class="text-red-500 font-bold text-sm">未批改</span>
             </td>
             <td class="p-3 pr-5">
-              <button
-                @click="router.push(`/course/${courseId}/homework/${hwId}/grade/${sub.id}`)"
-                class="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-1.5 text-sm font-bold rounded hover:bg-blue-100 transition-colors"
-              >
-                {{ sub.score ? '重新批改' : '批改' }}
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  @click="router.push(`/course/${courseId}/homework/${hwId}/grade/${sub.id}`)"
+                  class="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-1.5 text-sm font-bold rounded hover:bg-blue-100 transition-colors"
+                >
+                  {{ sub.score ? '重新批改' : '批改' }}
+                </button>
+                <button
+                  type="button"
+                  class="bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 text-sm font-bold rounded hover:bg-indigo-100 transition-colors"
+                  :disabled="historyLoading"
+                  @click.stop="openHistory(sub)"
+                >
+                  看歷程
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -91,36 +93,65 @@
     </div>
 
     <div
-      v-if="batchModalOpen"
+      v-if="historyModalOpen"
       class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-      @click.self="batchModalOpen = false"
+      @click.self="historyModalOpen = false"
     >
-      <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col border">
+      <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[82vh] overflow-hidden flex flex-col border">
         <div class="px-4 py-3 border-b font-bold text-gray-800 flex justify-between items-center">
-          <span>全班 AI 預評分結果</span>
-          <button type="button" class="text-gray-500 hover:text-gray-800 text-xl leading-none" @click="batchModalOpen = false">×</button>
+          <span>學生 {{ currentHistory?.submission?.studentId || '' }}：評分/修正完整歷程</span>
+          <button type="button" class="text-gray-500 hover:text-gray-800 text-xl leading-none" @click="historyModalOpen = false">×</button>
         </div>
-        <div class="overflow-y-auto p-3 text-sm space-y-2">
-          <div
-            v-for="row in batchResults"
-            :key="row.submissionId"
-            class="border rounded p-2"
-          >
-            <div class="font-bold text-[#337ab7]">
-              學號 {{ row.studentId }}
-              <span v-if="row.error" class="text-red-600 text-xs ml-2">{{ row.error }}</span>
-              <span v-else class="text-indigo-600 text-xs ml-2">建議分：{{ row.suggested_score }}</span>
-            </div>
-            <p v-if="!row.error && row.reason" class="text-gray-600 text-xs mt-1">{{ row.reason }}</p>
-            <div v-if="!row.error && row.perQuestion && row.perQuestion.length" class="mt-2 pl-2 border-l-2 border-indigo-200 space-y-1">
-              <div v-for="pq in row.perQuestion" :key="pq.questionId" class="text-[11px] text-gray-700">
-                <span class="font-bold text-indigo-800">子題 {{ pq.question_order ?? pq.questionId }}</span>
-                <span v-if="pq.error" class="text-red-600 ml-1">{{ pq.error }}</span>
-                <span v-else class="ml-1">建議 {{ pq.suggested_score }} / {{ pq.max_score }}</span>
-              </div>
-            </div>
-            <p v-else-if="!row.error && row.feedback" class="text-gray-700 text-xs mt-1 whitespace-pre-line">{{ row.feedback }}</p>
+        <div class="p-4 overflow-y-auto space-y-3 text-sm">
+          <div v-if="historyLoading" class="text-gray-500">讀取中...</div>
+          <div v-else-if="!currentHistory?.history?.length" class="text-gray-500">尚無歷程資料</div>
+          <div v-else class="space-y-4">
+  <div v-for="item in currentHistory.history" :key="item.id" class="border rounded-lg p-4 bg-gray-50 shadow-sm">
+    <div class="flex justify-between items-center mb-2 border-b pb-2">
+      <span class="text-xs font-bold text-[#337ab7] uppercase tracking-wider">
+        ● {{ eventTypeLabel(item.eventType) }}
+      </span>
+      <span class="text-xs text-gray-400">{{ formatDate(item.createdAt) }}</span>
+    </div>
+
+    <div class="text-[13px]">
+      <div v-if="item.eventType === 'submit'" class="space-y-1">
+        <p v-if="item.payload.hasFile" class="text-green-700">📎 繳交檔案：{{ item.payload.fileName }}</p>
+        <p class="text-gray-700 font-medium">文字內容：</p>
+        <div class="bg-white p-2 border rounded text-gray-600 italic">{{ item.payload.answerText }}</div>
+      </div>
+
+      <div v-else-if="['ai_suggestion', 'student_self_estimate'].includes(item.eventType)" class="space-y-2">
+        <div class="flex items-center gap-2">
+          <span class="font-bold">預估總分：</span>
+          <span class="text-lg text-indigo-600 font-black">{{ item.payload.suggested_score }}</span>
+        </div>
+
+        <div v-if="item.payload.perQuestion" class="mt-2 space-y-2">
+          <div v-for="q in item.payload.perQuestion" :key="q.questionId" class="bg-indigo-50 p-2 rounded border border-indigo-100">
+            <p class="font-bold text-indigo-800">第 {{ q.question_order }} 題評語：</p>
+            <p class="text-gray-700">{{ q.reason }}</p>
           </div>
+        </div>
+        <div v-else>
+          <p class="font-bold">AI 理由：</p>
+          <p class="text-gray-700">{{ item.payload.reason }}</p>
+        </div>
+      </div>
+
+      <div v-else-if="item.eventType === 'teacher_grade'" class="space-y-1">
+        <p class="font-bold text-green-700">正式評分：{{ item.payload.score }}</p>
+        <p class="text-gray-700">評語：{{ item.payload.feedback }}</p>
+      </div>
+
+      <div v-else-if="item.eventType === 'unsubmit'" class="text-red-500">
+        學生收回了此份作業。
+      </div>
+
+      <pre v-else class="text-xs whitespace-pre-wrap break-words text-gray-500">{{ item.payload }}</pre>
+    </div>
+  </div>
+</div>
         </div>
       </div>
     </div>
@@ -142,9 +173,9 @@ const homeworkDeadline = ref('')
 const homeworkAttachments = ref([])
 const questions = ref([])
 const submissions = ref([])
-const batchLoading = ref(false)
-const batchModalOpen = ref(false)
-const batchResults = ref([])
+const historyModalOpen = ref(false)
+const historyLoading = ref(false)
+const currentHistory = ref(null)
 
 const formatDate = (raw) => (raw ? new Date(raw).toLocaleString() : '-')
 const progressText = computed(() => {
@@ -152,6 +183,14 @@ const progressText = computed(() => {
   const graded = submissions.value.filter((s) => s.score).length
   return `批改進度：${graded} / ${total} 份`
 })
+
+const eventTypeLabel = (t) => ({
+  submit: '學生送出',
+  unsubmit: '學生收回',
+  teacher_grade: '教師評分',
+  ai_suggestion: 'AI 建議',
+  student_self_estimate: '學生自行預估',
+}[t] || t)
 
 const loadData = async () => {
   try {
@@ -181,24 +220,20 @@ const loadData = async () => {
   }
 }
 
-const runBatchAiGrade = async () => {
-  if (!submissions.value.length) return
-  batchLoading.value = true
-  batchResults.value = []
+const openHistory = async (sub) => {
+  historyModalOpen.value = true
+  historyLoading.value = true
+  currentHistory.value = null
   try {
-    const res = await fetch(`${API_BASE_URL}/api/homework/${hwId}/ai-grade-batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    })
+    const res = await fetch(`${API_BASE_URL}/api/submissions/${sub.id}/history`)
     const data = await res.json()
-    if (!res.ok) throw new Error(data.message || '批次預評分失敗')
-    batchResults.value = data.results || []
-    batchModalOpen.value = true
+    if (!res.ok) throw new Error(data.message || '讀取歷程失敗')
+    currentHistory.value = data
   } catch (e) {
     alert(e.message)
+    historyModalOpen.value = false
   } finally {
-    batchLoading.value = false
+    historyLoading.value = false
   }
 }
 

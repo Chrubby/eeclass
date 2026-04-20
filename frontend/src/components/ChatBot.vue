@@ -45,15 +45,23 @@
       </div>
 
       <!-- 👨‍🏫 teacher prompt 編輯 -->
-      <div v-if="role === 'teacher'" class="mt-2">
-        <div class="text-xs text-gray-600 mb-1">AI Prompt（課程設定）</div>
-
-        <textarea
-          v-model="teacherPrompt"
-          class="w-full text-sm border rounded p-2"
-          rows="3"
-        ></textarea>
-
+      <div v-if="role === 'teacher'" class="mt-2 space-y-2">
+        <div>
+          <div class="text-xs text-gray-600 mb-1">discussion_prompt（學生提問/討論）</div>
+          <textarea
+            v-model="discussionPrompt"
+            class="w-full text-sm border rounded p-2"
+            rows="3"
+          ></textarea>
+        </div>
+        <div>
+          <div class="text-xs text-gray-600 mb-1">grading_prompt（提交作業/評分）</div>
+          <textarea
+            v-model="gradingPrompt"
+            class="w-full text-sm border rounded p-2"
+            rows="3"
+          ></textarea>
+        </div>
         <div class="flex justify-end mt-1">
           <button
             class="text-xs text-green-600"
@@ -145,7 +153,8 @@ const input = ref('')
 const loading = ref(false)
 const chatContainer = ref(null)
 const reminder = ref('')
-const teacherPrompt = ref('')
+const discussionPrompt = ref('')
+const gradingPrompt = ref('')
 
 /* ======================
    Utils
@@ -239,8 +248,8 @@ const fetchChatHistory = async () => {
    Prompt save（teacher）
 ====================== */
 const savePrompt = async () => {
-  if (!teacherPrompt.value.trim()) {
-    alert("Prompt 不可為空")
+  if (!discussionPrompt.value.trim() || !gradingPrompt.value.trim()) {
+    alert("discussion / grading prompt 不可為空")
     return
   }
 
@@ -252,7 +261,8 @@ const savePrompt = async () => {
       },
       body: JSON.stringify({
         course_code: props.courseCode,
-        chat_prompt: teacherPrompt.value,
+        discussion_prompt: discussionPrompt.value,
+        grading_prompt: gradingPrompt.value,
         role: props.role
       })
     })
@@ -297,11 +307,13 @@ const fetchTeacherPrompt = async () => {
     // 👉 取最新一筆 prompt
     const latest = data.prompts?.[0]
 
-    teacherPrompt.value = latest?.chat_prompt || ''
+    discussionPrompt.value = latest?.discussion_prompt || latest?.chat_prompt || ''
+    gradingPrompt.value = latest?.grading_prompt || latest?.chat_prompt || ''
 
   } catch (err) {
     console.error('抓 prompt 失敗:', err)
-    teacherPrompt.value = ''
+    discussionPrompt.value = ''
+    gradingPrompt.value = ''
   }
 }
 
