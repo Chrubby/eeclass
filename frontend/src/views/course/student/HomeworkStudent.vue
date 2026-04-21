@@ -334,9 +334,9 @@ const sendChat = async () => {
 const loadData = async () => {
   try {
     const [hwRes, listRes, mySubRes] = await Promise.all([
-      fetch(`${API_BASE_URL}/api/homework/${hwId}`),
-      fetch(`${API_BASE_URL}/api/courses/${route.params.id}/homework?userId=${encodeURIComponent(studentId)}&role=student`),
-      fetch(`${API_BASE_URL}/api/homework/${hwId}/my-submission?studentId=${encodeURIComponent(studentId)}`)
+      fetch(`${API_BASE_URL}/api/homeworks/${hwId}`),
+      fetch(`${API_BASE_URL}/api/courses/${route.params.id}/homeworks?userId=${encodeURIComponent(studentId)}&role=student`),
+      fetch(`${API_BASE_URL}/api/homeworks/${hwId}/submissions/me?studentId=${encodeURIComponent(studentId)}`)
     ])
 
     const hw = await hwRes.json()
@@ -409,7 +409,7 @@ const submitHomework = async () => {
       formData.append('file', firstFile)
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/homework/${hwId}/submit`, {
+    const response = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}/submissions`, {
       method: 'POST',
       body: formData,
     })
@@ -429,7 +429,7 @@ const estimateMyScore = async () => {
   }
   estimating.value = true
   try {
-    const res = await fetch(`${API_BASE_URL}/api/homework/${hwId}/self-estimate`, {
+    const res = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}/self-estimate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ studentId }),
@@ -452,7 +452,7 @@ const unsubmitHomework = async () => {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/homework/${hwId}/submit`, {
+    const response = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}/submissions/me`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ studentId })

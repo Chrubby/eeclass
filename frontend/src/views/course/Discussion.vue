@@ -158,7 +158,7 @@ const loadUser = async () => {
   user.value.user_id = stored
 
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/user_inf`, {
+    const res = await axios.get(`${API_BASE_URL}/api/auth/user_inf`, {
       params: { user_id: user.value.user_id }
     })
     user.value.role = res.data.role
@@ -201,7 +201,7 @@ const createDiscussion = async () => {
     }
 
     // Axios post 傳送 FormData (Content-Type 會自動設定為 multipart/form-data)
-    await axios.post(`${API_BASE_URL}/api/discussions/create`, formData, {
+    await axios.post(`${API_BASE_URL}/api/courses/${courseCode}/discussions`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }

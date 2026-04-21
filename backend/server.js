@@ -1,20 +1,21 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-// import mysql from "mysql2/promise";
-// import bcrypt from "bcryptjs";
-import multer from "multer";
+
+// import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+// import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 import { DOMMatrix } from "canvas";
 
 import authRoutes from "./src/routes/authRoutes.js";
 import courseRoutes from "./src/routes/courseRoutes.js";
 import announcementRoutes from "./src/routes/announcementRoutes.js";
+import discussionRoutes from "./src/routes/discussionRoutes.js";
+import homeworkRoutes from "./src/routes/homeworkRoutes.js";
 
 globalThis.DOMMatrix = DOMMatrix;
 
@@ -24,36 +25,36 @@ const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const AI_CHAT_MAX_MESSAGES = 16;
 
-async function openAiChat(messages, options = {}) {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) {
-    const err = new Error("OPENAI_API_KEY 未設定");
-    err.statusCode = 503;
-    throw err;
-  }
-  const body = {
-    model: OPENAI_MODEL,
-    messages,
-  };
-  if (options.jsonMode) {
-    body.response_format = { type: "json_object" };
-  }
-  const res = await fetch(OPENAI_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data.error?.message || data.message || `OpenAI 請求失敗 (${res.status})`);
-    err.statusCode = 502;
-    throw err;
-  }
-  return data.choices?.[0]?.message?.content || "";
-}
+// async function openAiChat(messages, options = {}) {
+//   const key = process.env.OPENAI_API_KEY;
+//   if (!key) {
+//     const err = new Error("OPENAI_API_KEY 未設定");
+//     err.statusCode = 503;
+//     throw err;
+//   }
+//   const body = {
+//     model: OPENAI_MODEL,
+//     messages,
+//   };
+//   if (options.jsonMode) {
+//     body.response_format = { type: "json_object" };
+//   }
+//   const res = await fetch(OPENAI_API_URL, {
+//     method: "POST",
+//     headers: {
+//       Authorization: `Bearer ${key}`,
+//       "Content-Type": "application/json",
+//     },
+//     body: JSON.stringify(body),
+//   });
+//   const data = await res.json().catch(() => ({}));
+//   if (!res.ok) {
+//     const err = new Error(data.error?.message || data.message || `OpenAI 請求失敗 (${res.status})`);
+//     err.statusCode = 502;
+//     throw err;
+//   }
+//   return data.choices?.[0]?.message?.content || "";
+// }
 
 async function getCoursePromptsByCourseId(courseId) {
   if (!courseId) return { discussion_prompt: "", grading_prompt: "" };
@@ -68,13 +69,13 @@ async function getCoursePromptsByCourseId(courseId) {
   };
 }
 
-async function appendSubmissionHistory(submissionId, eventType, payloadObj) {
-  if (!submissionId) return;
-  await pool.execute(
-    "INSERT INTO homework_submission_histories (submission_id, event_type, payload_json) VALUES (?, ?, ?)",
-    [submissionId, eventType, JSON.stringify(payloadObj || {})]
-  );
-}
+// async function appendSubmissionHistory(submissionId, eventType, payloadObj) {
+//   if (!submissionId) return;
+//   await pool.execute(
+//     "INSERT INTO homework_submission_histories (submission_id, event_type, payload_json) VALUES (?, ?, ?)",
+//     [submissionId, eventType, JSON.stringify(payloadObj || {})]
+//   );
+// }
 
 const app = express();
 app.use(cors());
@@ -88,1236 +89,578 @@ if (!fs.existsSync(uploadsRoot)) {
 }
 app.use("/uploads", express.static(uploadsRoot));
 
-// const dbConfig = {
-//   host: process.env.DB_HOST || "localhost",
-//   user: process.env.DB_USER || "root",
-//   password: process.env.DB_PASSWORD, // 換回你原本的密碼
-//   database: process.env.DB_NAME || "classroom_data",
-// };
+// const uploadDir = path.join(__dirname, "uploads");
+// if (!fs.existsSync(uploadDir)) {
+//   fs.mkdirSync(uploadDir);
+// }
 
-// const pool = mysql.createPool({
-//   ...dbConfig,
-//   waitForConnections: true,
-//   connectionLimit: 10,
+// const storage = multer.diskStorage({
+//   destination: (_req, _file, cb) => cb(null, uploadsRoot),
+//   filename: (_req, file, cb) => {
+//     const ext = path.extname(file.originalname);
+//     cb(null, `${Date.now()}-${Math.random().toString(16).slice(2)}${ext}`);
+//   },
 // });
+// const upload = multer({ storage });
 
-const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsRoot),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.random().toString(16).slice(2)}${ext}`);
-  },
-});
-const upload = multer({ storage });
-
-const uploadPdf = multer({
-  storage: storage, // 沿用上面的 storage
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === "application/pdf") {
-      cb(null, true);
-    } else {
-      // 如果不是 PDF，拒絕上傳
-      cb(new Error("只允許上傳 PDF 檔案"), false);
-    }
-  },
-  limits: { fileSize: 10 * 1024 * 1024 }, // 限制 10MB
-});
-
-// const initDB = async () => {
-//   // 1. 帳號表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS accounts (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       username VARCHAR(50) UNIQUE NOT NULL,
-//       password_hash VARCHAR(255) NOT NULL,
-//       email VARCHAR(100),
-//       role VARCHAR(20) NOT NULL,
-//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-//     )
-//   `);
-
-//   // 2. 學生表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS students (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       name VARCHAR(50) NOT NULL,
-//       student_id VARCHAR(50) UNIQUE NOT NULL
-//     )
-//   `);
-
-//   // 3. 老師表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS teachers (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       name VARCHAR(50) NOT NULL,
-//       teacher_id VARCHAR(50) UNIQUE NOT NULL
-//     )
-//   `);
-
-//   // 4. 課程主表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS courses (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       course_name VARCHAR(100) NOT NULL,
-//       course_code VARCHAR(50) UNIQUE NOT NULL,
-//       description TEXT,
-//       academic_year VARCHAR(20),
-//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-//     )
-//   `);
-
-//   // 5. 老師與課程關聯表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS teacher_courses (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       teacher_id INT NOT NULL,
-//       course_id INT NOT NULL
-//     )
-//   `);
-
-//   // 6. 學生選課表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS enrollments (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       student_id INT NOT NULL,
-//       course_id INT NOT NULL
-//     )
-//   `);
-
-//   // 7. 公告表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS announcements (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       course_id INT NOT NULL,
-//       teacher_id INT NOT NULL,
-//       title VARCHAR(255) NOT NULL,
-//       content TEXT,
-//       is_pinned BOOLEAN DEFAULT FALSE,
-//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-//     )
-//   `);
-
-//   // 8. 公告已讀紀錄表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS announcement_reads (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       student_id INT NOT NULL,
-//       announcement_id INT NOT NULL,
-//       UNIQUE KEY uniq_student_announcement (student_id, announcement_id)
-//     )
-//   `);
-
-//   // 9. 作業主表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS homeworks (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       course_id VARCHAR(50),
-//       title VARCHAR(255),
-//       description TEXT,
-//       deadline DATETIME
-//     )
-//   `);
-
-//   // 10. 作業題目表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS homework_questions (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       homework_id INT,
-//       question_order INT,
-//       title VARCHAR(255),
-//       description TEXT,
-//       answer_format VARCHAR(50),
-//       discussion_prompt TEXT,
-//       has_attachment BOOLEAN DEFAULT FALSE,
-//       file_name VARCHAR(255),
-//       file_path VARCHAR(255)
-//     )
-//   `);
-
-//   // 11. 作業繳交紀錄表
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS homework_submissions (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       homework_id INT,
-//       student_id VARCHAR(128),
-//       answer_text TEXT,
-//       file_name VARCHAR(255),
-//       file_path VARCHAR(255),
-//       score VARCHAR(10),
-//       feedback TEXT,
-//       submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-//       graded_at DATETIME NULL,
-//       UNIQUE KEY uniq_hw_student (homework_id, student_id)
-//     )
-//   `);
-
-//   // 12. 討論區
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS discussion_rooms (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       course_id INT NOT NULL,
-//       room_name VARCHAR(100),
-//       title VARCHAR(200),
-//       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-//       FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
-//     )
-//   `);
-
-//   // 13. 討論區留言
-//   await pool.execute(`
-//   CREATE TABLE IF NOT EXISTS threads (
-//     id INT AUTO_INCREMENT PRIMARY KEY,
-//     room_id INT NOT NULL,
-//     student_id VARCHAR(50) NOT NULL,
-//     content TEXT NOT NULL,
-//     parent_thread_id INT NULL,
-//     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-
-//     FOREIGN KEY (room_id) REFERENCES discussion_rooms(id) ON DELETE CASCADE,
-//     FOREIGN KEY (parent_thread_id) REFERENCES threads(id) ON DELETE CASCADE
-//   )
-//   `);
-
-//   // 14. 新增課程AI聊天
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS ai_chat_messages (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       course_id INT NOT NULL,
-//       student_id INT NOT NULL,
-//       role ENUM('user', 'assistant') NOT NULL,
-//       message TEXT NOT NULL,
-//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-
-//       FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
-//       FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
-//   )
-//   `);
-
-//   // 15. 建立課程AI_Prompts
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS course_ai_prompts (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       course_id INT NOT NULL,
-//       chat_prompt TEXT NOT NULL,
-//       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-//       FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
-//     )
-//   `)
-
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS homework_submission_histories (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       submission_id INT NOT NULL,
-//       event_type VARCHAR(32) NOT NULL,
-//       payload_json LONGTEXT,
-//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-//       FOREIGN KEY (submission_id) REFERENCES homework_submissions(id) ON DELETE CASCADE
-//     )
-//   `);
-
-//   await pool.execute(`
-//     CREATE TABLE IF NOT EXISTS course_materials (
-//       id INT AUTO_INCREMENT PRIMARY KEY,
-//       course_id VARCHAR(50) NOT NULL,
-//       uploader_id VARCHAR(64),
-//       file_name VARCHAR(255) NOT NULL,
-//       file_path VARCHAR(255) NOT NULL,
-//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-//     )
-//   `);
-
-//   try {
-//     await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-
-//   try {
-//     await pool.execute("ALTER TABLE homework_submissions ADD COLUMN graded_details TEXT");
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-
-//   try {
-//     await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-//   try {
-//     await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-
-//   //討論區內容
-//   try {
-//     await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN content TEXT");
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-//   try {
-//     await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN ai_prompt TEXT;");
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-//   try {
-//     await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN file_path VARCHAR(255) DEFAULT NULL;");
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-
-//   try {
-//     await pool.execute("ALTER TABLE homework_questions ADD COLUMN ai_prompt TEXT");
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-//   try {
-//     await pool.execute("ALTER TABLE homework_questions ADD COLUMN discussion_prompt TEXT");
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-
-//   try {
-//     await pool.execute("ALTER TABLE homeworks ADD COLUMN attachments_json TEXT");
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-
-//   try {
-//     await pool.execute(`
-//       ALTER TABLE course_ai_prompts
-//       ADD COLUMN send_announcements BOOLEAN NOT NULL DEFAULT FALSE
-//     `)
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-
-//   try {
-//     await pool.execute(`
-//       ALTER TABLE course_ai_prompts
-//       ADD COLUMN send_assignments BOOLEAN NOT NULL DEFAULT FALSE
-//     `)
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-
-//   try {
-//     await pool.execute(`
-//       ALTER TABLE course_ai_prompts
-//       ADD COLUMN send_student_info BOOLEAN NOT NULL DEFAULT FALSE
-//     `)
-//   } catch (e) { /* 欄位已存在就忽略 */ }
-
-//   console.log("資料庫檢查與初始化完成");
-// };
-// await initDB();
-
-
-// // 註冊功能
-// app.post("/api/register", async (req, res) => {
-//   const { username, password, name, role, email } = req.body;
-//   if (!username || !password || !name || !role || !email) {
-//     return res.status(400).json({ message: "欄位不完整" });
-//   }
-
-//   try {
-//     const passwordHash = await bcrypt.hash(password, 10);
-//     await pool.execute(
-//       "INSERT INTO accounts (username, password_hash, email, role) VALUES (?, ?, ?, ?)",
-//       [username, passwordHash, email, role]
-//     );
-
-//     // TA
-//     if (role === "student" || role === "ta") {
-//       await pool.execute("INSERT INTO students (name, student_id) VALUES (?, ?)", [name, username]);
-//     } else if (role === "teacher") {
-//       await pool.execute("INSERT INTO teachers (name, teacher_id) VALUES (?, ?)", [name, username]);
-//     }
-//     res.json({ message: "註冊成功！" });
-//   } catch (error) {
-//     res.status(400).json({ message: `註冊失敗，帳號或信箱可能重複：${error.message}` });
-//   }
-// });
-
-// // 登入功能
-// app.post("/api/login", async (req, res) => {
-//   const { username, password } = req.body; // 這裡的 username 可能是信箱或帳號
-//   try {
-//     // 支援信箱或帳號登入 (對齊 app.py)
-//     const [rows] = await pool.execute(
-//       "SELECT * FROM accounts WHERE username = ? OR email = ?",
-//       [username, username]
-//     );
-//     const account = rows[0];
-
-//     if (account && await bcrypt.compare(password, account.password_hash)) {
-//       res.json({
-//         message: "登入成功！",
-//         username: account.username,
-//         role: account.role
-//       });
+// const uploadPdf = multer({
+//   storage: storage, // 沿用上面的 storage
+//   fileFilter: (req, file, cb) => {
+//     if (file.mimetype === "application/pdf") {
+//       cb(null, true);
 //     } else {
-//       res.status(401).json({ message: "帳號、信箱或密碼錯誤！" });
+//       // 如果不是 PDF，拒絕上傳
+//       cb(new Error("只允許上傳 PDF 檔案"), false);
 //     }
-//   } catch (error) {
-//     res.status(500).json({ message: `資料庫錯誤：${error.message}` });
-//   }
-// });
-
-// // 取得使用者身分與基本資料
-// app.get("/api/user_inf", async (req, res) => {
-//   const userId = req.query.user_id;
-//   if (!userId) return res.status(400).json({ message: "缺少user_id" });
-
-//   try {
-//     const [roleRows] = await pool.execute("SELECT role FROM accounts WHERE username = ?", [userId]);
-//     if (roleRows.length === 0) return res.status(404).json({ message: "找不到使用者" });
-
-//     const role = roleRows[0].role;
-//     let userRows;
-//     if (role === "student" || role === "ta") {
-//       [userRows] = await pool.execute("SELECT * FROM students WHERE student_id = ?", [userId]);
-//     } else {
-//       [userRows] = await pool.execute("SELECT * FROM teachers WHERE teacher_id = ?", [userId]);
-//     }
-
-//     return res.json({ role, user: userRows[0] || null });
-//   } catch (error) {
-//     return res.status(500).json({ message: "讀取使用者資料失敗" });
-//   }
+//   },
+//   limits: { fileSize: 10 * 1024 * 1024 }, // 限制 10MB
 // });
 
 app.use("/api/auth", authRoutes);
 app.use("/api/courses", courseRoutes);
 app.use("/api/announcements", announcementRoutes);
+app.use("/api/discussions", discussionRoutes);
+app.use("/api", homeworkRoutes);
 
-// // 搜尋課程
-// app.get("/api/courses", async (req, res) => {
-//   const courseCode = req.query.code;
-//   const courseName = req.query.name;
-
-//   if (!courseCode && !courseName) return res.status(404).json({ message: "找不到課程" });
-
-//   try {
-//     let courseRows;
-//     if (courseCode) {
-//       [courseRows] = await pool.execute(
-//         `SELECT c.* FROM courses c WHERE c.course_code = ? ORDER BY c.created_at DESC LIMIT 1`,
-//         [courseCode]
-//       );
-//     } else {
-//       [courseRows] = await pool.execute(
-//         `SELECT c.* FROM courses c WHERE c.course_name LIKE ? ORDER BY c.created_at DESC LIMIT 1`,
-//         [`%${courseName}%`]
-//       );
-//     }
-
-//     if (courseRows.length === 0) return res.status(404).json({ message: "找不到課程" });
-
-//     const course = courseRows[0];
-//     const [teacherRows] = await pool.execute(
-//       `SELECT t.id, t.name, t.teacher_id FROM teachers t
-//        JOIN teacher_courses tc ON t.id = tc.teacher_id
-//        WHERE tc.course_id = ?`,
-//       [course.id]
-//     );
-
-//     course.teachers = teacherRows;
-//     return res.json(course);
-//   } catch (error) {
-//     return res.status(500).json({ message: "課程查詢失敗" });
-//   }
-// });
-
-// // 學生選課
-// app.post("/api/enroll", async (req, res) => {
-//   const { student_id: studentIdentifier, course_code: courseCode } = req.body;
-//   if (!studentIdentifier || !courseCode) return res.status(400).json({ message: "缺少參數" });
-
-//   let connection;
-//   try {
-//     connection = await pool.getConnection();
-//     await connection.beginTransaction();
-
-//     const [studentRows] = await connection.execute("SELECT id FROM students WHERE student_id = ?", [studentIdentifier]);
-//     if (studentRows.length === 0) throw new Error("找不到學生");
-//     const studentId = studentRows[0].id;
-
-//     const [courseRows] = await connection.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
-//     if (courseRows.length === 0) throw new Error("找不到課程");
-//     const courseId = courseRows[0].id;
-
-//     const [existRows] = await connection.execute("SELECT id FROM enrollments WHERE student_id = ? AND course_id = ?", [studentId, courseId]);
-//     if (existRows.length > 0) throw new Error("已經選過此課程");
-
-//     await connection.execute("INSERT INTO enrollments (student_id, course_id) VALUES (?, ?)", [studentId, courseId]);
-//     await connection.commit();
-//     return res.json({ message: "選課成功！" });
-//   } catch (error) {
-//     if (connection) await connection.rollback();
-//     return res.status(error.message.includes("已經選過") ? 400 : 404).json({ message: error.message || "選課失敗" });
-//   } finally {
-//     if (connection) connection.release();
-//   }
-// });
-
-// // 取得使用者課程列表
-// app.get("/api/user_courses", async (req, res) => {
-//   const { user_id: userId, role } = req.query;
-//   if (!userId || !role) return res.status(400).json({ message: "缺少 user_id 或 role" });
-
-//   try {
-//     let userRows;
-//     if (role === "student" || role === "ta") {
-//       [userRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [userId]);
-//     } else if (role === "teacher") {
-//       [userRows] = await pool.execute("SELECT id FROM teachers WHERE teacher_id = ?", [userId]);
-//     } else {
-//       return res.status(400).json({ message: "role 無效" });
-//     }
-
-//     if (userRows.length === 0) return res.status(404).json({ message: `找不到 ${role}` });
-//     const userDbId = userRows[0].id;
-
-//     let courses;
-//     if (role === "student" || role === "ta") {
-//       [courses] = await pool.execute(
-//         `SELECT c.* FROM courses c JOIN enrollments e ON c.id = e.course_id WHERE e.student_id = ?`,
-//         [userDbId]
-//       );
-//     } else {
-//       [courses] = await pool.execute(
-//         `SELECT c.* FROM courses c JOIN teacher_courses tc ON c.id = tc.course_id WHERE tc.teacher_id = ?`,
-//         [userDbId]
-//       );
-//     }
-
-//     for (const course of courses) {
-//       const [teacherRows] = await pool.execute(
-//         `SELECT t.id, t.name, t.teacher_id FROM teachers t JOIN teacher_courses tc ON t.id = tc.teacher_id WHERE tc.course_id = ?`,
-//         [course.id]
-//       );
-//       course.teachers = teacherRows;
-//     }
-
-//     return res.json(courses);
-//   } catch (error) {
-//     return res.status(500).json({ message: "讀取課程失敗" });
-//   }
-// });
-
-// // 老師建立課程
-// app.post("/api/create_course", async (req, res) => {
-//   const {
-//     teacher_id: teacherAccount,
-//     course_name: courseName,
-//     course_code: courseCode,
-//     description,
-//     academic_year: academicYear
-//   } = req.body;
-
-//   if (!teacherAccount || !courseName || !courseCode || !academicYear)
-//     return res.status(400).json({ message: "缺少必要欄位" });
-
-//   let connection;
-
-//   try {
-//     connection = await pool.getConnection();
-//     await connection.beginTransaction();
-
-//     // 1️⃣ 檢查課號是否存在
-//     const [existRows] = await connection.execute(
-//       "SELECT id FROM courses WHERE course_code = ?",
-//       [courseCode]
-//     );
-
-//     if (existRows.length > 0) throw new Error("課程代碼已存在");
-
-//     // 2️⃣ 建立課程
-//     const [courseResult] = await connection.execute(
-//       `INSERT INTO courses (course_name, course_code, description, academic_year)
-//        VALUES (?, ?, ?, ?)`,
-//       [courseName, courseCode, description || "", academicYear]
-//     );
-
-//     const courseId = courseResult.insertId;
-
-//     // 3️⃣ 找老師
-//     const [teacherRows] = await connection.execute(
-//       "SELECT id FROM teachers WHERE teacher_id = ?",
-//       [teacherAccount]
-//     );
-
-//     if (teacherRows.length === 0) throw new Error("找不到該老師");
-
-//     // 4️⃣ 綁定老師與課程
-//     await connection.execute(
-//       "INSERT INTO teacher_courses (teacher_id, course_id) VALUES (?, ?)",
-//       [teacherRows[0].id, courseId]
-//     );
-
-//     // 5️⃣ ⭐ 新增 AI prompt（你要的重點）
-//     const defaultPrompt =
-//       "你是一位大學課程助教，請用繁體中文回答，並使用 '\\n' 來換行，保持訊息條列與換行，不要用 HTML 標籤。";
-
-//     await connection.execute(
-//       `INSERT INTO course_ai_prompts (course_id, chat_prompt)
-//        VALUES (?, ?)`,
-//       [courseId, defaultPrompt]
-//     );
-
-//     // 6️⃣ commit
-//     await connection.commit();
-
-//     return res.json({
-//       message: "課程建立成功",
-//       course_id: courseId
-//     });
-
-//   } catch (error) {
-//     if (connection) await connection.rollback();
-//     return res.status(400).json({
-//       message: error.message || "課程建立失敗"
-//     });
-//   } finally {
-//     if (connection) connection.release();
-//   }
-// });
-
-// // 取得課程公告
-// app.get("/api/announcements", async (req, res) => {
-//   const { course_code: courseCode, student_id: studentIdentifier } = req.query;
-//   if (!courseCode) return res.status(400).json({ message: "缺少 course_code" });
-
+// // 取得課程討論區列表
+// app.get("/api/courses/:courseCode/discussions", async (req, res) => {
+//   const { courseCode } = req.params;
 //   try {
 //     const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
-//     if (courseRows.length === 0) return res.status(404).json({ message: "找不到課程" });
+
+//     if (courseRows.length === 0) {
+//       return res.status(404).json({ message: "找不到課程" });
+//     }
 //     const courseId = courseRows[0].id;
 
-//     let studentDbId = null;
-//     if (studentIdentifier) {
-//       const [studentRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [studentIdentifier]);
-//       if (studentRows.length > 0) studentDbId = studentRows[0].id;
-//     }
-
-//     let announcementRows;
-//     if (studentDbId) {
-//       [announcementRows] = await pool.execute(
-//         `SELECT a.id, a.title, a.content, a.is_pinned, a.created_at, t.name AS teacher_name,
-//                 CASE WHEN ar.id IS NULL THEN FALSE ELSE TRUE END AS is_read
-//          FROM announcements a
-//          LEFT JOIN teachers t ON a.teacher_id = t.id
-//          LEFT JOIN announcement_reads ar ON a.id = ar.announcement_id AND ar.student_id = ?
-//          WHERE a.course_id = ?
-//          ORDER BY a.is_pinned DESC, a.created_at DESC`,
-//         [studentDbId, courseId]
-//       );
-//     } else {
-//       [announcementRows] = await pool.execute(
-//         `SELECT a.id, a.title, a.content, a.is_pinned, a.created_at, t.name AS teacher_name, TRUE AS is_read
-//          FROM announcements a
-//          LEFT JOIN teachers t ON a.teacher_id = t.id
-//          WHERE a.course_id = ?
-//          ORDER BY a.is_pinned DESC, a.created_at DESC`,
-//         [courseId]
-//       );
-//     }
-
-//     const announcements = announcementRows.map((item) => ({ ...item, isNew: !item.is_read }));
-//     return res.json({ course_code: courseCode, course_id: courseId, student_id: studentDbId, announcements });
-//   } catch (error) {
-//     return res.status(500).json({ message: "讀取公告失敗" });
-//   }
-// });
-
-// // 記錄公告已讀
-// app.post("/api/announcements/read", async (req, res) => {
-//   const { student_id: studentIdentifier, announcement_id: announcementId } = req.body;
-//   if (!studentIdentifier || !announcementId) return res.status(400).json({ message: "缺少必要參數" });
-
-//   try {
-//     const [studentRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [studentIdentifier]);
-//     if (studentRows.length === 0) return res.status(404).json({ message: "找不到學生" });
-
-//     await pool.execute(
-//       "INSERT IGNORE INTO announcement_reads (student_id, announcement_id) VALUES (?, ?)",
-//       [studentRows[0].id, announcementId]
+//     const [rows] = await pool.execute(
+//       `SELECT id, title, created_at as date, '教授' as author
+//        FROM discussion_rooms
+//        WHERE course_id = ?
+//        ORDER BY created_at DESC`,
+//       [courseId]
 //     );
-//     return res.json({ message: "已記錄已讀" });
+
+//     res.json(rows);
 //   } catch (error) {
-//     return res.status(500).json({ message: "紀錄已讀失敗" });
+//     console.error("資料庫查詢失敗:", error.message);
+//     res.status(500).json({ message: "讀取討論區失敗", error: error.message });
 //   }
 // });
 
-// // 老師或助教新增公告
-// app.post("/api/announcements/create", async (req, res) => {
-//   const { course_code: courseCode, teacher_id: accountId, title, content, is_pinned: isPinned = false } = req.body;
-//   if (!courseCode || !accountId || !title) return res.status(400).json({ message: "缺少必要參數" });
+// // 新增討論主題
+// app.post("/api/discussions/create", uploadPdf.single("file"), async (req, res) => {
+//   const { course_code, title, content, ai_prompt } = req.body; // 接收 content
+//   const file = req.file; //取出檔案
+//   if (!course_code || !title) return res.status(400).json({ message: "缺少必要參數" });
 
-//   let connection;
 //   try {
-//     connection = await pool.getConnection();
-//     await connection.beginTransaction();
-
-//     const [courseRows] = await connection.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+//     const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [course_code]);
 //     if (courseRows.length === 0) throw new Error("找不到課程");
 //     const courseId = courseRows[0].id;
 
-//     let finalTeacherId;
+//     const filePath = file ? `uploads/${file.filename}` : null;
 
-//     const [teacherRows] = await connection.execute("SELECT id FROM teachers WHERE teacher_id = ?", [accountId]);
+//     await pool.execute(
+//       "INSERT INTO discussion_rooms (course_id, title, content, ai_prompt, file_path) VALUES (?, ?, ?, ?, ?)",
+//       [courseId, title, content || "", ai_prompt || "", filePath]
+//     );
+//     res.json({ message: "討論區建立成功" });
+//   } catch (error) {
+//     res.status(500).json({ message: "建立失敗: " + error.message });
+//   }
+// });
 
-//     if (teacherRows.length > 0) {
-//       finalTeacherId = teacherRows[0].id;
-//     } else {
-//       const [courseTeacherRows] = await connection.execute(
-//         "SELECT teacher_id FROM teacher_courses WHERE course_id = ? LIMIT 1",
-//         [courseId]
-//       );
+// //刪除討論區
+// app.delete('/api/discussions/:id', async (req, res) => {
+//   const { id } = req.params
 
+//   try {
+//     await pool.execute(
+//       'DELETE FROM discussion_rooms WHERE id = ?',
+//       [id]
+//     )
 
-//       if (courseTeacherRows.length > 0 && courseTeacherRows[0].teacher_id) {
-//         finalTeacherId = courseTeacherRows[0].teacher_id;
-//       } else {
-//         throw new Error("找不到這門課的授課老師，因此助教無法代發公告");
+//     res.json({ message: '刪除成功' })
+//   } catch (err) {
+//     console.error(err)
+//     res.status(500).json({ error: '刪除失敗' })
+//   }
+// })
+
+// // 取得特定討論區的主題內容與所有留言
+// app.get("/api/discussions/:roomId/threads", async (req, res) => {
+//   const { roomId } = req.params;
+//   try {
+//     const [room] = await pool.execute(
+//       "SELECT title, content, file_path FROM discussion_rooms WHERE id = ?", [roomId]
+//     );
+
+//     const [threads] = await pool.execute(`
+//       SELECT t.*,
+//              IFNULL(a.role, 'ai') as role,
+//              CASE WHEN t.student_id = 'AI' THEN 'AI 助教'
+//                   WHEN a.role = 'teacher' THEN (SELECT name FROM teachers WHERE teacher_id = a.username LIMIT 1)
+//                   ELSE (SELECT name FROM students WHERE student_id = a.username LIMIT 1)
+//              END as author_name
+//       FROM threads t
+//       LEFT JOIN accounts a ON t.student_id != 'AI' AND t.student_id = a.id
+//       WHERE t.room_id = ?
+//       ORDER BY t.created_at ASC
+//     `, [roomId]);
+
+//     res.json({ room: room[0], threads });
+//   } catch (error) {
+//     res.status(500).json({ message: "讀取內容失敗" });
+//   }
+// });
+
+// // 新增留言
+// app.post("/api/discussions/:roomId/threads", async (req, res) => {
+//   const { roomId } = req.params;
+//   const { user_id, content, parent_thread_id } = req.body;
+
+//   if (!content) return res.status(400).json({ message: "內容不能為空" });
+
+//   try {
+
+//     const [acc] = await pool.execute("SELECT id, role FROM accounts WHERE username = ?", [user_id]);
+//     if (acc.length === 0) return res.status(404).json({ message: "找不到使用者" });
+
+//     const [insertResult] = await pool.execute(
+//       "INSERT INTO threads (room_id, student_id, content, parent_thread_id) VALUES (?, ?, ?, ?)",
+//       [roomId, acc[0].id, content, parent_thread_id || null]
+//     );
+
+//     const [roomRows] = await pool.execute(
+//       "SELECT title, content, ai_prompt, file_path FROM discussion_rooms WHERE id = ?",
+//       [roomId]
+//     );
+//     const roomInfo = roomRows[0];
+//     const aiPrompt = roomRows[0]?.ai_prompt;
+
+//     if (aiPrompt) {
+//       let currentUserRoleStr = "學生";
+//       if (acc[0].role === "teacher") currentUserRoleStr = "老師";
+//       else if (acc[0].role === "ta") currentUserRoleStr = "助教";
+
+//       //讀取並解析 PDF 內容
+//       let pdfText = "";
+//       if (roomInfo.file_path) {
+//         try {
+//           const fullPath = path.resolve(roomInfo.file_path);
+//           if (fs.existsSync(fullPath)) {
+
+//             const dataBuffer = new Uint8Array(fs.readFileSync(fullPath));
+
+//             // 載入 PDF 文件
+//             const loadingTask = pdfjsLib.getDocument({ data: dataBuffer });
+//             const pdfDocument = await loadingTask.promise;
+
+//             const maxPages = Math.min(pdfDocument.numPages, 20);
+
+//             // 逐頁取出文字
+//             for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+//               const page = await pdfDocument.getPage(pageNum);
+//               const textContent = await page.getTextContent();
+
+//               // 將該頁的所有文字片段組合起來
+//               const pageText = textContent.items.map(item => item.str).join(" ");
+//               pdfText += pageText + "\n";
+//             }
+
+//             pdfText = pdfText.substring(0, 50000);
+//           }
+//         } catch (pdfErr) {
+//           console.error("PDF 解析失敗 (pdfjs-dist):", pdfErr.message);
+//           // 就算解析失敗，程式依然會繼續執行，只是沒有附件內容
+//         }
+//       }
+
+//       // 放入最新留言
+//       let threadChain = [{
+//         role: currentUserRoleStr,
+//         content: content
+//       }];
+
+//       // 往上追溯所有的父留言
+//       let currentParentId = parent_thread_id;
+//       while (currentParentId) {
+//         const [parentRows] = await pool.execute(
+//           `SELECT t.parent_thread_id, t.content, t.student_id, a.role as acc_role
+//            FROM threads t
+//            LEFT JOIN accounts a ON t.student_id != 'AI' AND t.student_id = a.id
+//            WHERE t.id = ?`,
+//           [currentParentId]
+//         );
+
+//         if (parentRows.length === 0) break;
+//         const pRow = parentRows[0];
+
+//         // 轉換父留言的身分
+//         let pRoleStr = "學生";
+//         if (pRow.student_id === "AI") pRoleStr = "AI";
+//         else if (pRow.acc_role === "teacher") pRoleStr = "老師";
+//         else if (pRow.acc_role === "ta") pRoleStr = "助教";
+
+//         // 將父留言推入陣列
+//         threadChain.push({
+//           role: pRoleStr,
+//           content: pRow.content
+//         });
+
+//         // 將指標移到上一層的 parent_thread_id 繼續找
+//         currentParentId = pRow.parent_thread_id;
+//       }
+
+//       // 反轉陣列
+//       threadChain.reverse();
+
+//       let formattedConversation = "";
+//       threadChain.forEach((msg, index) => {
+//         formattedConversation += `(${msg.role}): ${msg.content}\n`;
+//       });
+
+//       // 最終要傳給 AI 的完整內容
+//       let contextString = `主題:${roomInfo.title}\n內容:${roomInfo.content || ''}\n`;
+//       if (pdfText) {
+//         contextString += `\n【附件PDF內容】:\n${pdfText}\n`;
+//       }
+
+//       const finalUserPrompt = `{\n${contextString}\n【歷史討論紀錄】:\n${formattedConversation}}`;
+
+//       // 呼叫 OpenAI API
+//       const messages = [
+//         { role: "system", content: aiPrompt },
+//         { role: "user", content: finalUserPrompt }
+//       ];
+
+//       const response = await fetch("https://api.openai.com/v1/chat/completions", {
+//         method: "POST",
+//         headers: {
+//           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+//           "Content-Type": "application/json"
+//         },
+//         body: JSON.stringify({
+//           model: "gpt-4o-mini",
+//           messages
+//         })
+//       });
+
+//       const data = await response.json();
+//       const aiReply = data.choices?.[0]?.message?.content;
+
+//       if (aiReply) {
+//         // 存 AI 回覆
+//         const aiParentId = insertResult.insertId;
+
+//         await pool.execute(
+//           "INSERT INTO threads (room_id, student_id, content, parent_thread_id) VALUES (?, ?, ?, ?)",
+//           [roomId, "AI", aiReply, aiParentId] // AI 回覆指向原留言
+//         );
 //       }
 //     }
 
-//     await connection.execute(
-//       `INSERT INTO announcements (course_id, teacher_id, title, content, is_pinned) VALUES (?, ?, ?, ?, ?)`,
-//       [courseId, finalTeacherId, title, content || "", Boolean(isPinned)]
-//     );
+//     res.json({ message: "發表成功" });
+//   } catch (error) {
+//     console.error("發表留言失敗:", error.message);
+//     res.status(500).json({ message: "伺服器錯誤" });
+//   }
+// });
 
+// // 老師發布作業（附件統一在作業主表 attachments_json；子題不再掛檔）
+// app.post("/api/courses/:courseId/homework", upload.any(), async (req, res) => {
+//   const courseId = req.params.courseId;
+//   const { title, deadline, description, questions } = req.body;
+//   let connection;
+//   try {
+//     connection = await pool.getConnection();
+//     await connection.beginTransaction();
+
+//     const [hwResult] = await connection.execute(
+//       "INSERT INTO homeworks (course_id, title, deadline, description, attachments_json) VALUES (?, ?, ?, ?, ?)",
+//       [courseId, title, deadline, description || '', "[]"]
+//     );
+//     const hwId = hwResult.insertId;
+
+//     const mainFiles = (req.files || []).filter((f) => f.fieldname === "homework_files" || f.fieldname === "homework_file");
+//     const attachments = [];
+//     for (const file of mainFiles) {
+//       const correctFileName = Buffer.from(file.originalname, "latin1").toString("utf8");
+//       attachments.push({
+//         file_name: correctFileName,
+//         file_path: `/uploads/${file.filename}`,
+//       });
+//     }
+//     await connection.execute("UPDATE homeworks SET attachments_json = ? WHERE id = ?", [
+//       JSON.stringify(attachments),
+//       hwId,
+//     ]);
+
+//     if (questions) {
+//       const parsedQuestions = JSON.parse(questions);
+//       for (let i = 0; i < parsedQuestions.length; i++) {
+//         const q = parsedQuestions[i];
+//         await connection.execute(
+//           `INSERT INTO homework_questions
+//           (homework_id, question_order, title, description, answer_format, has_attachment, file_name, file_path, ai_prompt, discussion_prompt)
+//           VALUES (?, ?, ?, ?, ?, 0, NULL, NULL, ?, ?)`,
+//           [
+//             hwId,
+//             i + 1,
+//             q.title,
+//             q.description || "",
+//             q.answerFormat,
+//             q.aiPrompt || q.ai_prompt || q.gradingPrompt || "",
+//             q.discussionPrompt || q.discussion_prompt || "",
+//           ]
+//         );
+//       }
+//     }
 //     await connection.commit();
-//     return res.json({ message: "公告新增成功" });
+//     res.json({ message: "作業發布成功！" });
 //   } catch (error) {
 //     if (connection) await connection.rollback();
-//     return res.status(400).json({ message: error.message || "公告新增失敗" });
+//     res.status(500).json({ message: "發布失敗: " + error.message });
 //   } finally {
 //     if (connection) connection.release();
 //   }
 // });
 
-// 取得課程討論區列表
-app.get("/api/courses/:courseCode/discussions", async (req, res) => {
-  const { courseCode } = req.params;
-  try {
-    const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+// // 獲取課程作業列表
+// app.get("/api/courses/:courseId/homework", async (req, res) => {
+//   const { courseId } = req.params;
+//   const { userId, role } = req.query;
+//   try {
+//     const [homeworks] = await pool.execute(
+//       "SELECT id, title, deadline, description FROM homeworks WHERE course_id = ? ORDER BY id DESC",
+//       [courseId]
+//     );
+//     if (role === 'student' && userId) {
+//       for (let hw of homeworks) {
+//         const [subs] = await pool.execute(
+//           "SELECT id as submissionId, score, feedback FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
+//           [hw.id, userId]
+//         );
 
-    if (courseRows.length === 0) {
-      return res.status(404).json({ message: "找不到課程" });
-    }
-    const courseId = courseRows[0].id;
+//         if (subs.length > 0) {
+//           hw.submissionId = subs[0].submissionId;
+//           hw.score = subs[0].score;
+//           hw.feedback = subs[0].feedback;
+//         }
+//       }
+//     }
 
-    const [rows] = await pool.execute(
-      `SELECT id, title, created_at as date, '教授' as author
-       FROM discussion_rooms
-       WHERE course_id = ?
-       ORDER BY created_at DESC`,
-      [courseId]
-    );
+//     else if (role === 'teacher') {
+//       for (let hw of homeworks) {
+//         const [subStats] = await pool.execute(
+//           `SELECT
+//              COUNT(*) as submitCount,
+//              SUM(CASE WHEN score IS NOT NULL THEN 1 ELSE 0 END) as gradedCount
+//            FROM homework_submissions
+//            WHERE homework_id = ?`,
+//           [hw.id]
+//         );
+//         hw.submitCount = subStats[0].submitCount || 0;
+//         hw.gradedCount = subStats[0].gradedCount || 0;
+//       }
+//     }
+//     res.json(homeworks);
+//   } catch (error) {
+//     res.status(500).json({ message: "讀取列表失敗" });
+//   }
+// });
 
-    res.json(rows);
-  } catch (error) {
-    console.error("資料庫查詢失敗:", error.message);
-    res.status(500).json({ message: "讀取討論區失敗", error: error.message });
-  }
-});
+// // 獲取單一作業詳情
+// app.get("/api/homework/:hwId", async (req, res) => {
+//   const { hwId } = req.params;
+//   try {
+//     const [hws] = await pool.execute("SELECT * FROM homeworks WHERE id = ?", [hwId]);
+//     if (hws.length === 0) return res.status(404).json({ message: "找不到作業" });
+//     const hw = hws[0];
+//     let attachments = [];
+//     try {
+//       if (hw.attachments_json) attachments = JSON.parse(hw.attachments_json);
+//     } catch {
+//       attachments = [];
+//     }
+//     hw.attachments = Array.isArray(attachments) ? attachments : [];
+//     hw.attachment_url = hw.attachments[0]?.file_path || null;
 
-// 新增討論主題
-app.post("/api/discussions/create", uploadPdf.single("file"), async (req, res) => {
-  const { course_code, title, content, ai_prompt } = req.body; // 接收 content
-  const file = req.file; //取出檔案
-  if (!course_code || !title) return res.status(400).json({ message: "缺少必要參數" });
+//     const [qs] = await pool.execute(
+//       "SELECT * FROM homework_questions WHERE homework_id = ? ORDER BY question_order",
+//       [hwId]
+//     );
+//     hw.questions = qs.map((q) => ({
+//       ...q,
+//       questionOrder: q.question_order,
+//       answerFormat: q.answer_format,
+//       hasAttachment: Boolean(q.has_attachment),
+//       filePath: q.file_path,
+//       fileName: q.file_name,
+//       discussionPrompt: q.discussion_prompt || "",
+//     }));
+//     res.json(hw);
+//   } catch (error) {
+//     res.status(500).json({ message: "讀取作業失敗" });
+//   }
+// });
 
-  try {
-    const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [course_code]);
-    if (courseRows.length === 0) throw new Error("找不到課程");
-    const courseId = courseRows[0].id;
+// // 學生繳交作業
+// app.post("/api/homework/:hwId/submit", upload.single("file"), async (req, res) => {
+//   const { hwId } = req.params;
+//   const { studentId, answerText } = req.body;
+//   try {
+//     const correctFileName = req.file ? Buffer.from(req.file.originalname, 'latin1').toString('utf8') : null;
+//     const sql = `
+//       INSERT INTO homework_submissions (homework_id, student_id, answer_text, file_name, file_path)
+//       VALUES (?, ?, ?, ?, ?)
+//       ON DUPLICATE KEY UPDATE
+//         answer_text = VALUES(answer_text), file_name = VALUES(file_name),
+//         file_path = VALUES(file_path), submitted_at = CURRENT_TIMESTAMP
+//     `;
+//     await pool.execute(sql, [
+//       hwId, studentId, answerText || null,
+//       req.file ? correctFileName : null,
+//       req.file ? `/uploads/${req.file.filename}` : null
+//     ]);
+//     const [rows] = await pool.execute(
+//       "SELECT id FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
+//       [hwId, studentId]
+//     );
+//     await appendSubmissionHistory(rows[0]?.id, "submit", {
+//       studentId,
+//       hasFile: Boolean(req.file),
+//       fileName: correctFileName,
+//       answerText: answerText || "",
+//     });
+//     res.json({ message: "作業繳交成功！" });
+//   } catch (error) {
+//     res.status(500).json({ message: "繳交失敗: " + error.message });
+//   }
+// });
 
-    const filePath = file ? `uploads/${file.filename}` : null;
+// // 學生讀取自己的繳交紀錄
+// app.get("/api/homework/:hwId/my-submission", async (req, res) => {
+//   const { hwId } = req.params;
+//   const { studentId } = req.query;
+//   try {
+//     const [rows] = await pool.execute(
+//       "SELECT id, answer_text, file_name, file_path, score, feedback, graded_details, ai_estimated_score, ai_estimated_reason, ai_estimated_at FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
+//       [hwId, studentId]
+//     );
+//     if (rows.length === 0) return res.json(null); // 代表還沒繳交過
+//     res.json(rows[0]);
+//   } catch (error) {
+//     res.status(500).json({ message: "讀取繳交紀錄失敗" });
+//   }
+// });
 
-    await pool.execute(
-      "INSERT INTO discussion_rooms (course_id, title, content, ai_prompt, file_path) VALUES (?, ?, ?, ?, ?)",
-      [courseId, title, content || "", ai_prompt || "", filePath]
-    );
-    res.json({ message: "討論區建立成功" });
-  } catch (error) {
-    res.status(500).json({ message: "建立失敗: " + error.message });
-  }
-});
+// // 學生收回作業
+// app.delete("/api/homework/:hwId/submit", async (req, res) => {
+//   const { hwId } = req.params;
+//   const { studentId } = req.body;
+//   try {
+//     const [rows] = await pool.execute(
+//       "SELECT id FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
+//       [hwId, studentId]
+//     );
+//     const subId = rows[0]?.id || null;
+//     await appendSubmissionHistory(subId, "unsubmit", { studentId });
+//     await pool.execute("DELETE FROM homework_submissions WHERE homework_id = ? AND student_id = ?", [hwId, studentId]);
+//     res.json({ message: "作業已收回" });
+//   } catch (error) {
+//     res.status(500).json({ message: "收回失敗" });
+//   }
+// });
 
-//刪除討論區
-app.delete('/api/discussions/:id', async (req, res) => {
-  const { id } = req.params
+// // 老師讀取繳交清單
+// app.get("/api/homework/:hwId/submissions", async (req, res) => {
+//   const { hwId } = req.params;
+//   try {
+//     const [rows] = await pool.execute(
+//       "SELECT id, student_id as studentId, submitted_at as submittedAt, score, feedback, ai_estimated_score as aiEstimatedScore, ai_estimated_at as aiEstimatedAt FROM homework_submissions WHERE homework_id = ?",
+//       [hwId]
+//     );
+//     res.json(rows);
+//   } catch (error) {
+//     res.status(500).json({ message: "讀取清單失敗" });
+//   }
+// });
 
-  try {
-    await pool.execute(
-      'DELETE FROM discussion_rooms WHERE id = ?',
-      [id]
-    )
+// // 老師讀取單一學生的提交內容
+// app.get("/api/submissions/:submissionId", async (req, res) => {
+//   const { submissionId } = req.params;
+//   try {
+//     const [rows] = await pool.execute(
+//       `SELECT hs.*, hs.student_id as studentId, hs.submitted_at as submittedAt, hs.answer_text as answerText,
+//               h.title as homeworkTitle
+//        FROM homework_submissions hs
+//        JOIN homeworks h ON h.id = hs.homework_id
+//        WHERE hs.id = ?`,
+//       [submissionId]
+//     );
+//     if (rows.length === 0) return res.status(404).json({ message: "找不到資料" });
+//     res.json(rows[0]);
+//   } catch (error) {
+//     res.status(500).json({ message: "讀取失敗" });
+//   }
+// });
 
-    res.json({ message: '刪除成功' })
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: '刪除失敗' })
-  }
-})
+// // 老師批改評分
+// app.post("/api/submissions/:submissionId/grade", async (req, res) => {
+//   const { submissionId } = req.params;
+//   const { score, feedback, gradedDetails } = req.body;
+//   try {
+//     await pool.execute(
+//       "UPDATE homework_submissions SET score = ?, feedback = ?, graded_details = ?, graded_at = CURRENT_TIMESTAMP WHERE id = ?",
+//       [
+//         score ?? null,
+//         feedback ?? null,
+//         gradedDetails ? JSON.stringify(gradedDetails) : null,
+//         submissionId
+//       ]
+//     );
+//     await appendSubmissionHistory(submissionId, "teacher_grade", {
+//       score: score ?? null,
+//       feedback: feedback ?? null,
+//       gradedDetails: gradedDetails || null,
+//     });
+//     res.json({ message: "批改完成！" });
+//   } catch (error) {
+//     console.error("詳細錯誤：", error);
+//     res.status(500).json({ message: "評分失敗" });
+//   }
+// });
 
-// 取得特定討論區的主題內容與所有留言
-app.get("/api/discussions/:roomId/threads", async (req, res) => {
-  const { roomId } = req.params;
-  try {
-    const [room] = await pool.execute(
-      "SELECT title, content, file_path FROM discussion_rooms WHERE id = ?", [roomId]
-    );
+// app.get("/api/submissions/:submissionId/history", async (req, res) => {
+//   const { submissionId } = req.params;
+//   try {
+//     const [subRows] = await pool.execute(
+//       "SELECT id, homework_id, student_id as studentId, score, feedback, ai_estimated_score as aiEstimatedScore, ai_estimated_reason as aiEstimatedReason, ai_estimated_at as aiEstimatedAt, submitted_at as submittedAt, graded_at as gradedAt FROM homework_submissions WHERE id = ?",
+//       [submissionId]
+//     );
+//     if (subRows.length === 0) return res.status(404).json({ message: "找不到繳交紀錄" });
 
-    const [threads] = await pool.execute(`
-      SELECT t.*,
-             IFNULL(a.role, 'ai') as role,
-             CASE WHEN t.student_id = 'AI' THEN 'AI 助教'
-                  WHEN a.role = 'teacher' THEN (SELECT name FROM teachers WHERE teacher_id = a.username LIMIT 1)
-                  ELSE (SELECT name FROM students WHERE student_id = a.username LIMIT 1)
-             END as author_name
-      FROM threads t
-      LEFT JOIN accounts a ON t.student_id != 'AI' AND t.student_id = a.id
-      WHERE t.room_id = ?
-      ORDER BY t.created_at ASC
-    `, [roomId]);
+//     const [historyRows] = await pool.execute(
+//       "SELECT id, event_type as eventType, payload_json as payloadJson, created_at as createdAt FROM homework_submission_histories WHERE submission_id = ? ORDER BY created_at ASC",
+//       [submissionId]
+//     );
+//     const history = historyRows.map((r) => {
+//       let payload = {};
+//       try { payload = r.payloadJson ? JSON.parse(r.payloadJson) : {}; } catch {}
+//       return { id: r.id, eventType: r.eventType, createdAt: r.createdAt, payload };
+//     });
 
-    res.json({ room: room[0], threads });
-  } catch (error) {
-    res.status(500).json({ message: "讀取內容失敗" });
-  }
-});
-
-// 新增留言
-app.post("/api/discussions/:roomId/threads", async (req, res) => {
-  const { roomId } = req.params;
-  const { user_id, content, parent_thread_id } = req.body;
-
-  if (!content) return res.status(400).json({ message: "內容不能為空" });
-
-  try {
-
-    const [acc] = await pool.execute("SELECT id, role FROM accounts WHERE username = ?", [user_id]);
-    if (acc.length === 0) return res.status(404).json({ message: "找不到使用者" });
-
-    const [insertResult] = await pool.execute(
-      "INSERT INTO threads (room_id, student_id, content, parent_thread_id) VALUES (?, ?, ?, ?)",
-      [roomId, acc[0].id, content, parent_thread_id || null]
-    );
-
-    const [roomRows] = await pool.execute(
-      "SELECT title, content, ai_prompt, file_path FROM discussion_rooms WHERE id = ?",
-      [roomId]
-    );
-    const roomInfo = roomRows[0];
-    const aiPrompt = roomRows[0]?.ai_prompt;
-
-    if (aiPrompt) {
-      let currentUserRoleStr = "學生";
-      if (acc[0].role === "teacher") currentUserRoleStr = "老師";
-      else if (acc[0].role === "ta") currentUserRoleStr = "助教";
-
-      //讀取並解析 PDF 內容
-      let pdfText = "";
-      if (roomInfo.file_path) {
-        try {
-          const fullPath = path.resolve(roomInfo.file_path);
-          if (fs.existsSync(fullPath)) {
-
-            const dataBuffer = new Uint8Array(fs.readFileSync(fullPath));
-
-            // 載入 PDF 文件
-            const loadingTask = pdfjsLib.getDocument({ data: dataBuffer });
-            const pdfDocument = await loadingTask.promise;
-
-            const maxPages = Math.min(pdfDocument.numPages, 20);
-
-            // 逐頁取出文字
-            for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
-              const page = await pdfDocument.getPage(pageNum);
-              const textContent = await page.getTextContent();
-
-              // 將該頁的所有文字片段組合起來
-              const pageText = textContent.items.map(item => item.str).join(" ");
-              pdfText += pageText + "\n";
-            }
-
-            pdfText = pdfText.substring(0, 50000);
-          }
-        } catch (pdfErr) {
-          console.error("PDF 解析失敗 (pdfjs-dist):", pdfErr.message);
-          // 就算解析失敗，程式依然會繼續執行，只是沒有附件內容
-        }
-      }
-
-      // 放入最新留言
-      let threadChain = [{
-        role: currentUserRoleStr,
-        content: content
-      }];
-
-      // 往上追溯所有的父留言
-      let currentParentId = parent_thread_id;
-      while (currentParentId) {
-        const [parentRows] = await pool.execute(
-          `SELECT t.parent_thread_id, t.content, t.student_id, a.role as acc_role
-           FROM threads t
-           LEFT JOIN accounts a ON t.student_id != 'AI' AND t.student_id = a.id
-           WHERE t.id = ?`,
-          [currentParentId]
-        );
-
-        if (parentRows.length === 0) break;
-        const pRow = parentRows[0];
-
-        // 轉換父留言的身分
-        let pRoleStr = "學生";
-        if (pRow.student_id === "AI") pRoleStr = "AI";
-        else if (pRow.acc_role === "teacher") pRoleStr = "老師";
-        else if (pRow.acc_role === "ta") pRoleStr = "助教";
-
-        // 將父留言推入陣列
-        threadChain.push({
-          role: pRoleStr,
-          content: pRow.content
-        });
-
-        // 將指標移到上一層的 parent_thread_id 繼續找
-        currentParentId = pRow.parent_thread_id;
-      }
-
-      // 反轉陣列
-      threadChain.reverse();
-
-      let formattedConversation = "";
-      threadChain.forEach((msg, index) => {
-        formattedConversation += `(${msg.role}): ${msg.content}\n`;
-      });
-
-      // 最終要傳給 AI 的完整內容
-      let contextString = `主題:${roomInfo.title}\n內容:${roomInfo.content || ''}\n`;
-      if (pdfText) {
-        contextString += `\n【附件PDF內容】:\n${pdfText}\n`;
-      }
-
-      const finalUserPrompt = `{\n${contextString}\n【歷史討論紀錄】:\n${formattedConversation}}`;
-
-      // 呼叫 OpenAI API
-      const messages = [
-        { role: "system", content: aiPrompt },
-        { role: "user", content: finalUserPrompt }
-      ];
-
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages
-        })
-      });
-
-      const data = await response.json();
-      const aiReply = data.choices?.[0]?.message?.content;
-
-      if (aiReply) {
-        // 存 AI 回覆
-        const aiParentId = insertResult.insertId;
-
-        await pool.execute(
-          "INSERT INTO threads (room_id, student_id, content, parent_thread_id) VALUES (?, ?, ?, ?)",
-          [roomId, "AI", aiReply, aiParentId] // AI 回覆指向原留言
-        );
-      }
-    }
-
-    res.json({ message: "發表成功" });
-  } catch (error) {
-    console.error("發表留言失敗:", error.message);
-    res.status(500).json({ message: "伺服器錯誤" });
-  }
-});
-
-// 老師發布作業（附件統一在作業主表 attachments_json；子題不再掛檔）
-app.post("/api/courses/:courseId/homework", upload.any(), async (req, res) => {
-  const courseId = req.params.courseId;
-  const { title, deadline, description, questions } = req.body;
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    const [hwResult] = await connection.execute(
-      "INSERT INTO homeworks (course_id, title, deadline, description, attachments_json) VALUES (?, ?, ?, ?, ?)",
-      [courseId, title, deadline, description || '', "[]"]
-    );
-    const hwId = hwResult.insertId;
-
-    const mainFiles = (req.files || []).filter((f) => f.fieldname === "homework_files" || f.fieldname === "homework_file");
-    const attachments = [];
-    for (const file of mainFiles) {
-      const correctFileName = Buffer.from(file.originalname, "latin1").toString("utf8");
-      attachments.push({
-        file_name: correctFileName,
-        file_path: `/uploads/${file.filename}`,
-      });
-    }
-    await connection.execute("UPDATE homeworks SET attachments_json = ? WHERE id = ?", [
-      JSON.stringify(attachments),
-      hwId,
-    ]);
-
-    if (questions) {
-      const parsedQuestions = JSON.parse(questions);
-      for (let i = 0; i < parsedQuestions.length; i++) {
-        const q = parsedQuestions[i];
-        await connection.execute(
-          `INSERT INTO homework_questions
-          (homework_id, question_order, title, description, answer_format, has_attachment, file_name, file_path, ai_prompt, discussion_prompt)
-          VALUES (?, ?, ?, ?, ?, 0, NULL, NULL, ?, ?)`,
-          [
-            hwId,
-            i + 1,
-            q.title,
-            q.description || "",
-            q.answerFormat,
-            q.aiPrompt || q.ai_prompt || q.gradingPrompt || "",
-            q.discussionPrompt || q.discussion_prompt || "",
-          ]
-        );
-      }
-    }
-    await connection.commit();
-    res.json({ message: "作業發布成功！" });
-  } catch (error) {
-    if (connection) await connection.rollback();
-    res.status(500).json({ message: "發布失敗: " + error.message });
-  } finally {
-    if (connection) connection.release();
-  }
-});
-
-// 獲取課程作業列表
-app.get("/api/courses/:courseId/homework", async (req, res) => {
-  const { courseId } = req.params;
-  const { userId, role } = req.query;
-  try {
-    const [homeworks] = await pool.execute(
-      "SELECT id, title, deadline, description FROM homeworks WHERE course_id = ? ORDER BY id DESC",
-      [courseId]
-    );
-    if (role === 'student' && userId) {
-      for (let hw of homeworks) {
-        const [subs] = await pool.execute(
-          "SELECT id as submissionId, score, feedback FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
-          [hw.id, userId]
-        );
-
-        if (subs.length > 0) {
-          hw.submissionId = subs[0].submissionId;
-          hw.score = subs[0].score;
-          hw.feedback = subs[0].feedback;
-        }
-      }
-    }
-
-    else if (role === 'teacher') {
-      for (let hw of homeworks) {
-        const [subStats] = await pool.execute(
-          `SELECT
-             COUNT(*) as submitCount,
-             SUM(CASE WHEN score IS NOT NULL THEN 1 ELSE 0 END) as gradedCount
-           FROM homework_submissions
-           WHERE homework_id = ?`,
-          [hw.id]
-        );
-        hw.submitCount = subStats[0].submitCount || 0;
-        hw.gradedCount = subStats[0].gradedCount || 0;
-      }
-    }
-    res.json(homeworks);
-  } catch (error) {
-    res.status(500).json({ message: "讀取列表失敗" });
-  }
-});
-
-// 獲取單一作業詳情
-app.get("/api/homework/:hwId", async (req, res) => {
-  const { hwId } = req.params;
-  try {
-    const [hws] = await pool.execute("SELECT * FROM homeworks WHERE id = ?", [hwId]);
-    if (hws.length === 0) return res.status(404).json({ message: "找不到作業" });
-    const hw = hws[0];
-    let attachments = [];
-    try {
-      if (hw.attachments_json) attachments = JSON.parse(hw.attachments_json);
-    } catch {
-      attachments = [];
-    }
-    hw.attachments = Array.isArray(attachments) ? attachments : [];
-    hw.attachment_url = hw.attachments[0]?.file_path || null;
-
-    const [qs] = await pool.execute(
-      "SELECT * FROM homework_questions WHERE homework_id = ? ORDER BY question_order",
-      [hwId]
-    );
-    hw.questions = qs.map((q) => ({
-      ...q,
-      questionOrder: q.question_order,
-      answerFormat: q.answer_format,
-      hasAttachment: Boolean(q.has_attachment),
-      filePath: q.file_path,
-      fileName: q.file_name,
-      discussionPrompt: q.discussion_prompt || "",
-    }));
-    res.json(hw);
-  } catch (error) {
-    res.status(500).json({ message: "讀取作業失敗" });
-  }
-});
-
-// 學生繳交作業
-app.post("/api/homework/:hwId/submit", upload.single("file"), async (req, res) => {
-  const { hwId } = req.params;
-  const { studentId, answerText } = req.body;
-  try {
-    const correctFileName = req.file ? Buffer.from(req.file.originalname, 'latin1').toString('utf8') : null;
-    const sql = `
-      INSERT INTO homework_submissions (homework_id, student_id, answer_text, file_name, file_path)
-      VALUES (?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        answer_text = VALUES(answer_text), file_name = VALUES(file_name),
-        file_path = VALUES(file_path), submitted_at = CURRENT_TIMESTAMP
-    `;
-    await pool.execute(sql, [
-      hwId, studentId, answerText || null,
-      req.file ? correctFileName : null,
-      req.file ? `/uploads/${req.file.filename}` : null
-    ]);
-    const [rows] = await pool.execute(
-      "SELECT id FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
-      [hwId, studentId]
-    );
-    await appendSubmissionHistory(rows[0]?.id, "submit", {
-      studentId,
-      hasFile: Boolean(req.file),
-      fileName: correctFileName,
-      answerText: answerText || "",
-    });
-    res.json({ message: "作業繳交成功！" });
-  } catch (error) {
-    res.status(500).json({ message: "繳交失敗: " + error.message });
-  }
-});
-
-// 學生讀取自己的繳交紀錄
-app.get("/api/homework/:hwId/my-submission", async (req, res) => {
-  const { hwId } = req.params;
-  const { studentId } = req.query;
-  try {
-    const [rows] = await pool.execute(
-      "SELECT id, answer_text, file_name, file_path, score, feedback, graded_details, ai_estimated_score, ai_estimated_reason, ai_estimated_at FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
-      [hwId, studentId]
-    );
-    if (rows.length === 0) return res.json(null); // 代表還沒繳交過
-    res.json(rows[0]);
-  } catch (error) {
-    res.status(500).json({ message: "讀取繳交紀錄失敗" });
-  }
-});
-
-// 學生收回作業
-app.delete("/api/homework/:hwId/submit", async (req, res) => {
-  const { hwId } = req.params;
-  const { studentId } = req.body;
-  try {
-    const [rows] = await pool.execute(
-      "SELECT id FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
-      [hwId, studentId]
-    );
-    const subId = rows[0]?.id || null;
-    await appendSubmissionHistory(subId, "unsubmit", { studentId });
-    await pool.execute("DELETE FROM homework_submissions WHERE homework_id = ? AND student_id = ?", [hwId, studentId]);
-    res.json({ message: "作業已收回" });
-  } catch (error) {
-    res.status(500).json({ message: "收回失敗" });
-  }
-});
-
-// 老師讀取繳交清單
-app.get("/api/homework/:hwId/submissions", async (req, res) => {
-  const { hwId } = req.params;
-  try {
-    const [rows] = await pool.execute(
-      "SELECT id, student_id as studentId, submitted_at as submittedAt, score, feedback, ai_estimated_score as aiEstimatedScore, ai_estimated_at as aiEstimatedAt FROM homework_submissions WHERE homework_id = ?",
-      [hwId]
-    );
-    res.json(rows);
-  } catch (error) {
-    res.status(500).json({ message: "讀取清單失敗" });
-  }
-});
-
-// 老師讀取單一學生的提交內容
-app.get("/api/submissions/:submissionId", async (req, res) => {
-  const { submissionId } = req.params;
-  try {
-    const [rows] = await pool.execute(
-      `SELECT hs.*, hs.student_id as studentId, hs.submitted_at as submittedAt, hs.answer_text as answerText,
-              h.title as homeworkTitle
-       FROM homework_submissions hs
-       JOIN homeworks h ON h.id = hs.homework_id
-       WHERE hs.id = ?`,
-      [submissionId]
-    );
-    if (rows.length === 0) return res.status(404).json({ message: "找不到資料" });
-    res.json(rows[0]);
-  } catch (error) {
-    res.status(500).json({ message: "讀取失敗" });
-  }
-});
-
-// 老師批改評分
-app.post("/api/submissions/:submissionId/grade", async (req, res) => {
-  const { submissionId } = req.params;
-  const { score, feedback, gradedDetails } = req.body;
-  try {
-    await pool.execute(
-      "UPDATE homework_submissions SET score = ?, feedback = ?, graded_details = ?, graded_at = CURRENT_TIMESTAMP WHERE id = ?",
-      [
-        score ?? null,
-        feedback ?? null,
-        gradedDetails ? JSON.stringify(gradedDetails) : null,
-        submissionId
-      ]
-    );
-    await appendSubmissionHistory(submissionId, "teacher_grade", {
-      score: score ?? null,
-      feedback: feedback ?? null,
-      gradedDetails: gradedDetails || null,
-    });
-    res.json({ message: "批改完成！" });
-  } catch (error) {
-    console.error("詳細錯誤：", error);
-    res.status(500).json({ message: "評分失敗" });
-  }
-});
-
-app.get("/api/submissions/:submissionId/history", async (req, res) => {
-  const { submissionId } = req.params;
-  try {
-    const [subRows] = await pool.execute(
-      "SELECT id, homework_id, student_id as studentId, score, feedback, ai_estimated_score as aiEstimatedScore, ai_estimated_reason as aiEstimatedReason, ai_estimated_at as aiEstimatedAt, submitted_at as submittedAt, graded_at as gradedAt FROM homework_submissions WHERE id = ?",
-      [submissionId]
-    );
-    if (subRows.length === 0) return res.status(404).json({ message: "找不到繳交紀錄" });
-
-    const [historyRows] = await pool.execute(
-      "SELECT id, event_type as eventType, payload_json as payloadJson, created_at as createdAt FROM homework_submission_histories WHERE submission_id = ? ORDER BY created_at ASC",
-      [submissionId]
-    );
-    const history = historyRows.map((r) => {
-      let payload = {};
-      try { payload = r.payloadJson ? JSON.parse(r.payloadJson) : {}; } catch {}
-      return { id: r.id, eventType: r.eventType, createdAt: r.createdAt, payload };
-    });
-
-    return res.json({
-      submission: subRows[0],
-      finalAiScore: subRows[0].aiEstimatedScore,
-      history,
-    });
-  } catch (error) {
-    return res.status(500).json({ message: "讀取歷程失敗" });
-  }
-});
+//     return res.json({
+//       submission: subRows[0],
+//       finalAiScore: subRows[0].aiEstimatedScore,
+//       history,
+//     });
+//   } catch (error) {
+//     return res.status(500).json({ message: "讀取歷程失敗" });
+//   }
+// });
 
 // 儲存聊天紀錄
 app.post("/api/ai-chat", async (req, res) => {
@@ -2305,35 +1648,35 @@ app.post("/api/homework/:hwId/self-estimate", async (req, res) => {
   }
 });
 
-app.get("/api/courses/:courseId/materials", async (req, res) => {
-  const { courseId } = req.params;
-  try {
-    const [rows] = await pool.execute(
-      "SELECT id, course_id as courseId, uploader_id as uploaderId, file_name as fileName, file_path as filePath, created_at as createdAt FROM course_materials WHERE course_id = ? ORDER BY created_at DESC",
-      [courseId]
-    );
-    return res.json({ materials: rows });
-  } catch (error) {
-    return res.status(500).json({ message: "讀取教材失敗" });
-  }
-});
+// app.get("/api/courses/:courseId/materials", async (req, res) => {
+//   const { courseId } = req.params;
+//   try {
+//     const [rows] = await pool.execute(
+//       "SELECT id, course_id as courseId, uploader_id as uploaderId, file_name as fileName, file_path as filePath, created_at as createdAt FROM course_materials WHERE course_id = ? ORDER BY created_at DESC",
+//       [courseId]
+//     );
+//     return res.json({ materials: rows });
+//   } catch (error) {
+//     return res.status(500).json({ message: "讀取教材失敗" });
+//   }
+// });
 
-app.post("/api/courses/:courseId/materials", upload.single("file"), async (req, res) => {
-  const { courseId } = req.params;
-  const { uploaderId } = req.body;
-  if (!req.file) return res.status(400).json({ message: "請選擇檔案" });
-  try {
-    const fileName = Buffer.from(req.file.originalname, "latin1").toString("utf8");
-    const filePath = `/uploads/${req.file.filename}`;
-    await pool.execute(
-      "INSERT INTO course_materials (course_id, uploader_id, file_name, file_path) VALUES (?, ?, ?, ?)",
-      [courseId, uploaderId || null, fileName, filePath]
-    );
-    return res.json({ message: "教材上傳成功", material: { fileName, filePath } });
-  } catch (error) {
-    return res.status(500).json({ message: "教材上傳失敗" });
-  }
-});
+// app.post("/api/courses/:courseId/materials", upload.single("file"), async (req, res) => {
+//   const { courseId } = req.params;
+//   const { uploaderId } = req.body;
+//   if (!req.file) return res.status(400).json({ message: "請選擇檔案" });
+//   try {
+//     const fileName = Buffer.from(req.file.originalname, "latin1").toString("utf8");
+//     const filePath = `/uploads/${req.file.filename}`;
+//     await pool.execute(
+//       "INSERT INTO course_materials (course_id, uploader_id, file_name, file_path) VALUES (?, ?, ?, ?)",
+//       [courseId, uploaderId || null, fileName, filePath]
+//     );
+//     return res.json({ message: "教材上傳成功", material: { fileName, filePath } });
+//   } catch (error) {
+//     return res.status(500).json({ message: "教材上傳失敗" });
+//   }
+// });
 
 const port = process.env.PORT || 5000;
 app.listen(port, () => console.log(`Server running at http://127.0.0.1:${port}`));

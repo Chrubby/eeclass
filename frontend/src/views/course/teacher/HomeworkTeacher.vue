@@ -195,8 +195,8 @@ const eventTypeLabel = (t) => ({
 const loadData = async () => {
   try {
     const [hwRes, subRes] = await Promise.all([
-      fetch(`${API_BASE_URL}/api/homework/${hwId}`),
-      fetch(`${API_BASE_URL}/api/homework/${hwId}/submissions`),
+      fetch(`${API_BASE_URL}/api/homeworks/${hwId}`),
+      fetch(`${API_BASE_URL}/api/homeworks/${hwId}/submissions`),
     ])
     const hw = await hwRes.json()
     const subs = await subRes.json()

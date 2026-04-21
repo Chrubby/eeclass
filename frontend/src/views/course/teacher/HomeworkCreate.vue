@@ -327,7 +327,7 @@ const submitAssignment = async () => {
   })
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/homework`, {
+    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/homeworks`, {
       method: 'POST',
       body: formData
     })

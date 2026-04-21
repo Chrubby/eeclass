@@ -165,7 +165,7 @@ const loadData = async () => {
   try {
     const [subRes, hwRes] = await Promise.all([
       fetch(`${API_BASE_URL}/api/submissions/${submissionId}`),
-      fetch(`${API_BASE_URL}/api/homework/${hwId}`)
+      fetch(`${API_BASE_URL}/api/homeworks/${hwId}`)
     ])
 
     if (!subRes.ok || !hwRes.ok) throw new Error('讀取資料失敗')

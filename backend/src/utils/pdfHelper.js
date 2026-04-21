@@ -1,0 +1,35 @@
+import fs from "node:fs";
+import path from "node:path";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+
+// 需要全域掛載 DOMMatrix 供 pdfjs 於 Node 環境使用
+import { DOMMatrix } from "canvas";
+globalThis.DOMMatrix = DOMMatrix;
+
+export const PdfHelper = {
+  async extractText(filePath, maxPages = 20) {
+    if (!filePath) return "";
+    
+    let pdfText = "";
+    try {
+      const fullPath = path.resolve(filePath);
+      if (fs.existsSync(fullPath)) {
+        const dataBuffer = new Uint8Array(fs.readFileSync(fullPath));
+        const loadingTask = pdfjsLib.getDocument({ data: dataBuffer });
+        const pdfDocument = await loadingTask.promise;
+        const pagesToRead = Math.min(pdfDocument.numPages, maxPages);
+
+        for (let pageNum = 1; pageNum <= pagesToRead; pageNum++) {
+          const page = await pdfDocument.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map(item => item.str).join(" ");
+          pdfText += pageText + "\n";
+        }
+        return pdfText.substring(0, 50000); // 限制最大字數
+      }
+    } catch (err) {
+      console.error("PDF 解析失敗:", err.message);
+    }
+    return pdfText;
+  }
+};

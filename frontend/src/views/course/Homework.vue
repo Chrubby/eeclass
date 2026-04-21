@@ -76,7 +76,7 @@ const loadHomeworkList = async () => {
   isLoading.value = true
   try {
     const response = await fetch(
-      `${API_BASE_URL}/api/courses/${courseId}/homework?userId=${encodeURIComponent(userId)}&role=${userRole.value}`,
+      `${API_BASE_URL}/api/courses/${courseId}/homeworks?userId=${encodeURIComponent(userId)}&role=${userRole.value}`,
     )
     const result = await response.json()
     if (!response.ok) throw new Error(result.message || '讀取作業失敗')
