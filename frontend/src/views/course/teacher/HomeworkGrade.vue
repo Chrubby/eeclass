@@ -65,30 +65,6 @@
                   ></textarea>
                 </div>
 
-                <div class="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-2">
-                  <div class="flex flex-wrap items-center justify-between gap-2">
-                    <span class="text-[13px] font-bold text-indigo-900">此子題 AI 預評分</span>
-                    <button
-                      type="button"
-                      class="text-xs font-bold px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-                      :disabled="aiByQuestionLoading[ans.questionId]"
-                      @click="runAiGradeForQuestion(ans)"
-                    >
-                      {{ aiByQuestionLoading[ans.questionId] ? '分析中…' : '執行 AI 預評分' }}
-                    </button>
-                  </div>
-                  <p v-if="aiByQuestionError[ans.questionId]" class="text-xs text-red-600">{{ aiByQuestionError[ans.questionId] }}</p>
-                  <template v-else-if="aiByQuestionResult[ans.questionId]">
-                    <div class="flex justify-between text-sm">
-                      <span class="font-bold text-indigo-900">建議得分（此題上限 {{ aiByQuestionResult[ans.questionId].max_score }}）：</span>
-                      <span class="font-black text-indigo-600">{{ aiByQuestionResult[ans.questionId].suggested_score }}</span>
-                    </div>
-                    <p v-if="aiByQuestionResult[ans.questionId].reason" class="text-xs text-indigo-900 whitespace-pre-line bg-white rounded border border-indigo-100 p-2">
-                      {{ aiByQuestionResult[ans.questionId].reason }}
-                    </p>
-                  </template>
-                  <p v-else class="text-[11px] text-gray-500">依該子題的 AI 準則與學生作答產生建議，僅供教師參考。</p>
-                </div>
               </div>
 
             </div>
@@ -97,42 +73,6 @@
       </div>
 
       <div class="w-[320px] shrink-0 sticky top-6 flex flex-col gap-4">
-
-        <div class="bg-indigo-50 border border-indigo-200 rounded shadow-sm overflow-hidden">
-          <div class="bg-indigo-100 px-5 py-3 font-bold text-indigo-800 text-center border-b border-indigo-200">
-            AI 輔助評分
-          </div>
-          <div class="p-5">
-            <button
-              v-if="!aiResult"
-              @click="generateAiFeedback"
-              :disabled="isGeneratingAi"
-              class="w-full bg-indigo-500 text-white font-bold py-2 rounded hover:bg-indigo-600 transition-colors disabled:bg-indigo-300"
-            >
-              {{ isGeneratingAi ? '處理中...' : '生成 AI 評分' }}
-            </button>
-
-            <div v-else class="flex flex-col gap-3">
-              <div class="flex justify-between items-center border-b border-indigo-200 pb-2">
-                <span class="text-sm font-bold text-indigo-900">AI 建議總分（0–100）：</span>
-                <span class="text-xl font-black text-indigo-600">{{ aiResult.suggested_score }}</span>
-              </div>
-              <div v-if="aiResult.reason">
-                <span class="text-sm font-bold text-indigo-900 block mb-1">AI 簡評理由：</span>
-                <p class="text-[13px] text-indigo-900/90 bg-white p-2 rounded border border-indigo-100">
-                  {{ aiResult.reason }}
-                </p>
-              </div>
-              <div>
-                <span class="text-sm font-bold text-indigo-900 block mb-1">AI 綜合回饋（供教師參考）：</span>
-                <p class="text-[14px] text-indigo-800 bg-white p-3 rounded border border-indigo-100 leading-relaxed whitespace-pre-line">
-                  {{ aiResult.feedback }}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div class="bg-white border rounded shadow-sm overflow-hidden">
           <div class="bg-[#337ab7] text-white px-5 py-3 font-bold text-center">評分與回饋</div>
 
@@ -309,71 +249,6 @@ const submitGrade = async () => {
   } catch (error) {
     alert(error.message)
     console.error(error)
-  }
-}
-
-// AI
-const isGeneratingAi = ref(false)
-const aiResult = ref(null)
-const aiByQuestionLoading = ref({})
-const aiByQuestionResult = ref({})
-const aiByQuestionError = ref({})
-
-const runAiGradeForQuestion = async (ans) => {
-  const qid = ans.questionId
-  if (!qid) return
-  aiByQuestionLoading.value = { ...aiByQuestionLoading.value, [qid]: true }
-  aiByQuestionError.value = { ...aiByQuestionError.value, [qid]: '' }
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/ai/grade-question`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        submissionId: Number(submissionId),
-        homeworkId: Number(hwId),
-        questionId: Number(qid),
-      }),
-    })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message || 'AI 預評分失敗')
-    aiByQuestionResult.value = {
-      ...aiByQuestionResult.value,
-      [qid]: {
-        suggested_score: data.suggested_score,
-        max_score: data.max_score,
-        reason: data.reason || '',
-      },
-    }
-  } catch (e) {
-    aiByQuestionError.value = { ...aiByQuestionError.value, [qid]: e.message }
-  } finally {
-    aiByQuestionLoading.value = { ...aiByQuestionLoading.value, [qid]: false }
-  }
-}
-
-const generateAiFeedback = async () => {
-  isGeneratingAi.value = true
-  aiResult.value = null
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/ai/grade`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        submissionId: Number(submissionId),
-        homeworkId: Number(hwId),
-      }),
-    })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message || 'AI 評分失敗')
-    aiResult.value = {
-      suggested_score: data.suggested_score,
-      reason: data.reason || '',
-      feedback: data.feedback || '',
-    }
-  } catch (e) {
-    alert(e.message)
-  } finally {
-    isGeneratingAi.value = false
   }
 }
 

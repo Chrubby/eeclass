@@ -263,8 +263,8 @@ const fetchChatHistory = async () => {
    Prompt save（teacher）
 ====================== */
 const savePrompt = async () => {
-  if (!teacherPrompt.value.trim()) {
-    alert("Prompt 不可為空")
+  if (!discussionPrompt.value.trim() || !gradingPrompt.value.trim()) {
+    alert("discussion / grading prompt 不可為空")
     return
   }
 

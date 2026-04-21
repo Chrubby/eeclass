@@ -1,66 +1,117 @@
 <template>
-  <div>
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-bold text-gray-800 border-l-4 border-[#337ab7] pl-3">
-        課程公告
-      </h2>
+  <div class="flex flex-col gap-4">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold text-gray-800 border-l-4 border-[#337ab7] pl-3">教材區</h2>
+      <span class="text-xs text-gray-500">共 {{ materials.length }} 份教材</span>
+    </div>
+
+    <div v-if="isTeacher" class="bg-white border rounded shadow-sm p-4">
+      <h3 class="font-bold text-gray-700 mb-2">上傳教材</h3>
+      <div
+        class="border-2 border-dashed rounded p-6 text-center transition-colors"
+        :class="dragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 bg-gray-50'"
+        @dragover.prevent="dragOver = true"
+        @dragleave.prevent="dragOver = false"
+        @drop.prevent="onDrop"
+      >
+        <p class="text-sm text-gray-600">拖曳檔案到此，或</p>
+        <label class="inline-block mt-2 cursor-pointer text-sm font-bold text-blue-700 hover:underline">
+          點擊選擇檔案
+          <input type="file" class="hidden" @change="onPickFile" />
+        </label>
+        <p v-if="selectedFile" class="mt-2 text-xs text-green-700">已選擇：{{ selectedFile.name }}</p>
+      </div>
+      <div class="flex justify-end mt-3">
+        <button
+          type="button"
+          class="px-4 py-2 rounded bg-[#337ab7] text-white text-sm font-bold hover:bg-[#285e8e] disabled:opacity-50"
+          :disabled="uploading || !selectedFile"
+          @click="uploadMaterial"
+        >
+          {{ uploading ? '上傳中...' : '上傳教材' }}
+        </button>
+      </div>
     </div>
 
     <div class="bg-white border rounded shadow-sm overflow-hidden">
-      
       <div class="flex bg-gray-100 text-sm font-bold text-gray-700 p-3 border-b">
-        <div class="flex-1">標題</div>
-        <div class="w-32 text-center">發布者</div>
-        <div class="w-32 text-center">發布日期</div>
+        <div class="flex-1">檔名</div>
+        <div class="w-36 text-center">上傳時間</div>
+        <div class="w-24 text-center">操作</div>
       </div>
-
       <ul class="divide-y divide-gray-200">
-        <li 
-          v-for="item in announcements" 
-          :key="item.id" 
-          class="flex p-3 hover:bg-blue-50 cursor-pointer transition-colors items-center text-[15px]"
-        >
-          <div class="flex-1 text-[#337ab7] hover:underline truncate pr-4">
-            <span v-if="item.isNew" class="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded mr-2">NEW</span>
-            {{ item.title }}
+        <li v-for="m in materials" :key="m.id" class="flex p-3 items-center text-[15px]">
+          <div class="flex-1 truncate pr-4 text-gray-800">{{ m.fileName }}</div>
+          <div class="w-36 text-center text-gray-500 text-sm">{{ formatDate(m.createdAt) }}</div>
+          <div class="w-24 text-center">
+            <a :href="`${API_BASE_URL}${m.filePath}`" target="_blank" class="text-blue-600 hover:underline text-sm font-bold">下載</a>
           </div>
-          <div class="w-32 text-center text-gray-600 text-sm">{{ item.author }}</div>
-          <div class="w-32 text-center text-gray-500 text-sm">{{ item.date }}</div>
         </li>
       </ul>
-
-      <div v-if="announcements.length === 0" class="p-10 text-center text-gray-500">
-        目前尚無公告資料
-      </div>
+      <div v-if="materials.length === 0" class="p-10 text-center text-gray-500">目前尚無教材</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 
-// 假資料：公告列表
-const announcements = ref([
-  { 
-    id: 1, 
-    title: '歡迎修習本課程！第一週上課注意事項與大綱', 
-    author: '教授', 
-    date: '2026-03-16',
-    isNew: true
-  },
-  { 
-    id: 2, 
-    title: '請各位同學於下週前完成分組名單填寫', 
-    author: '助教', 
-    date: '2026-03-10',
-    isNew: false
-  },
-  { 
-    id: 3, 
-    title: '課程參考書目已更新至圖書館指定參考書區', 
-    author: '系統管理員', 
-    date: '2026-02-25',
-    isNew: false
+const route = useRoute()
+const courseId = route.params.id
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const isTeacher = (localStorage.getItem('userRole') || '') === 'teacher'
+const uploaderId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
+
+const materials = ref([])
+const selectedFile = ref(null)
+const dragOver = ref(false)
+const uploading = ref(false)
+
+const formatDate = (raw) => (raw ? new Date(raw).toLocaleString() : '-')
+
+const loadMaterials = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/courses/${courseId}/materials`)
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || '讀取教材失敗')
+    materials.value = data.materials || []
+  } catch (e) {
+    alert(e.message)
   }
-])
+}
+
+const onPickFile = (e) => {
+  const file = e.target.files?.[0] || null
+  selectedFile.value = file
+}
+
+const onDrop = (e) => {
+  dragOver.value = false
+  selectedFile.value = e.dataTransfer?.files?.[0] || null
+}
+
+const uploadMaterial = async () => {
+  if (!selectedFile.value) return
+  uploading.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', selectedFile.value)
+    fd.append('uploaderId', uploaderId)
+    const res = await fetch(`${API_BASE_URL}/api/courses/${courseId}/materials`, {
+      method: 'POST',
+      body: fd,
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || '上傳失敗')
+    selectedFile.value = null
+    await loadMaterials()
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    uploading.value = false
+  }
+}
+
+onMounted(loadMaterials)
 </script>

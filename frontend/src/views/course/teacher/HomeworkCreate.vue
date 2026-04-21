@@ -123,39 +123,60 @@
 
             <details class="border border-indigo-100 rounded-lg bg-indigo-50/40 overflow-hidden">
               <summary class="cursor-pointer select-none px-3 py-2 text-sm font-bold text-indigo-800 bg-indigo-100/80">
-                AI 評分準則配置（給 AI 與助教用，學生端不會直接看到原文）
+                AI Prompt 配置（分開評分與解惑）
               </summary>
               <div class="p-3 space-y-2 border-t border-indigo-100 bg-white">
                 <p class="text-[11px] text-gray-500">
-                  此段會存入資料庫並用於 AI 預評分與學生 AI 助教（後端會隱藏細則，不讓學生看到評分標準）。
+                  以下兩個欄位會分別提供給「評分 AI」與「學生解惑 AI」，學生端不會看到原文。
                 </p>
+                <label class="block text-xs font-bold text-indigo-900 mb-1">
+                  評分 Prompt（grading_prompt）
+                </label>
                 <div class="flex flex-wrap gap-1.5">
                   <button
                     type="button"
                     class="text-[11px] px-2 py-0.5 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                    @click.prevent="applyPromptTemplate(index, 'socratic')"
+                    @click.prevent="applyPromptTemplate(index, 'grading', 'strict')"
+                  >
+                    範本：嚴格評分
+                  </button>
+                  <button
+                    type="button"
+                    class="text-[11px] px-2 py-0.5 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                    @click.prevent="applyPromptTemplate(index, 'grading', 'logic')"
+                  >
+                    範本：邏輯導向
+                  </button>
+                </div>
+                <textarea
+                  v-model="q.gradingPrompt"
+                  rows="4"
+                  placeholder="例如：著重概念完整性；若缺邊界條件需扣點；允許等第制參考…（提供評分 AI）"
+                  class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs text-gray-800 focus:border-indigo-400 focus:outline-none resize-y"
+                />
+                <label class="block text-xs font-bold text-indigo-900 mb-1 mt-2">
+                  解惑 Prompt（discussion_prompt）
+                </label>
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    class="text-[11px] px-2 py-0.5 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                    @click.prevent="applyPromptTemplate(index, 'discussion', 'socratic')"
                   >
                     範本：蘇格拉底式引導
                   </button>
                   <button
                     type="button"
                     class="text-[11px] px-2 py-0.5 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                    @click.prevent="applyPromptTemplate(index, 'strict')"
+                    @click.prevent="applyPromptTemplate(index, 'discussion', 'logic')"
                   >
-                    範本：嚴格評分（教師內部）
-                  </button>
-                  <button
-                    type="button"
-                    class="text-[11px] px-2 py-0.5 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                    @click.prevent="applyPromptTemplate(index, 'logic')"
-                  >
-                    範本：僅邏輯提示
+                    範本：只提示方向
                   </button>
                 </div>
                 <textarea
-                  v-model="q.aiPrompt"
+                  v-model="q.discussionPrompt"
                   rows="4"
-                  placeholder="例如：著重概念完整性；若缺邊界條件需扣點；允許等第制參考…"
+                  placeholder="例如：不得直接給答案；用提問方式引導學生找出盲點…（提供解惑 AI）"
                   class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs text-gray-800 focus:border-indigo-400 focus:outline-none resize-y"
                 />
               </div>
@@ -218,7 +239,8 @@ const form = ref({
       title: '',
       description: '',
       answerFormat: 'file',
-      aiPrompt: '',
+      gradingPrompt: '',
+      discussionPrompt: '',
     }
   ]
 })
@@ -233,7 +255,8 @@ const addQuestion = () => {
     title: '',
     description: '',
     answerFormat: 'file',
-    aiPrompt: '',
+    gradingPrompt: '',
+    discussionPrompt: '',
   })
 }
 
@@ -251,11 +274,12 @@ const PROMPT_TEMPLATES = {
     '僅就邏輯與結構點評：是否自洽、前提是否充分、結論是否過度推論；不暗示具體得分或配分。',
 }
 
-const applyPromptTemplate = (index, key) => {
+const applyPromptTemplate = (index, target, key) => {
   const t = PROMPT_TEMPLATES[key]
   if (!t) return
-  const cur = form.value.questions[index].aiPrompt || ''
-  form.value.questions[index].aiPrompt = cur ? `${cur}\n\n${t}` : t
+  const field = target === 'discussion' ? 'discussionPrompt' : 'gradingPrompt'
+  const cur = form.value.questions[index][field] || ''
+  form.value.questions[index][field] = cur ? `${cur}\n\n${t}` : t
 }
 
 const removeQuestion = (index) => {
@@ -292,7 +316,9 @@ const submitAssignment = async () => {
     title: q.title,
     description: q.description,
     answerFormat: q.answerFormat,
-    aiPrompt: q.aiPrompt || '',
+    aiPrompt: q.gradingPrompt || '',
+    gradingPrompt: q.gradingPrompt || '',
+    discussionPrompt: q.discussionPrompt || '',
   }))
   formData.append('questions', JSON.stringify(questionsData))
 
