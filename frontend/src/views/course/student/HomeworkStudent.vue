@@ -306,14 +306,10 @@ const sendChat = async () => {
   chatApiMessages.value.push({ role: 'user', content: text })
   chatLoading.value = true
   try {
-    const res = await fetch(`${API_BASE_URL}/api/ai/chat`, {
+    const res = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}/questions/${activeQuestionId.value}/ai-chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        question_id: activeQuestionId.value,
-        homework_id: Number(hwId),
-        messages: chatApiMessages.value,
-      }),
+      body: JSON.stringify({ messages: chatApiMessages.value }), // body 只需要傳 messages
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.message || 'AI 回覆失敗')

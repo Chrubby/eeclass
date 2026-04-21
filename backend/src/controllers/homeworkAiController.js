@@ -1,14 +1,55 @@
-import { pool } from "../config/db.js";
 import { HomeworkAiService } from "../services/homeworkAiService.js";
+import { CourseAiModel } from "../models/courseAiModel.js";
+import { HomeworkModel } from "../models/homeworkModel.js";
 import { appendSubmissionHistory } from "../utils/dbHistoryLogger.js";
+import { pool } from "../config/db.js";
 
 export const HomeworkAiController = {
+  // ==============================
+  // 1. Prompt 設定管理 (老師)
+  // ==============================
+  async getPrompts(req, res) {
+    try {
+      const { courseId } = req.params;
+      const prompts = await CourseAiModel.getPromptsByCourseId(courseId);
+      res.json(prompts);
+    } catch (err) {
+      res.status(500).json({ message: "取得 Prompt 失敗" });
+    }
+  },
+
+  async updatePrompts(req, res) {
+    const { courseId } = req.params;
+    const { chat_prompt, discussion_prompt, grading_prompt, role, send_announcements, send_assignments, send_student_info } = req.body;
+    
+    if (role !== "teacher") return res.status(403).json({ message: "權限不足" });
+
+    try {
+      const data = {
+        chat_prompt: chat_prompt,
+        discussion: (discussion_prompt || chat_prompt || "").trim(),
+        grading: (grading_prompt || chat_prompt || "").trim(),
+        send_announcements: !!send_announcements,
+        send_assignments: !!send_assignments,
+        send_student_info: !!send_student_info
+      };
+      await CourseAiModel.upsertPrompts(pool, courseId, data);
+      res.json({ message: "Prompt 更新成功" });
+    } catch (err) {
+      res.status(500).json({ message: "更新失敗" });
+    }
+  },
+
+  // ==============================
+  // 2. 老師 AI 預估評分操作
+  // ==============================
+  
   // 老師：整份作業 AI 評估
   async gradeOverall(req, res) {
     try {
       const { submissionId } = req.params;
       const { homeworkId } = req.body;
-      const out = await HomeworkAiService.runAiGradeOverall(submissionId, homeworkId);
+      const out = await HomeworkAiService.runAiGradeAllQuestions(submissionId, homeworkId);
       
       await pool.execute(
         "UPDATE homework_submissions SET ai_estimated_score = ?, ai_estimated_reason = ?, ai_estimated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -81,51 +122,46 @@ export const HomeworkAiController = {
     }
   },
 
+  // ==============================
+  // 3. 學生 AI 互動操作
+  // ==============================
+
   // 學生：自我預估評分
   async selfEstimate(req, res) {
     try {
       const { hwId } = req.params;
       const { studentId } = req.body;
+      const sub = await HomeworkModel.getStudentSubmission(hwId, studentId);
       
-      const [rows] = await pool.execute(
-        "SELECT id FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
-        [hwId, studentId]
-      );
-      if (!rows.length) return res.status(404).json({ message: "尚未找到你的繳交紀錄" });
-      
-      const submissionId = rows[0].id;
-      const out = await HomeworkAiService.runAiGradeAllQuestions(submissionId, Number(hwId));
+      if (!sub) return res.status(404).json({ message: "找不到繳交紀錄" });
+
+      const out = await HomeworkAiService.runAiGradeAllQuestions(sub.id, hwId);
       
       await pool.execute(
         "UPDATE homework_submissions SET ai_estimated_score = ?, ai_estimated_reason = ?, ai_estimated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        [out.suggested_score, out.reason || "", submissionId]
+        [out.suggested_score, out.reason, sub.id]
       );
-      await appendSubmissionHistory(submissionId, "student_self_estimate", {
-        studentId,
-        suggested_score: out.suggested_score,
-        reason: out.reason,
-        perQuestion: out.perQuestion || [],
+      await appendSubmissionHistory(sub.id, "student_self_estimate", { 
+        suggested_score: out.suggested_score, 
+        reason: out.reason 
       });
-      res.json({ submissionId, ...out });
+      
+      res.json(out);
     } catch (err) {
-      res.status(500).json({ message: err.message || "自我預估失敗" });
+      res.status(500).json({ message: "預估失敗" });
     }
   },
 
-  // 學生：與 AI 助教對話 (針對特定題目)
+  // 學生：作業單題解惑對話
   async chatWithAi(req, res) {
     try {
       const { hwId, questionId } = req.params;
-      const { messages } = req.body; // 注意：前端現在不需要傳 question_id 和 homework_id 了
+      const { messages } = req.body;
       
-      if (!Array.isArray(messages) || messages.length === 0) {
-        return res.status(400).json({ message: "缺少對話紀錄 messages" });
-      }
-
       const reply = await HomeworkAiService.chatWithTutor(hwId, questionId, messages);
       res.json({ reply });
     } catch (err) {
-      res.status(500).json({ message: err.message || "AI 對話失敗" });
+      res.status(500).json({ message: "AI 對話失敗" });
     }
   }
 };

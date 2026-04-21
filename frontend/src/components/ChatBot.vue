@@ -168,6 +168,7 @@ const teacherPrompt = ref('')
 const sendAnnouncements = ref(false)
 const sendAssignments = ref(false)
 const sendStudentInfo = ref(false)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 /* ======================
    Utils
@@ -213,13 +214,10 @@ const fetchReminder = async () => {
   if (!courseCode || !studentCode) return
 
   try {
-    const res = await fetch('/api/ai/remind-homework', {
+    const res = await fetch(`${API_BASE_URL}/api/courses/${courseCode}/ai-assistant/remind`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        course_code: courseCode,
-        student_code: studentCode
-      })
+      body: JSON.stringify({ studentCode }) // courseCode 已經在網址裡了
     })
 
     const data = await res.json()
@@ -242,7 +240,7 @@ const fetchChatHistory = async () => {
 
   try {
     const res = await fetch(
-      `/api/ai-chat/by-code/${courseCode}/${studentCode}`
+      `${API_BASE_URL}/api/courses/${courseCode}/ai-assistant/history/${studentCode}`
     )
 
     const data = await res.json()
@@ -263,22 +261,18 @@ const fetchChatHistory = async () => {
    Prompt save（teacher）
 ====================== */
 const savePrompt = async () => {
-  if (!discussionPrompt.value.trim() || !gradingPrompt.value.trim()) {
-    alert("discussion / grading prompt 不可為空")
+  if (!teacherPrompt.value.trim()) {
+    alert("AI Prompt 不可為空")
     return
   }
 
   try {
-    const res = await fetch('/api/ai/prompt/update', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+    const res = await fetch(`${API_BASE_URL}/api/courses/${props.courseCode}/ai-prompts`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        course_code: props.courseCode,
         chat_prompt: teacherPrompt.value,
         role: props.role,
-
         send_announcements: sendAnnouncements.value,
         send_assignments: sendAssignments.value,
         send_student_info: sendStudentInfo.value
@@ -307,15 +301,7 @@ const fetchTeacherPrompt = async () => {
   if (props.role !== 'teacher') return
 
   try {
-    const res = await fetch('/api/ai/get_prompt', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        course_code: props.courseCode
-      })
-    })
+    const res = await fetch(`${API_BASE_URL}/api/courses/${props.courseCode}/ai-prompts`)
 
     const data = await res.json()
 
@@ -361,13 +347,12 @@ const handleSend = async () => {
   loading.value = true
 
   try {
-    const res = await fetch('/api/ai/ask', {
+    const res = await fetch(`${API_BASE_URL}/api/courses/${props.courseCode}/ai-assistant/ask`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        course_code: props.courseCode,
-        student_code: props.studentCode,
-        message: msgToSend
+        studentCode: props.studentCode, // 後端現在預期收到 studentCode
+        userMessage: msgToSend          // 後端現在預期收到 userMessage (依據我們剛剛重構的 Service)
       })
     })
 
@@ -375,7 +360,7 @@ const handleSend = async () => {
 
     messages.value.push({
       role: 'assistant',
-      message: data.reply,
+      message: data.reply || data.message || '已收到',
       created_at: new Date().toISOString()
     })
 
