@@ -14,6 +14,7 @@ import { DOMMatrix } from "canvas";
 
 import authRoutes from "./src/routes/authRoutes.js";
 import courseRoutes from "./src/routes/courseRoutes.js";
+import announcementRoutes from "./src/routes/announcementRoutes.js";
 
 globalThis.DOMMatrix = DOMMatrix;
 
@@ -469,6 +470,7 @@ const uploadPdf = multer({
 
 app.use("/api/auth", authRoutes);
 app.use("/api/courses", courseRoutes);
+app.use("/api/announcements", announcementRoutes);
 
 // // 搜尋課程
 // app.get("/api/courses", async (req, res) => {
@@ -663,119 +665,119 @@ app.use("/api/courses", courseRoutes);
 //   }
 // });
 
-// 取得課程公告
-app.get("/api/announcements", async (req, res) => {
-  const { course_code: courseCode, student_id: studentIdentifier } = req.query;
-  if (!courseCode) return res.status(400).json({ message: "缺少 course_code" });
+// // 取得課程公告
+// app.get("/api/announcements", async (req, res) => {
+//   const { course_code: courseCode, student_id: studentIdentifier } = req.query;
+//   if (!courseCode) return res.status(400).json({ message: "缺少 course_code" });
 
-  try {
-    const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
-    if (courseRows.length === 0) return res.status(404).json({ message: "找不到課程" });
-    const courseId = courseRows[0].id;
+//   try {
+//     const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+//     if (courseRows.length === 0) return res.status(404).json({ message: "找不到課程" });
+//     const courseId = courseRows[0].id;
 
-    let studentDbId = null;
-    if (studentIdentifier) {
-      const [studentRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [studentIdentifier]);
-      if (studentRows.length > 0) studentDbId = studentRows[0].id;
-    }
+//     let studentDbId = null;
+//     if (studentIdentifier) {
+//       const [studentRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [studentIdentifier]);
+//       if (studentRows.length > 0) studentDbId = studentRows[0].id;
+//     }
 
-    let announcementRows;
-    if (studentDbId) {
-      [announcementRows] = await pool.execute(
-        `SELECT a.id, a.title, a.content, a.is_pinned, a.created_at, t.name AS teacher_name,
-                CASE WHEN ar.id IS NULL THEN FALSE ELSE TRUE END AS is_read
-         FROM announcements a
-         LEFT JOIN teachers t ON a.teacher_id = t.id
-         LEFT JOIN announcement_reads ar ON a.id = ar.announcement_id AND ar.student_id = ?
-         WHERE a.course_id = ?
-         ORDER BY a.is_pinned DESC, a.created_at DESC`,
-        [studentDbId, courseId]
-      );
-    } else {
-      [announcementRows] = await pool.execute(
-        `SELECT a.id, a.title, a.content, a.is_pinned, a.created_at, t.name AS teacher_name, TRUE AS is_read
-         FROM announcements a
-         LEFT JOIN teachers t ON a.teacher_id = t.id
-         WHERE a.course_id = ?
-         ORDER BY a.is_pinned DESC, a.created_at DESC`,
-        [courseId]
-      );
-    }
+//     let announcementRows;
+//     if (studentDbId) {
+//       [announcementRows] = await pool.execute(
+//         `SELECT a.id, a.title, a.content, a.is_pinned, a.created_at, t.name AS teacher_name,
+//                 CASE WHEN ar.id IS NULL THEN FALSE ELSE TRUE END AS is_read
+//          FROM announcements a
+//          LEFT JOIN teachers t ON a.teacher_id = t.id
+//          LEFT JOIN announcement_reads ar ON a.id = ar.announcement_id AND ar.student_id = ?
+//          WHERE a.course_id = ?
+//          ORDER BY a.is_pinned DESC, a.created_at DESC`,
+//         [studentDbId, courseId]
+//       );
+//     } else {
+//       [announcementRows] = await pool.execute(
+//         `SELECT a.id, a.title, a.content, a.is_pinned, a.created_at, t.name AS teacher_name, TRUE AS is_read
+//          FROM announcements a
+//          LEFT JOIN teachers t ON a.teacher_id = t.id
+//          WHERE a.course_id = ?
+//          ORDER BY a.is_pinned DESC, a.created_at DESC`,
+//         [courseId]
+//       );
+//     }
 
-    const announcements = announcementRows.map((item) => ({ ...item, isNew: !item.is_read }));
-    return res.json({ course_code: courseCode, course_id: courseId, student_id: studentDbId, announcements });
-  } catch (error) {
-    return res.status(500).json({ message: "讀取公告失敗" });
-  }
-});
+//     const announcements = announcementRows.map((item) => ({ ...item, isNew: !item.is_read }));
+//     return res.json({ course_code: courseCode, course_id: courseId, student_id: studentDbId, announcements });
+//   } catch (error) {
+//     return res.status(500).json({ message: "讀取公告失敗" });
+//   }
+// });
 
-// 記錄公告已讀
-app.post("/api/announcements/read", async (req, res) => {
-  const { student_id: studentIdentifier, announcement_id: announcementId } = req.body;
-  if (!studentIdentifier || !announcementId) return res.status(400).json({ message: "缺少必要參數" });
+// // 記錄公告已讀
+// app.post("/api/announcements/read", async (req, res) => {
+//   const { student_id: studentIdentifier, announcement_id: announcementId } = req.body;
+//   if (!studentIdentifier || !announcementId) return res.status(400).json({ message: "缺少必要參數" });
 
-  try {
-    const [studentRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [studentIdentifier]);
-    if (studentRows.length === 0) return res.status(404).json({ message: "找不到學生" });
+//   try {
+//     const [studentRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [studentIdentifier]);
+//     if (studentRows.length === 0) return res.status(404).json({ message: "找不到學生" });
 
-    await pool.execute(
-      "INSERT IGNORE INTO announcement_reads (student_id, announcement_id) VALUES (?, ?)",
-      [studentRows[0].id, announcementId]
-    );
-    return res.json({ message: "已記錄已讀" });
-  } catch (error) {
-    return res.status(500).json({ message: "紀錄已讀失敗" });
-  }
-});
+//     await pool.execute(
+//       "INSERT IGNORE INTO announcement_reads (student_id, announcement_id) VALUES (?, ?)",
+//       [studentRows[0].id, announcementId]
+//     );
+//     return res.json({ message: "已記錄已讀" });
+//   } catch (error) {
+//     return res.status(500).json({ message: "紀錄已讀失敗" });
+//   }
+// });
 
-// 老師或助教新增公告
-app.post("/api/announcements/create", async (req, res) => {
-  const { course_code: courseCode, teacher_id: accountId, title, content, is_pinned: isPinned = false } = req.body;
-  if (!courseCode || !accountId || !title) return res.status(400).json({ message: "缺少必要參數" });
+// // 老師或助教新增公告
+// app.post("/api/announcements/create", async (req, res) => {
+//   const { course_code: courseCode, teacher_id: accountId, title, content, is_pinned: isPinned = false } = req.body;
+//   if (!courseCode || !accountId || !title) return res.status(400).json({ message: "缺少必要參數" });
 
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
+//   let connection;
+//   try {
+//     connection = await pool.getConnection();
+//     await connection.beginTransaction();
 
-    const [courseRows] = await connection.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
-    if (courseRows.length === 0) throw new Error("找不到課程");
-    const courseId = courseRows[0].id;
+//     const [courseRows] = await connection.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
+//     if (courseRows.length === 0) throw new Error("找不到課程");
+//     const courseId = courseRows[0].id;
 
-    let finalTeacherId;
+//     let finalTeacherId;
 
-    const [teacherRows] = await connection.execute("SELECT id FROM teachers WHERE teacher_id = ?", [accountId]);
+//     const [teacherRows] = await connection.execute("SELECT id FROM teachers WHERE teacher_id = ?", [accountId]);
 
-    if (teacherRows.length > 0) {
-      finalTeacherId = teacherRows[0].id;
-    } else {
-      const [courseTeacherRows] = await connection.execute(
-        "SELECT teacher_id FROM teacher_courses WHERE course_id = ? LIMIT 1",
-        [courseId]
-      );
+//     if (teacherRows.length > 0) {
+//       finalTeacherId = teacherRows[0].id;
+//     } else {
+//       const [courseTeacherRows] = await connection.execute(
+//         "SELECT teacher_id FROM teacher_courses WHERE course_id = ? LIMIT 1",
+//         [courseId]
+//       );
 
 
-      if (courseTeacherRows.length > 0 && courseTeacherRows[0].teacher_id) {
-        finalTeacherId = courseTeacherRows[0].teacher_id;
-      } else {
-        throw new Error("找不到這門課的授課老師，因此助教無法代發公告");
-      }
-    }
+//       if (courseTeacherRows.length > 0 && courseTeacherRows[0].teacher_id) {
+//         finalTeacherId = courseTeacherRows[0].teacher_id;
+//       } else {
+//         throw new Error("找不到這門課的授課老師，因此助教無法代發公告");
+//       }
+//     }
 
-    await connection.execute(
-      `INSERT INTO announcements (course_id, teacher_id, title, content, is_pinned) VALUES (?, ?, ?, ?, ?)`,
-      [courseId, finalTeacherId, title, content || "", Boolean(isPinned)]
-    );
+//     await connection.execute(
+//       `INSERT INTO announcements (course_id, teacher_id, title, content, is_pinned) VALUES (?, ?, ?, ?, ?)`,
+//       [courseId, finalTeacherId, title, content || "", Boolean(isPinned)]
+//     );
 
-    await connection.commit();
-    return res.json({ message: "公告新增成功" });
-  } catch (error) {
-    if (connection) await connection.rollback();
-    return res.status(400).json({ message: error.message || "公告新增失敗" });
-  } finally {
-    if (connection) connection.release();
-  }
-});
+//     await connection.commit();
+//     return res.json({ message: "公告新增成功" });
+//   } catch (error) {
+//     if (connection) await connection.rollback();
+//     return res.status(400).json({ message: error.message || "公告新增失敗" });
+//   } finally {
+//     if (connection) connection.release();
+//   }
+// });
 
 // 取得課程討論區列表
 app.get("/api/courses/:courseCode/discussions", async (req, res) => {

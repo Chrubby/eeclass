@@ -36,7 +36,7 @@ const loadUser = async() => {
   user.value.user_id = stored
 
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/user_inf`, {
+    const res = await axios.get(`${API_BASE_URL}/api/auth/user_inf`, {
       params: {
         user_id: user.value.user_id
     }})
@@ -57,7 +57,7 @@ const fetchAnnouncements = async () => {
   try {
 
 
-    const res = await axios.get(`${API_BASE_URL}/api/announcements`, {
+    const res = await axios.get(`${API_BASE_URL}/api/courses/${courseCode}/announcements`, {
       params: {
         course_code: courseCode,
         student_id: user.value.user_id
@@ -109,7 +109,7 @@ const formatDate = (datetime) => {
 const markAsRead = async (announcementId) => {
   try {
 
-    await axios.post(`${API_BASE_URL}/api/announcements/read`, {
+    await axios.post(`${API_BASE_URL}/api/announcements/${announcementId}/read`, {
       student_id: user.value.user_id,
       announcement_id: announcementId
     })
@@ -126,7 +126,7 @@ const createAnnouncement = async () => {
   }
 
   try {
-    await axios.post(`${API_BASE_URL}/api/announcements/create`, {
+    await axios.post(`${API_BASE_URL}/api/courses/${courseCode}/announcements`, {
       course_code: courseCode,
       teacher_id: user.value.user_id,
       title: newAnnouncement.value.title,
