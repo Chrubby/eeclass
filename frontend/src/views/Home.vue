@@ -37,7 +37,7 @@ const loadUser = async () => {
   user.value.user_id = stored
 
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/user_inf`, {
+    const res = await axios.get(`${API_BASE_URL}/api/auth/user_inf`, {
       params: { user_id: user.value.user_id },
     })
     user.value.role = res.data.role
@@ -48,7 +48,7 @@ const loadUser = async () => {
 
 const fetchMyCourses = async () => {
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/user_courses`, {
+    const res = await axios.get(`${API_BASE_URL}/api/courses/user`, {
       params: {
         user_id: user.value.user_id,
         role: user.value.role,
@@ -88,7 +88,7 @@ const searchCourse = async () => {
 const addCourse = async () => {
   if (!searchResult.value) return
   try {
-    const res = await axios.post(`${API_BASE_URL}/api/enroll`, {
+    const res = await axios.post(`${API_BASE_URL}/api/courses/enroll`, {
       student_id: user.value.user_id,
       course_code: searchResult.value.course_code,
     })
@@ -107,7 +107,7 @@ const createCourse = async () => {
   }
 
   try {
-    const res = await axios.post(`${API_BASE_URL}/api/create_course`, {
+    const res = await axios.post(`${API_BASE_URL}/api/courses`, {
       teacher_id: user.value.user_id,
       course_name: courseForm.value.course_name,
       course_code: courseForm.value.course_code,

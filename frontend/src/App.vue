@@ -52,7 +52,7 @@ const loadUser = async() => {
   }
   user.value.user_id = stored
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/user_inf`, {
+    const res = await axios.get(`${API_BASE_URL}/api/auth/user_inf`, {
       params: {
         user_id: user.value.user_id
     }})
