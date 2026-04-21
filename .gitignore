@@ -48,3 +48,4 @@ node_modules/
 frontend/node_modules/.vite/deps/_metadata.json
 
 todo.txt
+backend/uploads/
