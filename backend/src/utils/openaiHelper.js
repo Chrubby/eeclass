@@ -1,5 +1,3 @@
-import fetch from "node-fetch"; // 如果你的 Node 版本較舊需要這個，Node 18+ 則內建
-
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
 export const OpenAiHelper = {
