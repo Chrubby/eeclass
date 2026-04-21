@@ -1,8 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import mysql from "mysql2/promise";
-import bcrypt from "bcryptjs";
+// import mysql from "mysql2/promise";
+// import bcrypt from "bcryptjs";
 import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
@@ -11,6 +11,9 @@ import { fileURLToPath } from "node:url";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 import { DOMMatrix } from "canvas";
+
+import authRoutes from "./src/routes/authRoutes.js";
+
 
 globalThis.DOMMatrix = DOMMatrix;
 
@@ -84,18 +87,18 @@ if (!fs.existsSync(uploadsRoot)) {
 }
 app.use("/uploads", express.static(uploadsRoot));
 
-const dbConfig = {
-  host: process.env.DB_HOST || "localhost",
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD, // 換回你原本的密碼
-  database: process.env.DB_NAME || "classroom_data",
-};
+// const dbConfig = {
+//   host: process.env.DB_HOST || "localhost",
+//   user: process.env.DB_USER || "root",
+//   password: process.env.DB_PASSWORD, // 換回你原本的密碼
+//   database: process.env.DB_NAME || "classroom_data",
+// };
 
-const pool = mysql.createPool({
-  ...dbConfig,
-  waitForConnections: true,
-  connectionLimit: 10,
-});
+// const pool = mysql.createPool({
+//   ...dbConfig,
+//   waitForConnections: true,
+//   connectionLimit: 10,
+// });
 
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -124,345 +127,347 @@ const uploadPdf = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 限制 10MB
 });
 
-const initDB = async () => {
-  // 1. 帳號表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS accounts (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      username VARCHAR(50) UNIQUE NOT NULL,
-      password_hash VARCHAR(255) NOT NULL,
-      email VARCHAR(100),
-      role VARCHAR(20) NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+// const initDB = async () => {
+//   // 1. 帳號表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS accounts (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       username VARCHAR(50) UNIQUE NOT NULL,
+//       password_hash VARCHAR(255) NOT NULL,
+//       email VARCHAR(100),
+//       role VARCHAR(20) NOT NULL,
+//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+//     )
+//   `);
 
-  // 2. 學生表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS students (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      name VARCHAR(50) NOT NULL,
-      student_id VARCHAR(50) UNIQUE NOT NULL
-    )
-  `);
+//   // 2. 學生表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS students (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       name VARCHAR(50) NOT NULL,
+//       student_id VARCHAR(50) UNIQUE NOT NULL
+//     )
+//   `);
 
-  // 3. 老師表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS teachers (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      name VARCHAR(50) NOT NULL,
-      teacher_id VARCHAR(50) UNIQUE NOT NULL
-    )
-  `);
+//   // 3. 老師表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS teachers (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       name VARCHAR(50) NOT NULL,
+//       teacher_id VARCHAR(50) UNIQUE NOT NULL
+//     )
+//   `);
 
-  // 4. 課程主表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS courses (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      course_name VARCHAR(100) NOT NULL,
-      course_code VARCHAR(50) UNIQUE NOT NULL,
-      description TEXT,
-      academic_year VARCHAR(20),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+//   // 4. 課程主表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS courses (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       course_name VARCHAR(100) NOT NULL,
+//       course_code VARCHAR(50) UNIQUE NOT NULL,
+//       description TEXT,
+//       academic_year VARCHAR(20),
+//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+//     )
+//   `);
 
-  // 5. 老師與課程關聯表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS teacher_courses (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      teacher_id INT NOT NULL,
-      course_id INT NOT NULL
-    )
-  `);
+//   // 5. 老師與課程關聯表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS teacher_courses (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       teacher_id INT NOT NULL,
+//       course_id INT NOT NULL
+//     )
+//   `);
 
-  // 6. 學生選課表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS enrollments (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      student_id INT NOT NULL,
-      course_id INT NOT NULL
-    )
-  `);
+//   // 6. 學生選課表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS enrollments (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       student_id INT NOT NULL,
+//       course_id INT NOT NULL
+//     )
+//   `);
 
-  // 7. 公告表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS announcements (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      course_id INT NOT NULL,
-      teacher_id INT NOT NULL,
-      title VARCHAR(255) NOT NULL,
-      content TEXT,
-      is_pinned BOOLEAN DEFAULT FALSE,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+//   // 7. 公告表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS announcements (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       course_id INT NOT NULL,
+//       teacher_id INT NOT NULL,
+//       title VARCHAR(255) NOT NULL,
+//       content TEXT,
+//       is_pinned BOOLEAN DEFAULT FALSE,
+//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+//     )
+//   `);
 
-  // 8. 公告已讀紀錄表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS announcement_reads (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      student_id INT NOT NULL,
-      announcement_id INT NOT NULL,
-      UNIQUE KEY uniq_student_announcement (student_id, announcement_id)
-    )
-  `);
+//   // 8. 公告已讀紀錄表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS announcement_reads (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       student_id INT NOT NULL,
+//       announcement_id INT NOT NULL,
+//       UNIQUE KEY uniq_student_announcement (student_id, announcement_id)
+//     )
+//   `);
 
-  // 9. 作業主表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS homeworks (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      course_id VARCHAR(50),
-      title VARCHAR(255),
-      description TEXT,
-      deadline DATETIME
-    )
-  `);
+//   // 9. 作業主表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS homeworks (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       course_id VARCHAR(50),
+//       title VARCHAR(255),
+//       description TEXT,
+//       deadline DATETIME
+//     )
+//   `);
 
-  // 10. 作業題目表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS homework_questions (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      homework_id INT,
-      question_order INT,
-      title VARCHAR(255),
-      description TEXT,
-      answer_format VARCHAR(50),
-      discussion_prompt TEXT,
-      has_attachment BOOLEAN DEFAULT FALSE,
-      file_name VARCHAR(255),
-      file_path VARCHAR(255)
-    )
-  `);
+//   // 10. 作業題目表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS homework_questions (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       homework_id INT,
+//       question_order INT,
+//       title VARCHAR(255),
+//       description TEXT,
+//       answer_format VARCHAR(50),
+//       discussion_prompt TEXT,
+//       has_attachment BOOLEAN DEFAULT FALSE,
+//       file_name VARCHAR(255),
+//       file_path VARCHAR(255)
+//     )
+//   `);
 
-  // 11. 作業繳交紀錄表
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS homework_submissions (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      homework_id INT,
-      student_id VARCHAR(128),
-      answer_text TEXT,
-      file_name VARCHAR(255),
-      file_path VARCHAR(255),
-      score VARCHAR(10),
-      feedback TEXT,
-      submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      graded_at DATETIME NULL,
-      UNIQUE KEY uniq_hw_student (homework_id, student_id)
-    )
-  `);
+//   // 11. 作業繳交紀錄表
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS homework_submissions (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       homework_id INT,
+//       student_id VARCHAR(128),
+//       answer_text TEXT,
+//       file_name VARCHAR(255),
+//       file_path VARCHAR(255),
+//       score VARCHAR(10),
+//       feedback TEXT,
+//       submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+//       graded_at DATETIME NULL,
+//       UNIQUE KEY uniq_hw_student (homework_id, student_id)
+//     )
+//   `);
 
-  // 12. 討論區
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS discussion_rooms (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      course_id INT NOT NULL,
-      room_name VARCHAR(100),
-      title VARCHAR(200),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
-    )
-  `);
+//   // 12. 討論區
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS discussion_rooms (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       course_id INT NOT NULL,
+//       room_name VARCHAR(100),
+//       title VARCHAR(200),
+//       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+//       FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+//     )
+//   `);
 
-  // 13. 討論區留言
-  await pool.execute(`
-  CREATE TABLE IF NOT EXISTS threads (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    room_id INT NOT NULL,
-    student_id VARCHAR(50) NOT NULL,
-    content TEXT NOT NULL,
-    parent_thread_id INT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+//   // 13. 討論區留言
+//   await pool.execute(`
+//   CREATE TABLE IF NOT EXISTS threads (
+//     id INT AUTO_INCREMENT PRIMARY KEY,
+//     room_id INT NOT NULL,
+//     student_id VARCHAR(50) NOT NULL,
+//     content TEXT NOT NULL,
+//     parent_thread_id INT NULL,
+//     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (room_id) REFERENCES discussion_rooms(id) ON DELETE CASCADE,
-    FOREIGN KEY (parent_thread_id) REFERENCES threads(id) ON DELETE CASCADE
-  )
-  `);
+//     FOREIGN KEY (room_id) REFERENCES discussion_rooms(id) ON DELETE CASCADE,
+//     FOREIGN KEY (parent_thread_id) REFERENCES threads(id) ON DELETE CASCADE
+//   )
+//   `);
 
-  // 14. 新增課程AI聊天
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS ai_chat_messages (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      course_id INT NOT NULL,
-      student_id INT NOT NULL,
-      role ENUM('user', 'assistant') NOT NULL,
-      message TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+//   // 14. 新增課程AI聊天
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS ai_chat_messages (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       course_id INT NOT NULL,
+//       student_id INT NOT NULL,
+//       role ENUM('user', 'assistant') NOT NULL,
+//       message TEXT NOT NULL,
+//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-      FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
-      FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
-  )
-  `);
+//       FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+//       FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+//   )
+//   `);
 
-  // 15. 建立課程AI_Prompts
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS course_ai_prompts (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      course_id INT NOT NULL,
-      chat_prompt TEXT NOT NULL,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
-    )
-  `)
+//   // 15. 建立課程AI_Prompts
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS course_ai_prompts (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       course_id INT NOT NULL,
+//       chat_prompt TEXT NOT NULL,
+//       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+//       FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+//     )
+//   `)
 
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS homework_submission_histories (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      submission_id INT NOT NULL,
-      event_type VARCHAR(32) NOT NULL,
-      payload_json LONGTEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (submission_id) REFERENCES homework_submissions(id) ON DELETE CASCADE
-    )
-  `);
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS homework_submission_histories (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       submission_id INT NOT NULL,
+//       event_type VARCHAR(32) NOT NULL,
+//       payload_json LONGTEXT,
+//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+//       FOREIGN KEY (submission_id) REFERENCES homework_submissions(id) ON DELETE CASCADE
+//     )
+//   `);
 
-  await pool.execute(`
-    CREATE TABLE IF NOT EXISTS course_materials (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      course_id VARCHAR(50) NOT NULL,
-      uploader_id VARCHAR(64),
-      file_name VARCHAR(255) NOT NULL,
-      file_path VARCHAR(255) NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+//   await pool.execute(`
+//     CREATE TABLE IF NOT EXISTS course_materials (
+//       id INT AUTO_INCREMENT PRIMARY KEY,
+//       course_id VARCHAR(50) NOT NULL,
+//       uploader_id VARCHAR(64),
+//       file_name VARCHAR(255) NOT NULL,
+//       file_path VARCHAR(255) NOT NULL,
+//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+//     )
+//   `);
 
-  try {
-    await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
-  } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
+//   } catch (e) { /* 欄位已存在就忽略 */ }
 
-  try {
-    await pool.execute("ALTER TABLE homework_submissions ADD COLUMN graded_details TEXT");
-  } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute("ALTER TABLE homework_submissions ADD COLUMN graded_details TEXT");
+//   } catch (e) { /* 欄位已存在就忽略 */ }
 
-  try {
-    await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
-  } catch (e) { /* 欄位已存在就忽略 */ }
-  try {
-    await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
-  } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
+//   } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20)");
+//   } catch (e) { /* 欄位已存在就忽略 */ }
 
-  //討論區內容
-  try {
-    await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN content TEXT");
-  } catch (e) { /* 欄位已存在就忽略 */ }
-  try {
-    await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN ai_prompt TEXT;");
-  } catch (e) { /* 欄位已存在就忽略 */ }
-  try {
-    await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN file_path VARCHAR(255) DEFAULT NULL;");
-  } catch (e) { /* 欄位已存在就忽略 */ }
+//   //討論區內容
+//   try {
+//     await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN content TEXT");
+//   } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN ai_prompt TEXT;");
+//   } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN file_path VARCHAR(255) DEFAULT NULL;");
+//   } catch (e) { /* 欄位已存在就忽略 */ }
 
-  try {
-    await pool.execute("ALTER TABLE homework_questions ADD COLUMN ai_prompt TEXT");
-  } catch (e) { /* 欄位已存在就忽略 */ }
-  try {
-    await pool.execute("ALTER TABLE homework_questions ADD COLUMN discussion_prompt TEXT");
-  } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute("ALTER TABLE homework_questions ADD COLUMN ai_prompt TEXT");
+//   } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute("ALTER TABLE homework_questions ADD COLUMN discussion_prompt TEXT");
+//   } catch (e) { /* 欄位已存在就忽略 */ }
 
-  try {
-    await pool.execute("ALTER TABLE homeworks ADD COLUMN attachments_json TEXT");
-  } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute("ALTER TABLE homeworks ADD COLUMN attachments_json TEXT");
+//   } catch (e) { /* 欄位已存在就忽略 */ }
 
-  try {
-    await pool.execute(`
-      ALTER TABLE course_ai_prompts
-      ADD COLUMN send_announcements BOOLEAN NOT NULL DEFAULT FALSE
-    `)
-  } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute(`
+//       ALTER TABLE course_ai_prompts
+//       ADD COLUMN send_announcements BOOLEAN NOT NULL DEFAULT FALSE
+//     `)
+//   } catch (e) { /* 欄位已存在就忽略 */ }
 
-  try {
-    await pool.execute(`
-      ALTER TABLE course_ai_prompts
-      ADD COLUMN send_assignments BOOLEAN NOT NULL DEFAULT FALSE
-    `)
-  } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute(`
+//       ALTER TABLE course_ai_prompts
+//       ADD COLUMN send_assignments BOOLEAN NOT NULL DEFAULT FALSE
+//     `)
+//   } catch (e) { /* 欄位已存在就忽略 */ }
 
-  try {
-    await pool.execute(`
-      ALTER TABLE course_ai_prompts
-      ADD COLUMN send_student_info BOOLEAN NOT NULL DEFAULT FALSE
-    `)
-  } catch (e) { /* 欄位已存在就忽略 */ }
+//   try {
+//     await pool.execute(`
+//       ALTER TABLE course_ai_prompts
+//       ADD COLUMN send_student_info BOOLEAN NOT NULL DEFAULT FALSE
+//     `)
+//   } catch (e) { /* 欄位已存在就忽略 */ }
 
-  console.log("資料庫檢查與初始化完成");
-};
-await initDB();
+//   console.log("資料庫檢查與初始化完成");
+// };
+// await initDB();
 
 
-// 註冊功能
-app.post("/api/register", async (req, res) => {
-  const { username, password, name, role, email } = req.body;
-  if (!username || !password || !name || !role || !email) {
-    return res.status(400).json({ message: "欄位不完整" });
-  }
+// // 註冊功能
+// app.post("/api/register", async (req, res) => {
+//   const { username, password, name, role, email } = req.body;
+//   if (!username || !password || !name || !role || !email) {
+//     return res.status(400).json({ message: "欄位不完整" });
+//   }
 
-  try {
-    const passwordHash = await bcrypt.hash(password, 10);
-    await pool.execute(
-      "INSERT INTO accounts (username, password_hash, email, role) VALUES (?, ?, ?, ?)",
-      [username, passwordHash, email, role]
-    );
+//   try {
+//     const passwordHash = await bcrypt.hash(password, 10);
+//     await pool.execute(
+//       "INSERT INTO accounts (username, password_hash, email, role) VALUES (?, ?, ?, ?)",
+//       [username, passwordHash, email, role]
+//     );
 
-    // TA
-    if (role === "student" || role === "ta") {
-      await pool.execute("INSERT INTO students (name, student_id) VALUES (?, ?)", [name, username]);
-    } else if (role === "teacher") {
-      await pool.execute("INSERT INTO teachers (name, teacher_id) VALUES (?, ?)", [name, username]);
-    }
-    res.json({ message: "註冊成功！" });
-  } catch (error) {
-    res.status(400).json({ message: `註冊失敗，帳號或信箱可能重複：${error.message}` });
-  }
-});
+//     // TA
+//     if (role === "student" || role === "ta") {
+//       await pool.execute("INSERT INTO students (name, student_id) VALUES (?, ?)", [name, username]);
+//     } else if (role === "teacher") {
+//       await pool.execute("INSERT INTO teachers (name, teacher_id) VALUES (?, ?)", [name, username]);
+//     }
+//     res.json({ message: "註冊成功！" });
+//   } catch (error) {
+//     res.status(400).json({ message: `註冊失敗，帳號或信箱可能重複：${error.message}` });
+//   }
+// });
 
-// 登入功能
-app.post("/api/login", async (req, res) => {
-  const { username, password } = req.body; // 這裡的 username 可能是信箱或帳號
-  try {
-    // 支援信箱或帳號登入 (對齊 app.py)
-    const [rows] = await pool.execute(
-      "SELECT * FROM accounts WHERE username = ? OR email = ?",
-      [username, username]
-    );
-    const account = rows[0];
+// // 登入功能
+// app.post("/api/login", async (req, res) => {
+//   const { username, password } = req.body; // 這裡的 username 可能是信箱或帳號
+//   try {
+//     // 支援信箱或帳號登入 (對齊 app.py)
+//     const [rows] = await pool.execute(
+//       "SELECT * FROM accounts WHERE username = ? OR email = ?",
+//       [username, username]
+//     );
+//     const account = rows[0];
 
-    if (account && await bcrypt.compare(password, account.password_hash)) {
-      res.json({
-        message: "登入成功！",
-        username: account.username,
-        role: account.role
-      });
-    } else {
-      res.status(401).json({ message: "帳號、信箱或密碼錯誤！" });
-    }
-  } catch (error) {
-    res.status(500).json({ message: `資料庫錯誤：${error.message}` });
-  }
-});
+//     if (account && await bcrypt.compare(password, account.password_hash)) {
+//       res.json({
+//         message: "登入成功！",
+//         username: account.username,
+//         role: account.role
+//       });
+//     } else {
+//       res.status(401).json({ message: "帳號、信箱或密碼錯誤！" });
+//     }
+//   } catch (error) {
+//     res.status(500).json({ message: `資料庫錯誤：${error.message}` });
+//   }
+// });
 
-// 取得使用者身分與基本資料
-app.get("/api/user_inf", async (req, res) => {
-  const userId = req.query.user_id;
-  if (!userId) return res.status(400).json({ message: "缺少user_id" });
+// // 取得使用者身分與基本資料
+// app.get("/api/user_inf", async (req, res) => {
+//   const userId = req.query.user_id;
+//   if (!userId) return res.status(400).json({ message: "缺少user_id" });
 
-  try {
-    const [roleRows] = await pool.execute("SELECT role FROM accounts WHERE username = ?", [userId]);
-    if (roleRows.length === 0) return res.status(404).json({ message: "找不到使用者" });
+//   try {
+//     const [roleRows] = await pool.execute("SELECT role FROM accounts WHERE username = ?", [userId]);
+//     if (roleRows.length === 0) return res.status(404).json({ message: "找不到使用者" });
 
-    const role = roleRows[0].role;
-    let userRows;
-    if (role === "student" || role === "ta") {
-      [userRows] = await pool.execute("SELECT * FROM students WHERE student_id = ?", [userId]);
-    } else {
-      [userRows] = await pool.execute("SELECT * FROM teachers WHERE teacher_id = ?", [userId]);
-    }
+//     const role = roleRows[0].role;
+//     let userRows;
+//     if (role === "student" || role === "ta") {
+//       [userRows] = await pool.execute("SELECT * FROM students WHERE student_id = ?", [userId]);
+//     } else {
+//       [userRows] = await pool.execute("SELECT * FROM teachers WHERE teacher_id = ?", [userId]);
+//     }
 
-    return res.json({ role, user: userRows[0] || null });
-  } catch (error) {
-    return res.status(500).json({ message: "讀取使用者資料失敗" });
-  }
-});
+//     return res.json({ role, user: userRows[0] || null });
+//   } catch (error) {
+//     return res.status(500).json({ message: "讀取使用者資料失敗" });
+//   }
+// });
+
+app.use("/api", authRoutes);
 
 // 搜尋課程
 app.get("/api/courses", async (req, res) => {
