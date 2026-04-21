@@ -859,8 +859,7 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
             const loadingTask = pdfjsLib.getDocument({ data: dataBuffer });
             const pdfDocument = await loadingTask.promise;
 
-            // 為了避免 Token 爆掉，我們設定最多只讀取前 10 頁 (可自行調整)
-            const maxPages = Math.min(pdfDocument.numPages, 10);
+            const maxPages = Math.min(pdfDocument.numPages, 20);
 
             // 逐頁取出文字
             for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
@@ -872,8 +871,7 @@ app.post("/api/discussions/:roomId/threads", async (req, res) => {
               pdfText += pageText + "\n";
             }
 
-            // 最後再加一道保險，限制總字數不超過 10000 字
-            pdfText = pdfText.substring(0, 10000);
+            pdfText = pdfText.substring(0, 50000);
           }
         } catch (pdfErr) {
           console.error("PDF 解析失敗 (pdfjs-dist):", pdfErr.message);
