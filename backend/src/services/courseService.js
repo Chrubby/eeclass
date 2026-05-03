@@ -66,24 +66,27 @@ export const CourseService = {
     return courses;
   },
 
-  async createCourse({ teacherAccount, courseName, courseCode, description, academicYear }) {
+  async createCourse({ teacher_id, course_name, course_code, description, academic_year }) {
+    console.log(1)
     const connection = await pool.getConnection();
     await connection.beginTransaction();
 
     try {
-      const existCourse = await CourseModel.findCourseByCode(courseCode, connection);
+      console.log(course_code)
+      const existCourse = await CourseModel.findCourseByCode(course_code, connection);
       if (existCourse) throw new Error("課程代碼已存在");
-
-      const courseId = await CourseModel.createCourse(courseName, courseCode, description, academicYear, connection);
-      
-      const teacher = await AuthModel.getTeacherById(teacherAccount);
+      console.log(3)
+      const courseId = await CourseModel.createCourse(course_name, course_code, description, academic_year, connection);
+      console.log(4)
+      const teacher = await AuthModel.getTeacherById(teacher_id);
       if (!teacher) throw new Error("找不到該老師");
+      console.log(5)
 
       await CourseModel.bindTeacherToCourse(teacher.id, courseId, connection);
-
+      console.log(6)
       const defaultPrompt = "你是一位大學課程助教，請用繁體中文回答，並使用 '\\n' 來換行，保持訊息條列與換行，不要用 HTML 標籤。";
       await CourseModel.createDefaultAiPrompt(courseId, defaultPrompt, connection);
-
+      console.log(7)
       await connection.commit();
       return courseId;
     } catch (error) {

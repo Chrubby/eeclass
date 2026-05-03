@@ -7,6 +7,7 @@ export const CourseAiModel = {
       "SELECT chat_prompt, discussion_prompt, grading_prompt, send_announcements, send_assignments, send_student_info FROM course_ai_prompts WHERE course_id = ? ORDER BY updated_at DESC LIMIT 1",
       [courseId]
     );
+
     const row = rows[0] || {};
     return {
       chat_prompt: row.chat_prompt || "",
@@ -29,17 +30,29 @@ export const CourseAiModel = {
   },
 
   async upsertPrompts(connection, courseId, data) {
-    const [rows] = await connection.execute(
-      "SELECT id FROM course_ai_prompts WHERE course_id = ?", [courseId]
+    const [courseRows] = await connection.execute(
+      `SELECT id FROM courses WHERE course_code = ?`,
+      [courseId]
     );
 
+    if (!courseRows.length) {
+      return res.status(400).json({
+        message: "找不到課程",
+        errorStep: "course_not_found"
+      });
+    }
+
+    const [rows] = await connection.execute(
+      "SELECT id FROM course_ai_prompts WHERE course_id = ?", [courseRows[0].id]
+    );
     if (rows.length > 0) {
       await connection.execute(
         `UPDATE course_ai_prompts SET chat_prompt = ?, discussion_prompt = ?, grading_prompt = ?, 
          send_announcements = ?, send_assignments = ?, send_student_info = ? WHERE course_id = ?`,
-        [data.chat_prompt, data.discussion, data.grading, data.send_announcements, data.send_assignments, data.send_student_info, courseId]
+        [data.chat_prompt, data.discussion, data.grading, data.send_announcements, data.send_assignments, data.send_student_info, courseRows[0].id]
       );
     } else {
+      console.log(3)
       await connection.execute(
         `INSERT INTO course_ai_prompts (course_id, chat_prompt, discussion_prompt, grading_prompt, 
          send_announcements, send_assignments, send_student_info) VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -57,10 +70,16 @@ export const CourseAiModel = {
   },
 
   async getChatHistory(courseId, studentId, limit = 10) {
+    const limitNum = Number(limit);
+
     const [rows] = await pool.execute(
-      "SELECT role, message, created_at FROM ai_chat_messages WHERE course_id = ? AND student_id = ? ORDER BY created_at ASC LIMIT ?",
-      [courseId, studentId, limit]
+      `SELECT role, message, created_at 
+      FROM ai_chat_messages 
+      WHERE course_id = ? AND student_id = ? 
+      ORDER BY created_at ASC 
+      LIMIT ${limitNum}`,
+      [courseId, studentId]
     );
     return rows;
-  }
+  },
 };

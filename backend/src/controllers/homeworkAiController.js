@@ -11,7 +11,7 @@ export const HomeworkAiController = {
   async getPrompts(req, res) {
     try {
       const { courseId } = req.params;
-      const prompts = await CourseAiModel.getPromptsByCourseId(courseId);
+      const prompts = await CourseAiModel.getPromptsByCourseCode(courseId);
       res.json(prompts);
     } catch (err) {
       res.status(500).json({ message: "取得 Prompt 失敗" });

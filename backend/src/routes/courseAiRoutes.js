@@ -7,5 +7,4 @@ const router = express.Router();
 router.post("/ai-assistant/ask", CourseAiController.askAi);
 router.post("/ai-assistant/remind", CourseAiController.remindHomework);
 router.get("/ai-assistant/history/:courseCode/:studentCode", CourseAiController.getHistory);
-
 export default router;
