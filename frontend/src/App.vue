@@ -179,6 +179,12 @@ watch(() => route.path, () => {
             </li>
           </router-link>
 
+          <router-link :to="`/course/${courseId}/aiquiz`" custom v-slot="{ navigate, isActive }">
+            <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
+              AI Quiz
+            </li>
+          </router-link>
+
           <router-link :to="`/course/${courseId}/discussion`" custom v-slot="{ navigate, isActive }">
             <li @click="navigate"
                 :class="['px-6 py-2.5 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']"

@@ -22,6 +22,22 @@ const router = createRouter({
           component: () => import('../views/course/Material.vue')
         },
         {
+          path: 'aiquiz',
+          name: 'AIQuiz',
+          component: () => import('../views/course/AIQuiz.vue')
+        },
+        {
+          path: 'aiquiz/create',
+          name: 'AIQuizCreate',
+          component: () => import('../views/course/teacher/AIQuizCreate.vue'),
+          meta: { requiresTeacher: true }
+        },
+        {
+          path: 'aiquiz/:quizId',
+          name: 'AIQuizDetail',
+          component: () => import('../views/course/AIQuizDetail.vue')
+        },
+        {
           path: 'discussion',
           name: 'CourseDiscussion',
           component: () => import('../views/course/Discussion.vue')
