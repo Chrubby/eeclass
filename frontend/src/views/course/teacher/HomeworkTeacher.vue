@@ -1,7 +1,26 @@
 <template>
   <div class="flex flex-col gap-6">
     <div class="bg-white border rounded p-5 shadow-sm border-l-4 border-l-[#337ab7]">
-      <h2 class="text-xl font-bold text-gray-800 mb-2">{{ homeworkTitle }}</h2>
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-2">
+        <h2 class="text-xl font-bold text-gray-800">{{ homeworkTitle }}</h2>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="px-4 py-1.5 rounded text-sm font-bold border border-[#337ab7] text-[#337ab7] hover:bg-blue-50"
+            @click="router.push(`/course/${courseId}/homework/${hwId}/edit`)"
+          >
+            編輯作業
+          </button>
+          <button
+            type="button"
+            class="px-4 py-1.5 rounded text-sm font-bold border border-red-300 text-red-600 hover:bg-red-50"
+            :disabled="deletingHomework"
+            @click="deleteHomework"
+          >
+            {{ deletingHomework ? '刪除中...' : '刪除作業' }}
+          </button>
+        </div>
+      </div>
       <div class="text-[15px] text-gray-600 flex gap-6">
         <span>截止日期：{{ homeworkDeadline }}</span>
         <span class="font-bold text-[#337ab7]">{{ progressText }}</span>
@@ -176,6 +195,7 @@ const submissions = ref([])
 const historyModalOpen = ref(false)
 const historyLoading = ref(false)
 const currentHistory = ref(null)
+const deletingHomework = ref(false)
 
 const formatDate = (raw) => (raw ? new Date(raw).toLocaleString() : '-')
 const progressText = computed(() => {
@@ -234,6 +254,22 @@ const openHistory = async (sub) => {
     historyModalOpen.value = false
   } finally {
     historyLoading.value = false
+  }
+}
+
+const deleteHomework = async () => {
+  if (!confirm('確定要刪除此作業嗎？刪除後學生繳交資料也會一併清除，此動作無法還原。')) return
+  deletingHomework.value = true
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}`, { method: 'DELETE' })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || '刪除失敗')
+    alert(data.message || '作業已刪除')
+    router.push(`/course/${courseId}/homework`)
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    deletingHomework.value = false
   }
 }
 

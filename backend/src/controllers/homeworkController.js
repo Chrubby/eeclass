@@ -36,10 +36,32 @@ export const HomeworkController = {
     }
   },
 
+  async updateHomework(req, res) {
+    try {
+      const { hwId } = req.params;
+      await HomeworkService.updateHomework(hwId, req.body, req.files);
+      res.json({ message: "作業更新成功！" });
+    } catch (error) {
+      res.status(500).json({ message: "更新失敗: " + error.message });
+    }
+  },
+
+  async deleteHomework(req, res) {
+    try {
+      await HomeworkService.deleteHomework(req.params.hwId);
+      res.json({ message: "作業已刪除" });
+    } catch (error) {
+      res.status(500).json({ message: "刪除失敗: " + error.message });
+    }
+  },
+
   async submitHomework(req, res) {
     try {
       const { hwId } = req.params;
       const { studentId, answerText } = req.body;
+      if (!answerText && !req.file) {
+        return res.status(400).json({ message: "不能繳交空內容" });
+      }
       await HomeworkService.submitHomework(hwId, studentId, answerText, req.file);
       res.json({ message: "作業繳交成功！" });
     } catch (error) {

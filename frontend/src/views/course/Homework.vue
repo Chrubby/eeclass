@@ -7,7 +7,7 @@
     </div>
 
     <button
-      v-if="userRole === 'teacher'"
+      v-if="['teacher', 'ta'].includes(userRole)"
       @click="goToCreateHomework"
       class="bg-[#337ab7] text-white px-4 py-1.5 rounded text-sm font-bold tracking-wide hover:bg-[#285e8e] shadow-sm transition-colors flex items-center gap-1 mb-4"
     >
@@ -87,7 +87,7 @@ const loadHomeworkList = async () => {
       isGraded: Boolean(item.score),
       scoreText: item.score || '-',
       statusText:
-        userRole.value === 'teacher'
+        ['teacher', 'ta'].includes(userRole.value)
           ? `已繳交 ${item.submitCount || 0} / 已批改 ${item.gradedCount || 0}`
           : item.score
             ? '已批改'

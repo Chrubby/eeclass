@@ -21,5 +21,18 @@ export const MaterialModel = {
       [courseId, uploaderId || null, fileName, filePath]
     );
     return result.insertId;
+  },
+
+  async getById(materialId) {
+    const [rows] = await pool.execute(
+      `SELECT id, course_id as courseId, uploader_id as uploaderId, file_name as fileName, file_path as filePath
+       FROM course_materials WHERE id = ?`,
+      [materialId]
+    );
+    return rows[0] || null;
+  },
+
+  async delete(materialId) {
+    await pool.execute("DELETE FROM course_materials WHERE id = ?", [materialId]);
   }
 };

@@ -43,12 +43,18 @@ const router = createRouter({
           meta: { requiresTeacher: true }
         },
         {
+          path: 'homework/:hwId/edit',
+          name: 'HomeworkEdit',
+          component: () => import('../views/course/teacher/HomeworkEdit.vue'),
+          meta: { requiresTeacher: true }
+        },
+        {
           path: 'homework/:hwId',
           name: 'HomeworkDetail',
           component: async () => {
             const role = localStorage.getItem('userRole') || 'student'
 
-            if (role === 'teacher') {
+            if (role === 'teacher' || role === 'ta') {
               return (await import('../views/course/teacher/HomeworkTeacher.vue')).default
             }
 
@@ -78,14 +84,15 @@ const router = createRouter({
   ]
 })
 
+const staffRoles = ['teacher', 'ta']
+
 router.beforeEach((to, from) => {
   const userRole = localStorage.getItem('userRole') || 'student'
 
-  if (to.meta.requiresTeacher && userRole !== 'teacher') {
+  if (to.meta.requiresTeacher && !staffRoles.includes(userRole)) {
     alert('無法訪問此頁面。')
     return false
   }
-
 })
 
 export default router

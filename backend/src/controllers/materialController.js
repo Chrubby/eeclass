@@ -27,5 +27,16 @@ export const MaterialController = {
     } catch (error) {
       res.status(500).json({ message: "教材上傳失敗: " + error.message });
     }
+  },
+
+  // 刪除教材
+  async deleteMaterial(req, res) {
+    try {
+      const { courseId, materialId } = req.params;
+      await MaterialService.deleteMaterial(courseId, materialId);
+      res.json({ message: "教材已刪除" });
+    } catch (error) {
+      res.status(500).json({ message: "刪除教材失敗: " + error.message });
+    }
   }
 };

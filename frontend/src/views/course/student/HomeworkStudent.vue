@@ -11,6 +11,12 @@
           </span>
         </span>
       </div>
+      <p
+        v-if="isPastDeadline && !homeworkData.isGraded && !homeworkData.isSubmitted"
+        class="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2"
+      >
+        已超過繳交截止時間，無法再送出作業。
+      </p>
 
       <div v-if="homeworkAttachments.length" class="mt-4 pt-4 border-t border-gray-200">
         <span class="text-sm font-bold text-gray-700 block mb-2">老師提供的附件（請下載參考）</span>
@@ -114,7 +120,7 @@
             <textarea
               v-model="answers[index]"
               rows="4"
-              :disabled="homeworkData.isGraded"
+              :disabled="answerInputsDisabled"
               placeholder="請在此輸入答案..."
               class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors resize-y"
             ></textarea>
@@ -122,7 +128,7 @@
 
           <div v-else>
             <label class="block text-xs font-bold text-gray-500 mb-1">上傳檔案</label>
-            <input type="file" accept=".pdf" @change="handleFileChange(index, $event)" :disabled="homeworkData.isGraded" class="block w-full text-xs text-gray-600" />
+            <input type="file" accept=".pdf" @change="handleFileChange(index, $event)" :disabled="answerInputsDisabled" class="block w-full text-xs text-gray-600" />
 
             <div v-if="homeworkData.isSubmitted && homeworkData.submittedFileName" class="mt-2 text-xs font-bold text-green-600 bg-green-50 p-2 rounded border border-green-200 inline-block">
               已繳交檔案：{{ homeworkData.submittedFileName }}
@@ -140,7 +146,12 @@
         <button v-if="homeworkData.isSubmitted" @click="unsubmitHomework" class="bg-red-500 text-white px-8 py-2.5 rounded text-[16px] hover:bg-red-600 transition-colors">
           收回作業
         </button>
-        <button v-else @click="submitHomework" class="bg-[#337ab7] text-white px-8 py-2.5 rounded text-[16px] hover:bg-[#285e8e] transition-colors">
+        <button
+          v-else
+          :disabled="isPastDeadline"
+          @click="submitHomework"
+          class="bg-[#337ab7] text-white px-8 py-2.5 rounded text-[16px] hover:bg-[#285e8e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
           確認送出作業
         </button>
       </div>
@@ -227,6 +238,7 @@ const homeworkData = ref({
   title: '',
   description: '',
   deadlineText: '-',
+  deadlineRaw: null,
   questions: [],
   isGraded: false,
   isSubmitted: false,
@@ -236,6 +248,17 @@ const homeworkData = ref({
   attachments: [],
   attachment_url: null,
 })
+
+const isPastDeadline = computed(() => {
+  const d = homeworkData.value.deadlineRaw
+  if (!d) return false
+  return new Date() > new Date(d)
+})
+
+/** 已批改、或已過期且尚未繳交時，不可編輯作答區 */
+const answerInputsDisabled = computed(
+  () => homeworkData.value.isGraded || (isPastDeadline.value && !homeworkData.value.isSubmitted),
+)
 
 const questionMaxScores = computed(() => perQuestionMaxScores(homeworkData.value.questions?.length || 0))
 
@@ -348,6 +371,7 @@ const loadData = async () => {
 
     homeworkData.value = {
       ...hw,
+      deadlineRaw: hw.deadline || null,
       deadlineText: hw.deadline ? new Date(hw.deadline).toLocaleString() : '-',
       isSubmitted: Boolean(current?.submissionId),
       isGraded: Boolean(current?.score),
@@ -394,6 +418,16 @@ const handleFileChange = (index, event) => {
 }
 
 const submitHomework = async () => {
+  if (isPastDeadline.value) {
+    alert('已超過繳交截止時間，無法繳交作業')
+    return
+  }
+  const hasFile = files.value.some((f) => f != null)
+  const hasText = (answers.value || []).some((a) => String(a || '').trim() !== '')
+  if (!hasFile && !hasText) {
+    alert('不能繳交空內容')
+    return
+  }
   try {
     const formData = new FormData()
     formData.append('studentId', studentId)

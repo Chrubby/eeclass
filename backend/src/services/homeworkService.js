@@ -89,6 +89,13 @@ export const HomeworkService = {
 
   // 學生繳交作業
   async submitHomework(hwId, studentId, answerText, file) {
+    const homework = await HomeworkModel.getHomeworkById(hwId);
+    if (homework && homework.deadline) {
+      if (new Date() > new Date(homework.deadline)) {
+        throw new Error("已超過繳交截止時間，無法繳交作業");
+      }
+    }
+
     const correctFileName = file ? Buffer.from(file.originalname, 'latin1').toString('utf8') : null;
     const filePath = file ? `/uploads/${file.filename}` : null;
 
@@ -102,6 +109,56 @@ export const HomeworkService = {
     });
 
     return subId;
+  },
+
+  // 老師更新作業
+  async updateHomework(hwId, bodyData, files) {
+    const { title, deadline, description, questions } = bodyData;
+    const existing = await HomeworkModel.getHomeworkById(hwId);
+    if (!existing) throw new Error("找不到作業");
+
+    let connection;
+    try {
+      connection = await pool.getConnection();
+      await connection.beginTransaction();
+
+      await HomeworkModel.updateHomeworkById(connection, hwId, {
+        title: title ?? existing.title,
+        deadline: deadline ?? existing.deadline,
+        description: description !== undefined ? description : existing.description,
+      });
+
+      const mainFiles = (files || []).filter((f) => f.fieldname === "homework_files" || f.fieldname === "homework_file");
+      if (mainFiles.length > 0) {
+        const attachments = mainFiles.map((file) => ({
+          file_name: Buffer.from(file.originalname, "latin1").toString("utf8"),
+          file_path: `/uploads/${file.filename}`,
+        }));
+        await HomeworkModel.updateHomeworkAttachments(connection, hwId, JSON.stringify(attachments));
+      }
+
+      if (questions) {
+        const parsedQuestions = JSON.parse(questions);
+        await HomeworkModel.deleteQuestionsByHomeworkId(connection, hwId);
+        await HomeworkModel.createQuestions(connection, hwId, parsedQuestions);
+      }
+
+      await connection.commit();
+    } catch (error) {
+      if (connection) await connection.rollback();
+      throw error;
+    } finally {
+      if (connection) connection.release();
+    }
+  },
+
+  // 老師刪除作業
+  async deleteHomework(hwId) {
+    const existing = await HomeworkModel.getHomeworkById(hwId);
+    if (!existing) throw new Error("找不到作業");
+    await HomeworkModel.deleteSubmissionsByHomeworkId(hwId);
+    await HomeworkModel.deleteQuestionsByHomeworkId(null, hwId);
+    await HomeworkModel.deleteHomeworkById(hwId);
   },
 
   // 學生收回作業

@@ -5,7 +5,7 @@ import { pool } from "../config/db.js";
 export const CourseAiController = {
   async askAi(req, res) {
     try {
-      const { courseId: courseCode } = req.params;
+      const { courseCode } = req.params;
       const { studentCode, userMessage } = req.body;
       const reply = await CourseAiService.askAssistant(courseCode, studentCode, userMessage);
       res.json({ reply });
@@ -16,7 +16,7 @@ export const CourseAiController = {
 
   async remindHomework(req, res) {
     try {
-      const { courseId: courseCode } = req.params;
+      const { courseCode } = req.params;
       const { studentCode } = req.body;
       const reply = await CourseAiService.remindHomework(courseCode, studentCode);
       res.json({ reply });
@@ -27,7 +27,7 @@ export const CourseAiController = {
 
   async getHistory(req, res) {
     try {
-      const { courseId: courseCode, studentCode } = req.params;
+      const { courseCode, studentCode } = req.params;
       const [courseRows] = await pool.execute("SELECT id FROM courses WHERE course_code = ?", [courseCode]);
       const [studentRows] = await pool.execute("SELECT id FROM students WHERE student_id = ?", [studentCode]);
       if (!courseRows.length || !studentRows.length) return res.status(404).json({ message: "資料不存在" });

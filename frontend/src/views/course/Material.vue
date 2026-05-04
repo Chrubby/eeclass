@@ -5,7 +5,7 @@
       <span class="text-xs text-gray-500">共 {{ materials.length }} 份教材</span>
     </div>
 
-    <div v-if="isTeacher" class="bg-white border rounded shadow-sm p-4">
+    <div v-if="canManageMaterials" class="bg-white border rounded shadow-sm p-4">
       <h3 class="font-bold text-gray-700 mb-2">上傳教材</h3>
       <div
         class="border-2 border-dashed rounded p-6 text-center transition-colors"
@@ -37,14 +37,23 @@
       <div class="flex bg-gray-100 text-sm font-bold text-gray-700 p-3 border-b">
         <div class="flex-1">檔名</div>
         <div class="w-36 text-center">上傳時間</div>
-        <div class="w-24 text-center">操作</div>
+        <div class="w-32 text-center">操作</div>
       </div>
       <ul class="divide-y divide-gray-200">
         <li v-for="m in materials" :key="m.id" class="flex p-3 items-center text-[15px]">
           <div class="flex-1 truncate pr-4 text-gray-800">{{ m.fileName }}</div>
           <div class="w-36 text-center text-gray-500 text-sm">{{ formatDate(m.createdAt) }}</div>
-          <div class="w-24 text-center">
+          <div class="w-32 text-center flex items-center justify-center gap-2">
             <a :href="`${API_BASE_URL}${m.filePath}`" target="_blank" class="text-blue-600 hover:underline text-sm font-bold">下載</a>
+            <button
+              v-if="canManageMaterials"
+              type="button"
+              class="text-red-600 hover:underline text-sm font-bold disabled:opacity-50"
+              :disabled="deletingId === m.id"
+              @click="deleteMaterial(m.id)"
+            >
+              {{ deletingId === m.id ? '刪除中' : '刪除' }}
+            </button>
           </div>
         </li>
       </ul>
@@ -60,7 +69,9 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 const courseId = route.params.id
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
-const isTeacher = (localStorage.getItem('userRole') || '') === 'teacher'
+const userRole = localStorage.getItem('userRole') || ''
+const canManageMaterials = ['teacher', 'ta'].includes(userRole)
+const deletingId = ref(null)
 const uploaderId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
 
 const materials = ref([])
@@ -110,6 +121,23 @@ const uploadMaterial = async () => {
     alert(e.message)
   } finally {
     uploading.value = false
+  }
+}
+
+const deleteMaterial = async (materialId) => {
+  if (!confirm('確定刪除此教材？')) return
+  deletingId.value = materialId
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/courses/${courseId}/materials/${materialId}`, {
+      method: 'DELETE',
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || '刪除失敗')
+    await loadMaterials()
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    deletingId.value = null
   }
 }
 

@@ -5,6 +5,7 @@ import { DiscussionController } from "../controllers/discussionController.js";
 import { HomeworkController } from "../controllers/homeworkController.js";
 import { MaterialController } from "../controllers/materialController.js";
 import { uploadPdf, upload} from "../middlewares/upload.js";
+import courseAiRoutes from "./courseAiRoutes.js";
 
 const router = express.Router();
 
@@ -21,9 +22,12 @@ router.post("/:courseCode/discussions", uploadPdf.single("file"), DiscussionCont
 //作業
 router.get("/:courseId/homeworks", HomeworkController.getCourseHomeworks);
 router.post("/:courseId/homeworks", upload.any(), HomeworkController.publishHomework);
+router.use("/:courseCode", courseAiRoutes);
+
 //教材
 router.get("/:courseId/materials", MaterialController.getMaterials);
 router.post("/:courseId/materials", upload.single("file"), MaterialController.uploadMaterial);
+router.delete("/:courseId/materials/:materialId", MaterialController.deleteMaterial);
 
 
 export default router;

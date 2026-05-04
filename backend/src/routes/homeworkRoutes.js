@@ -8,6 +8,8 @@ const router = express.Router();
 // 單一作業操作 (/api/homeworks/...)
 // ========================
 router.get("/homeworks/:hwId", HomeworkController.getHomeworkDetail);
+router.put("/homeworks/:hwId", upload.any(), HomeworkController.updateHomework);
+router.delete("/homeworks/:hwId", HomeworkController.deleteHomework);
 router.post("/homeworks/:hwId/submissions", upload.single("file"), HomeworkController.submitHomework);
 router.get("/homeworks/:hwId/submissions/me", HomeworkController.getMySubmission);
 router.delete("/homeworks/:hwId/submissions/me", HomeworkController.unsubmitHomework);

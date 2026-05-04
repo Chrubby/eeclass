@@ -17,6 +17,30 @@ export const HomeworkModel = {
     );
   },
 
+  async updateHomeworkById(connection, hwId, { title, deadline, description }) {
+    await connection.execute(
+      "UPDATE homeworks SET title = ?, deadline = ?, description = ? WHERE id = ?",
+      [title, deadline, description, hwId]
+    );
+  },
+
+  async deleteSubmissionsByHomeworkId(hwId) {
+    await pool.execute("DELETE FROM homework_submissions WHERE homework_id = ?", [hwId]);
+  },
+
+  async deleteQuestionsByHomeworkId(connection, hwId) {
+    const sql = "DELETE FROM homework_questions WHERE homework_id = ?";
+    if (connection) {
+      await connection.execute(sql, [hwId]);
+    } else {
+      await pool.execute(sql, [hwId]);
+    }
+  },
+
+  async deleteHomeworkById(hwId) {
+    await pool.execute("DELETE FROM homeworks WHERE id = ?", [hwId]);
+  },
+
   // 建立作業子題
   async createQuestions(connection, hwId, questions) {
     for (let i = 0; i < questions.length; i++) {
@@ -147,7 +171,7 @@ export const HomeworkModel = {
   // 取得歷程紀錄
   async getSubmissionHistoryLogs(submissionId) {
     const [rows] = await pool.execute(
-      "SELECT id, event_type as eventType, payload_json as payloadJson, created_at as createdAt FROM homework_submission_histories WHERE submission_id = ? ORDER BY created_at ASC",
+      "SELECT id, event_type as eventType, payload_json as payloadJson, created_at as createdAt FROM homework_submission_histories WHERE submission_id = ? ORDER BY created_at DESC",
       [submissionId]
     );
     return rows;
