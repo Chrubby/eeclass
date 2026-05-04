@@ -256,11 +256,22 @@ const initDB = async () => {
         ADD COLUMN send_assignments BOOLEAN NOT NULL DEFAULT FALSE
         `)
     } catch (e) { /* 欄位已存在就忽略 */ }
-
     try {
         await pool.execute(`
         ALTER TABLE course_ai_prompts
         ADD COLUMN send_student_info BOOLEAN NOT NULL DEFAULT FALSE
+        `)
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    try {
+        await pool.execute(`
+        ALTER TABLE course_ai_prompts
+        ADD COLUMN discussion_prompt TEXT NOT NULL
+        `)
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    try {
+        await pool.execute(`
+        ALTER TABLE course_ai_prompts
+        ADD COLUMN grading_prompt TEXT NOT NULL
         `)
     } catch (e) { /* 欄位已存在就忽略 */ }
 

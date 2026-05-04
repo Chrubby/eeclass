@@ -71,8 +71,8 @@ export const CourseModel = {
   },
   async createDefaultAiPrompt(courseId, defaultPrompt, conn = pool) {
     return conn.execute(
-      `INSERT INTO course_ai_prompts (course_id, chat_prompt) VALUES (?, ?)`,
-      [courseId, defaultPrompt]
+      `INSERT INTO course_ai_prompts (course_id, chat_prompt, discussion_prompt, grading_prompt) VALUES (?, ?, ?, ?)`,
+      [courseId, defaultPrompt, defaultPrompt, defaultPrompt]
     );
   }
 };
