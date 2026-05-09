@@ -20,7 +20,7 @@ export const HomeworkAiController = {
 
   async updatePrompts(req, res) {
     const { courseId } = req.params;
-    const { chat_prompt, discussion_prompt, grading_prompt, role, send_announcements, send_assignments, send_student_info } = req.body;
+    const { chat_prompt, discussion_prompt, grading_prompt, role, send_announcements, send_assignments, send_student_info, send_grades } = req.body;
     
     if (role !== "teacher") return res.status(403).json({ message: "權限不足" });
 
@@ -31,7 +31,8 @@ export const HomeworkAiController = {
         grading: (grading_prompt || chat_prompt || "").trim(),
         send_announcements: !!send_announcements,
         send_assignments: !!send_assignments,
-        send_student_info: !!send_student_info
+        send_student_info: !!send_student_info,
+        send_grades: !!send_grades
       };
       await CourseAiModel.upsertPrompts(pool, courseId, data);
       res.json({ message: "Prompt 更新成功" });

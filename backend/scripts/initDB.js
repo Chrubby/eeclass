@@ -265,6 +265,12 @@ const initDB = async () => {
     try {
         await pool.execute(`
         ALTER TABLE course_ai_prompts
+        ADD COLUMN send_grades BOOLEAN NOT NULL DEFAULT FALSE
+        `)
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    try {
+        await pool.execute(`
+        ALTER TABLE course_ai_prompts
         ADD COLUMN discussion_prompt TEXT NOT NULL
         `)
     } catch (e) { /* 欄位已存在就忽略 */ }

@@ -14,7 +14,6 @@ export const CourseAiService = {
     const history = await CourseAiModel.getChatHistory(course.id, student.id);
     let extraInfo = "";
     if (promptData.send_announcements) {
-      console.log(1)
       const [rows] = await pool.execute(
         `
         SELECT title, content, created_at
@@ -35,7 +34,6 @@ export const CourseAiService = {
     }
 
     if (promptData.send_assignments) {
-      console.log(2)
       const [rows] = await pool.execute(
         `
         SELECT id, title, description, deadline
@@ -78,7 +76,6 @@ export const CourseAiService = {
     }
 
     if (promptData.send_student_info) {
-      console.log(3);
     
       const [submitted] = await pool.execute(
         `
@@ -105,12 +102,12 @@ export const CourseAiService = {
       );
     
       extraInfo += `
-    【學生資訊】
-    姓名：${student.name}
-    學號：${student.student_id}
-    
-    已交作業：
-    `;
+【學生資訊】
+姓名：${student.name}
+學號：${student.student_id}
+      
+已交作業：
+`;
     
       if (submitted.length === 0) {
         extraInfo += "- 無\n";
@@ -121,7 +118,7 @@ export const CourseAiService = {
       }
     
       extraInfo += `\n未交作業：
-    `;
+`;
     
       if (missing.length === 0) {
         extraInfo += "- 無\n";
@@ -131,6 +128,90 @@ export const CourseAiService = {
         });
       }
     }
+
+    if (promptData.send_grades) {
+      const [grades] = await pool.execute(
+        `
+        SELECT
+          h.id,
+          h.title,
+          h.deadline,
+    
+          s.answer_text,
+          s.score,
+          s.feedback,
+          s.submitted_at,
+          s.graded_at
+    
+        FROM homeworks h
+    
+        LEFT JOIN homework_submissions s
+          ON s.homework_id = h.id
+          AND s.student_id = ?
+    
+        WHERE h.course_id = ?
+    
+        ORDER BY h.deadline ASC
+        `,
+        [student.student_id, course.id]
+      );
+    
+      extraInfo += `
+【學生作業成績分析】
+      
+`;
+    
+      if (grades.length === 0) {
+        extraInfo += "目前沒有作業資料。\n";
+      }
+    
+      for (const g of grades) {
+  
+        const [statRows] = await pool.execute(
+          `
+          SELECT 
+            AVG(score) AS avg_score,
+            COUNT(*) AS total_submitted,
+            COUNT(score) AS graded_count,
+    
+            MAX(score) AS max_score,
+            MIN(score) AS min_score
+    
+          FROM homework_submissions
+          WHERE homework_id = ?
+            AND score IS NOT NULL
+          `,
+          [g.id]
+        );
+    
+        const stats = statRows[0] || {};
+  
+        const status = g.submitted_at ? "已繳交" : "未繳交";
+    
+        extraInfo += `
+作業：${g.title}
+截止：${g.deadline || "未設定"}
+狀態：${status}
+        
+📊 個人成績：
+- 分數：${g.score || "未評分"}
+- 評語：${g.feedback || "無"}
+- 繳交時間：${g.submitted_at || "未繳交"}
+        
+📊 班級統計：
+- 平均分數：${stats.avg_score ? Number(stats.avg_score).toFixed(2) : "無資料"}
+- 最高分：${stats.max_score ?? "無資料"}
+- 最低分：${stats.min_score ?? "無資料"}
+- 繳交人數：${stats.total_submitted || 0}
+- 已評分數：${stats.graded_count || 0}
+        
+--------------------------
+`;
+    
+      }
+    }
+
+    console.log(extraInfo)
 
     await CourseAiModel.saveMessage(course.id, student.id, 'user', userMessage);
     const reply = await OpenAiHelper.chat([
@@ -145,16 +226,52 @@ export const CourseAiService = {
   },
 
   async remindHomework(courseCode, studentCode) {
-    const [hws] = await pool.execute(
-      "SELECT h.title, h.deadline FROM homeworks h JOIN courses c ON c.id = h.course_id WHERE c.course_code = ? AND h.deadline >= NOW()",
-      [courseCode]
-    );
-    if (hws.length === 0) return "👍 目前沒有待交作業！";
+    try {
+  
+      const [hws] = await pool.execute(`
+        SELECT
+          h.id,
+          h.title,
+          h.deadline
+        FROM homeworks h
+  
+        JOIN courses c
+          ON c.course_code = h.course_id
+  
+        LEFT JOIN homework_submissions s
+          ON s.homework_id = h.id
+          AND s.student_id = ?
+  
+        WHERE c.course_code = ?
+          AND h.deadline >= NOW()
+          AND s.id IS NULL
+  
+        ORDER BY h.deadline ASC
+      `, [studentCode, courseCode]);
 
-    const hwListText = hws.map(h => `• ${h.title} (截止: ${new Date(h.deadline).toLocaleString()})`).join("\n");
-    return await OpenAiHelper.chat([
-      { role: "system", content: "你是一位親切的助教，請用繁體中文提醒學生未交作業。" },
-      { role: "user", content: `未交作業清單：\n${hwListText}` }
-    ]);
+  
+      if (hws.length === 0) {
+        return "👍 目前沒有未繳的作業！";
+      }
+  
+      const hwListText = hws.map(h => {
+        return `• ${h.title}（截止：${new Date(h.deadline).toLocaleString("zh-TW")}）`;
+      }).join("\n");
+  
+      return await OpenAiHelper.chat([
+        {
+          role: "system",
+          content: "你是一位親切的助教，請用繁體中文提醒學生尚未繳交的作業。"
+        },
+        {
+          role: "user",
+          content: `以下是學生尚未繳交的作業：\n${hwListText}`
+        }
+      ]);
+  
+    } catch (error) {
+      console.error("remindHomework 錯誤：", error);
+      return "❌ 作業提醒產生失敗";
+    }
   }
 };

@@ -6,8 +6,7 @@ export const CourseAiController = {
   async askAi(req, res) {
     console.log(`Received request for askAi: courseCode=${req.body.courseCode}, studentCode=${req.body.studentCode}`);
     try {
-      const { courseCode } = req.params;
-      const { studentCode, userMessage } = req.body;
+      const { courseCode, studentCode, userMessage } = req.body;
       const reply = await CourseAiService.askAssistant(courseCode, studentCode, userMessage);
       res.json({ reply });
     } catch (err) {
@@ -18,8 +17,7 @@ export const CourseAiController = {
   async remindHomework(req, res) {
     console.log(`Received request for remindHomework: courseCode=${req.body.courseCode}, studentCode=${req.body.studentCode}`);
     try {
-      const { courseCode } = req.params;
-      const { studentCode } = req.body;
+      const { studentCode, courseCode} = req.body;
       const reply = await CourseAiService.remindHomework(courseCode, studentCode);
       res.json({ reply });
     } catch (err) {

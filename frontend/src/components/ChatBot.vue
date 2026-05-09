@@ -31,133 +31,287 @@
     </button>
 
   </div>
-
   <!-- 聊天視窗 -->
   <div
     v-if="open"
-    class="fixed bottom-20 right-4 w-96 h-[500px] bg-white border rounded-lg shadow-xl flex flex-col overflow-hidden"
+    class="fixed bottom-20 right-4 w-96 h-[600px] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
   >
-    <!-- 標題 -->
-    <div class="flex flex-col bg-gray-100 px-4 py-2 border-b">
+
+    <!-- Header -->
+    <div class="shrink-0 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3">
       <div class="flex justify-between items-center">
-        <span class="font-semibold text-gray-800">課程助教 AI</span>
-        <button @click="open = false" class="text-gray-500 hover:text-gray-800 transition">✕</button>
+        <div>
+          <div class="font-semibold text-base">
+            課程助教 AI
+          </div>
+
+          <div class="text-xs text-blue-100 mt-0.5">
+            Course AI Assistant
+          </div>
+        </div>
+
+        <button
+          @click="open = false"
+          class="text-white/80 hover:text-white transition text-lg"
+        >
+          ✕
+        </button>
       </div>
+    </div>
 
-      <!-- 👨‍🏫 teacher prompt 編輯 -->
-      <div v-if="role === 'teacher'" class="mt-2 space-y-2">
-        <div class="text-xs text-gray-600">AI Prompt（課程設定）</div>
+    <!-- 可滾動內容 -->
+    <div class="flex-1 overflow-y-auto bg-gray-50">
 
-        <div class="space-y-2">
-          <div>
-            <div class="text-xs text-gray-600">Chat Prompt</div>
-            <textarea
-              v-model="chatPrompt"
-              class="w-full text-sm border rounded p-2"
-              rows="3"
-            />
+      <!-- Teacher Settings -->
+      <div
+        v-if="role === 'teacher'"
+        class="p-4 space-y-5"
+      >
+
+        <!-- 區塊標題 -->
+        <div>
+          <div class="text-sm font-semibold text-gray-800">
+            AI Prompt 設定
           </div>
 
-          <div>
-            <div class="text-xs text-gray-600">Discussion Prompt</div>
-            <textarea
-              v-model="discussionPrompt"
-              class="w-full text-sm border rounded p-2"
-              rows="3"
-            />
+          <div class="text-xs text-gray-500 mt-1">
+            控制 AI 的聊天、討論與評分行為
           </div>
-
-          <div>
-            <div class="text-xs text-gray-600">Grading Prompt</div>
-            <textarea
-              v-model="gradingPrompt"
-              class="w-full text-sm border rounded p-2"
-              rows="3"
-            />
-          </div>
-
         </div>
 
-        <!-- 三個布林設定 -->
-        <div class="grid grid-cols-1 gap-2 text-sm text-gray-700">
-          <label class="flex items-center gap-2">
-            <input type="checkbox" v-model="sendAnnouncements" />
-            傳送公告資料給 AI
+        <!-- Chat Prompt -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">
+            Chat Prompt
           </label>
 
-          <label class="flex items-center gap-2">
-            <input type="checkbox" v-model="sendAssignments" />
-            傳送作業資料給 AI
-          </label>
-
-          <label class="flex items-center gap-2">
-            <input type="checkbox" v-model="sendStudentInfo" />
-            傳送學生資訊給 AI
-          </label>
+          <textarea
+            v-model="chatPrompt"
+            rows="4"
+            placeholder="例如：你是一位親切且專業的課程助教..."
+            class="w-full text-sm border border-gray-300 rounded-xl p-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
+          />
         </div>
 
-        <div class="flex justify-end mt-1">
+        <!-- Discussion Prompt -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">
+            Discussion Prompt
+          </label>
+
+          <textarea
+            v-model="discussionPrompt"
+            rows="4"
+            placeholder="例如：鼓勵學生進行深入討論..."
+            class="w-full text-sm border border-gray-300 rounded-xl p-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
+          />
+        </div>
+
+        <!-- Grading Prompt -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">
+            Grading Prompt
+          </label>
+
+          <textarea
+            v-model="gradingPrompt"
+            rows="4"
+            placeholder="例如：依據完整性與邏輯性進行評分..."
+            class="w-full text-sm border border-gray-300 rounded-xl p-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
+          />
+        </div>
+
+        <!-- AI 權限 -->
+        <div class="pt-2 border-t border-gray-200">
+          <div class="text-sm font-semibold text-gray-800 mb-3">
+            AI 可存取資料
+          </div>
+
+          <div class="space-y-2">
+
+            <label
+              class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50 transition cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                v-model="sendAnnouncements"
+                class="mt-1"
+              />
+
+              <div>
+                <div class="text-sm font-medium text-gray-700">
+                  公告資料
+                </div>
+
+                <div class="text-xs text-gray-500">
+                  AI 可讀取課程公告內容
+                </div>
+              </div>
+            </label>
+
+            <label
+              class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50 transition cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                v-model="sendAssignments"
+                class="mt-1"
+              />
+
+              <div>
+                <div class="text-sm font-medium text-gray-700">
+                  作業資料
+                </div>
+
+                <div class="text-xs text-gray-500">
+                  AI 可讀取作業與截止時間
+                </div>
+              </div>
+            </label>
+
+            <label
+              class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50 transition cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                v-model="sendStudentInfo"
+                class="mt-1"
+              />
+
+              <div>
+                <div class="text-sm font-medium text-gray-700">
+                  學生資訊
+                </div>
+
+                <div class="text-xs text-gray-500">
+                  AI 可讀取學生基本資訊
+                </div>
+              </div>
+            </label>
+
+            <label
+              class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50 transition cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                v-model="sendGrades"
+                class="mt-1"
+              />
+
+              <div>
+                <div class="text-sm font-medium text-gray-700">
+                  成績資料
+                </div>
+
+                <div class="text-xs text-gray-500">
+                  AI 可分析學生學習表現
+                </div>
+              </div>
+            </label>
+
+          </div>
+        </div>
+
+        <!-- 儲存按鈕 -->
+        <div class="flex justify-end pt-2">
           <button
-            class="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+            class="bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm px-5 py-2 rounded-xl hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] transition"
             @click="savePrompt"
           >
             儲存設定
           </button>
         </div>
+
       </div>
+
+      <!-- Chat Messages -->
+      <div
+        v-if="role !== 'teacher'"
+        class="p-4 space-y-3"
+        ref="chatContainer"
+      >
+
+        <template
+          v-for="(msg, idx) in messagesWithDateSeparators"
+          :key="idx"
+        >
+
+          <!-- 日期 -->
+          <div
+            v-if="msg.isDateSeparator"
+            class="flex justify-center"
+          >
+            <div class="text-[11px] text-gray-400 bg-white px-3 py-1 rounded-full border">
+              {{ msg.date }}
+            </div>
+          </div>
+
+          <!-- 訊息 -->
+          <div
+            v-else
+            class="flex flex-col"
+            :class="msg.role === 'user' ? 'items-end' : 'items-start'"
+          >
+
+            <div
+              :class="[
+                'px-4 py-2 rounded-2xl max-w-[80%] text-sm shadow-sm break-words',
+                msg.role === 'user'
+                  ? 'bg-blue-600 text-white rounded-br-md'
+                  : 'bg-white border border-gray-200 text-gray-800 rounded-bl-md'
+              ]"
+              v-html="renderMarkdown(msg.message)"
+            ></div>
+
+            <div class="text-[10px] text-gray-400 mt-1 px-1">
+              {{ formatTime(msg.created_at) }}
+            </div>
+
+          </div>
+
+        </template>
+
+        <!-- loading -->
+        <div
+          v-if="loading"
+          class="flex items-center gap-2 text-sm text-gray-400"
+        >
+          <div class="w-2 h-2 rounded-full bg-gray-400 animate-bounce"></div>
+          <div class="w-2 h-2 rounded-full bg-gray-400 animate-bounce delay-100"></div>
+          <div class="w-2 h-2 rounded-full bg-gray-400 animate-bounce delay-200"></div>
+
+          <span>AI 正在思考中...</span>
+        </div>
+
+      </div>
+
     </div>
 
-    <!-- 聊天歷史（student/ta 才顯示） -->
+    <!-- Input -->
     <div
       v-if="role !== 'teacher'"
-      class="flex-1 p-4 overflow-y-auto space-y-2"
-      ref="chatContainer"
+      class="shrink-0 border-t border-gray-200 bg-white p-3"
     >
-      <template v-for="(msg, idx) in messagesWithDateSeparators" :key="idx">
-        <div v-if="msg.isDateSeparator" class="text-center text-gray-400 text-xs my-2">
-          {{ msg.date }}
-        </div>
 
-        <div v-else class="flex flex-col">
-          <div
-            :class="[
-              'p-2 rounded-lg max-w-[75%] shadow-sm break-words',
-              msg.role === 'user'
-                ? 'bg-blue-100 self-end text-gray-800'
-                : 'bg-gray-100 self-start text-gray-800'
-            ]"
-            v-html="renderMarkdown(msg.message)"
-          ></div>
+      <div class="flex items-center gap-2">
 
-          <div
-            class="text-[10px] text-gray-400 mt-0.5"
-            :class="msg.role === 'user' ? 'self-end' : 'self-start'"
-          >
-            {{ formatTime(msg.created_at) }}
-          </div>
-        </div>
-      </template>
+        <input
+          type="text"
+          v-model="input"
+          @keydown.enter="handleSend"
+          placeholder="輸入訊息..."
+          :disabled="loading"
+          class="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+        />
 
-      <div v-if="loading" class="text-gray-400">AI 正在輸入...</div>
-    </div>
-
-    <!-- 輸入框（teacher 不顯示） -->
-    <div v-if="role !== 'teacher'" class="flex p-2 border-t bg-gray-50">
-      <input
-        type="text"
-        v-model="input"
-        @keydown.enter="handleSend"
-        class="flex-1 border rounded px-2 py-1 mr-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
-        placeholder="輸入訊息..."
-        :disabled="loading"
-      />
-      <button
-        class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition disabled:opacity-50"
-        @click="handleSend"
-        :disabled="loading"
-      >
-        發送
-      </button>
+        <button
+          @click="handleSend"
+          :disabled="loading"
+          class="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          發送
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -195,6 +349,7 @@ const teacherPrompt = ref('')
 const sendAnnouncements = ref(false)
 const sendAssignments = ref(false)
 const sendStudentInfo = ref(false)
+const sendGrades = ref(false)
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000"
 
 /* ======================
@@ -308,7 +463,8 @@ const savePrompt = async () => {
         role: props.role,
         send_announcements: sendAnnouncements.value,
         send_assignments: sendAssignments.value,
-        send_student_info: sendStudentInfo.value
+        send_student_info: sendStudentInfo.value,
+        send_grades: sendGrades.value
       })
     })
 
@@ -348,6 +504,7 @@ const fetchTeacherPrompt = async () => {
     sendAnnouncements.value = !!data?.send_announcements
     sendAssignments.value = !!data?.send_assignments
     sendStudentInfo.value = !!data?.send_student_info
+    sendGrades.value = !!data?.send_grades
 
   } catch (err) {
     console.error('抓 prompt 失敗:', err)

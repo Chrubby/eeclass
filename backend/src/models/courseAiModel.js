@@ -4,7 +4,7 @@ export const CourseAiModel = {
   // --- Prompt 設定相關 ---
   async getPromptsByCourseId(courseId) {
     const [rows] = await pool.execute(
-      "SELECT chat_prompt, discussion_prompt, grading_prompt, send_announcements, send_assignments, send_student_info FROM course_ai_prompts WHERE course_id = ? ORDER BY updated_at DESC LIMIT 1",
+      "SELECT chat_prompt, discussion_prompt, grading_prompt, send_announcements, send_assignments, send_student_info, send_grades FROM course_ai_prompts WHERE course_id = ? ORDER BY updated_at DESC LIMIT 1",
       [courseId]
     );
 
@@ -15,7 +15,8 @@ export const CourseAiModel = {
       grading_prompt: (row.grading_prompt || row.chat_prompt || "").trim(),
       send_announcements: !!row.send_announcements,
       send_assignments: !!row.send_assignments,
-      send_student_info: !!row.send_student_info
+      send_student_info: !!row.send_student_info,
+      send_grades: !!row.send_grades
     };
   },
 
@@ -48,11 +49,10 @@ export const CourseAiModel = {
     if (rows.length > 0) {
       await connection.execute(
         `UPDATE course_ai_prompts SET chat_prompt = ?, discussion_prompt = ?, grading_prompt = ?, 
-         send_announcements = ?, send_assignments = ?, send_student_info = ? WHERE course_id = ?`,
-        [data.chat_prompt, data.discussion, data.grading, data.send_announcements, data.send_assignments, data.send_student_info, courseRows[0].id]
+         send_announcements = ?, send_assignments = ?, send_student_info = ?, send_grades = ? WHERE course_id = ?`,
+        [data.chat_prompt, data.discussion, data.grading, data.send_announcements, data.send_assignments, data.send_student_info, data.send_grades, courseRows[0].id]
       );
     } else {
-      console.log(3)
       await connection.execute(
         `INSERT INTO course_ai_prompts (course_id, chat_prompt, discussion_prompt, grading_prompt, 
          send_announcements, send_assignments, send_student_info) VALUES (?, ?, ?, ?, ?, ?, ?)`,
