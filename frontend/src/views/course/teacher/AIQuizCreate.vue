@@ -123,17 +123,17 @@
             <!-- AI 討論 Prompt -->
             <details class="border border-blue-100 rounded-lg bg-blue-50/40 overflow-hidden" open>
               <summary class="cursor-pointer select-none px-3 py-2 text-sm font-bold text-[#337ab7] bg-blue-50 border-b border-blue-100 hover:bg-blue-100/50 transition-colors">
-                AI 討論引導 Prompt
+                AI 討論與回饋設定
               </summary>
               <div class="p-3 bg-white">
                 <div class="flex flex-wrap gap-2 mb-2">
                   <button type="button" class="text-xs px-2.5 py-1 rounded border border-[#337ab7] text-[#337ab7] hover:bg-blue-50 transition-colors font-medium" @click.prevent="applyPromptTemplate(index, 'socratic')">範本：蘇格拉底式引導</button>
-                  <button type="button" class="text-xs px-2.5 py-1 rounded border border-[#337ab7] text-[#337ab7] hover:bg-blue-50 transition-colors font-medium" @click.prevent="applyPromptTemplate(index, 'logic')">範本：邏輯導向</button>
+                  <button type="button" class="text-xs px-2.5 py-1 rounded border border-[#337ab7] text-[#337ab7] hover:bg-blue-50 transition-colors font-medium" @click.prevent="applyPromptTemplate(index, 'direct')">範本：邏輯導向</button>
                 </div>
                 <textarea 
                   v-model="q.discussionPrompt" 
-                  rows="3" 
-                  placeholder="告訴 AI 當學生作答後，要用什麼樣的語氣或方向與學生討論..."
+                  rows="4" 
+                  placeholder="告訴 AI 當學生作答後，要如何給予回饋與討論 (例如：先給予肯定，再指出盲點...)"
                   class="w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-800 focus:border-[#337ab7] focus:outline-none focus:bg-[#eef3fe] resize-y"
                 ></textarea>
               </div>
@@ -194,26 +194,25 @@ import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
-const courseId = route.params.id || 'default_course'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const courseId = route.params.id || route.params.courseId
 const teacherId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
 
-/** AI 出題專用狀態 */
 const isGenerating = ref(false)
 const aiConfig = ref({
   file: null,
-  questionCount: 3 // 預設生成 3 題
+  questionCount: 3
 })
 
 const form = ref({
   title: '',
   deadline: '',
-  questions: [] // 初始預設為空
+  questions: []
 })
 
 const goBack = () => {
-  router.push(`/course/${courseId}/homework`)
+  router.push(`/course/${courseId}/aiquiz`)
 }
 
 const onReferenceFileChange = (event) => {
@@ -222,12 +221,12 @@ const onReferenceFileChange = (event) => {
     aiConfig.value.file = file
   } else if (file) {
     alert('請上傳 PDF 格式的檔案')
-    event.target.value = '' // 清空選擇
+    event.target.value = ''
   }
 }
 
-// 模擬呼叫 AI 出題 API
-const generateAIQuestions = () => {
+// 🌐 呼叫 API：讓 AI 讀取 PDF 並產生題目
+const generateAIQuestions = async () => {
   if (!aiConfig.value.file) {
     alert('請先上傳一份教材 (PDF)！')
     return
@@ -240,33 +239,38 @@ const generateAIQuestions = () => {
 
   isGenerating.value = true
   
-  // 模擬 API 處理時間
-  setTimeout(() => {
-    const newQuestions = []
-    for (let i = 0; i < aiConfig.value.questionCount; i++) {
-      newQuestions.push({
-        questionText: `這是由 AI 根據上傳的 ${aiConfig.value.file.name} 自動生成的第 ${i + 1} 題內容。`,
-        discussionPrompt: '以蘇格拉底式提問與學生討論：若學生觀念有誤，請用引導的方式讓學生自行發現問題，不要直接給出正解。'
-      })
+  try {
+    const formData = new FormData()
+    formData.append('homework_files', aiConfig.value.file)
+    formData.append('questionCount', aiConfig.value.questionCount)
+
+    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/aiquizzes/generate`, {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+      const err = await response.json()
+      throw new Error(err.message || 'AI 出題失敗')
     }
-    
-    form.value.questions = newQuestions
-    isGenerating.value = false
+
+    const data = await response.json()
+    form.value.questions = data.questions
     
     // 自動帶入作業標題
     if (!form.value.title) {
       form.value.title = `基於 ${aiConfig.value.file.name.replace('.pdf', '')} 的平時測驗`
     }
-    
-  }, 2000)
+  } catch (error) {
+    console.error("AI 出題失敗:", error)
+    alert('AI 出題失敗：' + error.message)
+  } finally {
+    isGenerating.value = false
+  }
 }
 
-// 動態新增題目 (手動)
 const addQuestion = () => {
-  form.value.questions.push({
-    questionText: '',
-    discussionPrompt: '',
-  })
+  form.value.questions.push({ questionText: '', discussionPrompt: '' })
 }
 
 const removeQuestion = (index) => {
@@ -275,19 +279,19 @@ const removeQuestion = (index) => {
   }
 }
 
+// 更新快捷範本內容
 const PROMPT_TEMPLATES = {
-  socratic: '以蘇格拉底式提問與學生討論：若學生觀念有誤，請用引導的方式讓學生自行發現問題，不要直接給出正解；若回答正確，請延伸詢問其背後原因。',
-  logic: '僅就邏輯與結構點評：指出學生回答中前提是否充分、結論是否自洽，引導學生重新檢視推論過程。',
+  socratic: '請先判斷學生答得好不好。若觀念有誤，請用引導發問的方式讓學生自行發現問題，不要直接給正解；若回答正確，請給予肯定，並延伸詢問一個相關的進階思考。',
+  direct: '請清楚告訴學生回答得好不好。直接點出答案中正確的地方給予肯定，並明確指出哪些觀念有誤或不完整，最後給出具體的改進建議。',
 }
 
 const applyPromptTemplate = (index, key) => {
   const t = PROMPT_TEMPLATES[key]
   if (!t) return
-  const cur = form.value.questions[index].discussionPrompt || ''
-  form.value.questions[index].discussionPrompt = cur ? `${cur}\n\n${t}` : t
+  form.value.questions[index].discussionPrompt = t
 }
 
-// 提交表單給後端
+// 🌐 呼叫 API：正式建立並發布測驗
 const submitAssignment = async () => {
   if (!form.value.title || !form.value.deadline) {
     alert('請填寫測驗名稱與截止日期！')
@@ -308,35 +312,34 @@ const submitAssignment = async () => {
   const formData = new FormData()
   formData.append('title', form.value.title)
   
+  // 處理時間格式
   const formattedDeadline = form.value.deadline.replace('T', ' ') + ':00'
   formData.append('deadline', formattedDeadline)
   formData.append('teacherId', teacherId)
 
-  // 整理題目格式 (只保留需要的文字與 Prompt)
   const questionsData = form.value.questions.map(q => ({
     questionText: q.questionText,
     discussionPrompt: q.discussionPrompt || ''
   }))
   formData.append('questions', JSON.stringify(questionsData))
 
-  // 將上傳的 PDF 夾帶送出，供學生端檢視與 AI 使用
   if (aiConfig.value.file) {
     formData.append('homework_files', aiConfig.value.file)
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/homeworks`, {
+    // 指向我們剛剛設計好的嵌套路由
+    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/aiquizzes`, {
       method: 'POST',
       body: formData
     })
 
-    const text = await response.text()
-    if (!text) throw new Error('伺服器沒有回傳任何資料')
+    if (!response.ok) {
+        const result = await response.json()
+        throw new Error(result.message || '測驗發布失敗')
+    }
 
-    const result = JSON.parse(text)
-    if (!response.ok) throw new Error(result.message || '作業發布失敗')
-
-    alert('作業發布成功！')
+    alert('測驗發布成功！')
     goBack()
 
   } catch (error) {

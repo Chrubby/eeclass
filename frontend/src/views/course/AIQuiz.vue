@@ -31,7 +31,7 @@
             {{ quiz.title }}
             <span class="text-xs text-gray-500 ml-2 font-normal">({{ quiz.sourceFile }})</span>
           </div>
-          <div class="w-24 text-center text-gray-600">{{ quiz.questions.length }} 題</div>
+          <div class="w-24 text-center text-gray-600">{{ quiz.questionCount || 0}} 題</div>
           <div class="w-36 text-center text-gray-500 text-sm">{{ formatDate(quiz.createdAt) }}</div>
           <div class="w-32 text-center flex items-center justify-center gap-3">
             <!-- 改為使用 Router 導航 -->
@@ -60,16 +60,22 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router' // 引入 Router
+import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
-const userRole = localStorage.getItem('userRole') || 'teacher'
+const route = useRoute()
+
+// 取得環境變數與使用者資訊
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const courseId = route.params.id || route.params.courseId // 確保抓到課程 ID
+const userRole = localStorage.getItem('userRole') || 'student'
 const canManage = ['teacher', 'ta'].includes(userRole)
 
 const quizzes = ref([])
 
 // 格式化時間
 const formatDate = (raw) => {
+  if (!raw) return ''
   const d = new Date(raw)
   return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
 }
@@ -78,31 +84,40 @@ const goToCreateQuiz = () => {
   router.push(`/course/${courseId}/aiquiz/create`)
 }
 
-// 導向獨立的測驗頁面
 const goToQuiz = (aiquizId) => {
-  // 請確保你的 vue-router 有設定對應的路由，例如: path: '/quiz/:quizId'
   router.push(`/course/${courseId}/aiquiz/${aiquizId}`)
 }
 
-// 模擬載入資料
+// 🌐 呼叫 API：載入測驗列表
 const loadQuizzes = async () => {
-  quizzes.value = [
-    {
-      id: 'q_001',
-      title: '第一章：結構力學基礎測驗',
-      sourceFile: 'Chapter1_Intro.pdf',
-      createdAt: Date.now() - 86400000,
-      questions: [
-        { id: 'q1_1', questionText: '請簡述應力(Stress)與應變(Strain)的定義及其物理意義。' },
-        { id: 'q1_2', questionText: '何謂虎克定律(Hooke\'s Law)？其適用的前提條件為何？' }
-      ]
-    }
-  ]
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/aiquizzes`)
+    if (!response.ok) throw new Error('無法載入測驗列表')
+    quizzes.value = await response.json()
+  } catch (error) {
+    console.error("載入失敗:", error)
+    alert('載入測驗列表失敗，請稍後再試。')
+  }
 }
 
-const deleteQuiz = (quizId) => {
+// 🌐 呼叫 API：刪除測驗
+const deleteQuiz = async (quizId) => {
   if (!confirm('確定刪除這份測驗？學生的作答紀錄也將一併遺失。')) return
-  quizzes.value = quizzes.value.filter(q => q.id !== quizId)
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/aiquizzes/${quizId}`, {
+      method: 'DELETE'
+    })
+    
+    if (!response.ok) throw new Error('刪除失敗')
+    
+    // 從畫面上移除該筆資料
+    quizzes.value = quizzes.value.filter(q => q.id !== quizId)
+    alert('測驗已成功刪除。')
+  } catch (error) {
+    console.error("刪除失敗:", error)
+    alert('刪除失敗：' + error.message)
+  }
 }
 
 onMounted(() => {

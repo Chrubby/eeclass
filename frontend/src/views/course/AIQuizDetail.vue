@@ -32,13 +32,18 @@
             </div>
             
             <div class="space-y-3">
-              <div v-for="ans in q.allAnswers" :key="ans.id" class="bg-gray-50 border border-gray-100 p-3 rounded text-sm flex flex-col gap-1.5 hover:bg-blue-50/50 transition-colors">
-                <div class="flex items-center justify-between">
-                  <span class="font-bold text-gray-800">{{ ans.studentName }} <span class="text-xs text-gray-500 font-normal ml-1">({{ ans.studentId }})</span></span>
-                  <span class="text-xs text-gray-400">{{ ans.submitTime }}</span>
-                </div>
-                <p class="text-gray-700 whitespace-pre-wrap">{{ ans.answerText }}</p>
+              <div v-for="ans in q.allAnswers" :key="ans.id" class="bg-gray-50 border border-gray-100 p-4 rounded text-sm flex flex-col gap-3">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-gray-800">{{ ans.studentName }} ({{ ans.studentId }})</span>
+                <span class="text-xs text-gray-400">{{ ans.submitTime }}</span>
               </div>
+              <p class="text-gray-700 whitespace-pre-wrap">{{ ans.answerText }}</p>
+              
+              <div v-if="ans.aiFeedback" class="bg-amber-50/60 border-l-4 border-amber-400 p-2 text-amber-900 italic">
+                <span class="font-bold text-xs block mb-1">AI 助教回饋：</span>
+                {{ ans.aiFeedback }}
+              </div>
+            </div>
               
               <!-- 若無人作答 -->
               <div v-if="!q.allAnswers || q.allAnswers.length === 0" class="text-gray-400 text-sm italic text-center py-4">
@@ -82,38 +87,52 @@
         <!-- 狀態 B：觀摩與討論模式 (已提交) -->
         <div v-else class="space-y-8 animate-fade-in">
           <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded font-bold flex items-center justify-between">
-            <span>答案已成功提交！現在你可以參考其他同學的見解了。</span>
+            <span>答案已成功提交！AI 助教已為你的回答提供建議，你也可以參考其他同學的見解。</span>
           </div>
 
           <div v-for="(q, index) in quiz.questions" :key="q.id" class="border border-gray-200 rounded-lg overflow-hidden">
-            <!-- 題目區塊 -->
             <div class="bg-gray-100 p-4 border-b border-gray-200">
               <h4 class="font-bold text-gray-800">Q{{ index + 1 }}. {{ q.questionText }}</h4>
             </div>
             
-            <div class="p-5 space-y-5 bg-white">
-              <!-- 自己的答案 -->
+            <div class="p-5 space-y-6 bg-white">
+              
               <div class="bg-blue-50/50 border border-blue-100 p-4 rounded-lg relative">
                 <div class="absolute -top-3 left-4 bg-[#337ab7] text-white text-xs font-bold px-2 py-0.5 rounded">我的作答</div>
-                <p class="text-gray-800 text-sm whitespace-pre-wrap mt-1">{{ studentAnswers[q.id] }}</p>
+                <p class="text-gray-800 text-sm whitespace-pre-wrap mt-1">
+                  {{ q.myAnswer?.answerText || studentAnswers[q.id] || '無作答內容' }}
+                </p>
               </div>
 
-              <!-- 其他同學的答案 (不顯示學號，保護隱私) -->
+              <div v-if="q.myAnswer?.aiFeedback" class="bg-amber-50 border border-amber-200 p-4 rounded-lg relative shadow-sm">
+                <div class="absolute -top-3 left-4 bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                  <span>AI 助教點評</span>
+                </div>
+                <p class="text-amber-900 text-[15px] whitespace-pre-wrap mt-2 leading-relaxed">
+                  {{ q.myAnswer.aiFeedback }}
+                </p>
+              </div>
+
               <div>
                 <div class="text-sm font-bold text-gray-600 mb-3 flex items-center gap-2 border-b pb-2">
                   <span class="w-1.5 h-1.5 bg-gray-400 rounded-full"></span> 同學的作答參考
                 </div>
                 <div class="space-y-3">
-                  <div v-for="peer in q.peerAnswers" :key="peer.id" class="bg-gray-50 p-3 rounded text-sm flex flex-col gap-1.5">
+                  <div v-for="peer in q.peerAnswers" :key="peer.id" class="bg-gray-50 p-4 rounded text-sm flex flex-col gap-2 border border-gray-100">
                     <span class="font-bold text-gray-700">{{ peer.studentName }}</span>
                     <p class="text-gray-600 whitespace-pre-wrap">{{ peer.answerText }}</p>
+                    
+                    <div v-if="peer.aiFeedback" class="mt-2 bg-white/50 border border-amber-100 p-2 rounded text-amber-800 text-xs">
+                      <span class="font-bold">AI 點評：</span>
+                      {{ peer.aiFeedback }}
+                    </div>
                   </div>
-                  <!-- 防呆：如果沒有同學作答 -->
                   <div v-if="!q.peerAnswers || q.peerAnswers.length === 0" class="text-gray-400 text-sm italic py-2">
                     目前還沒有其他同學作答這題喔！你是第一個！
                   </div>
                 </div>
               </div>
+
             </div>
           </div>
         </div>
@@ -129,8 +148,14 @@ import { useRoute, useRouter } from 'vue-router'
 const route = useRoute()
 const router = useRouter()
 
-// 取得使用者角色 (實務上可能從 Vuex, Pinia 或 localStorage 取得)
-const userRole = localStorage.getItem('userRole') || 'student' // 測試時可改為 'teacher'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const courseId = route.params.id || route.params.courseId
+const quizId = route.params.quizId
+
+// 取得使用者資訊 (請依照你實際存放在 localStorage 的 key 調整)
+const userRole = localStorage.getItem('userRole') || 'student'
+const studentId = localStorage.getItem('userId') || localStorage.getItem('user') || 'test_student'
+const studentName = localStorage.getItem('userName') || '測試學生'
 const isTeacher = computed(() => ['teacher', 'ta'].includes(userRole))
 
 const quiz = ref(null)
@@ -138,66 +163,80 @@ const studentAnswers = ref({})
 const saving = ref(false)
 const isSubmitted = ref(false)
 
-// 返回上一頁
 const goBack = () => {
   if (!isTeacher.value && !isSubmitted.value && Object.values(studentAnswers.value).some(ans => ans.trim() !== '')) {
     if (!confirm('你的答案尚未儲存，確定要離開嗎？')) return
   }
-  router.push('/quizzes') // 請替換成你實際的路由
+  router.push(`/course/${courseId}/aiquiz`)
 }
 
-// 學生提交答案
-const submitAnswers = () => {
-  saving.value = true
-  
-  // 模擬打 API 儲存答案
-  setTimeout(() => {
-    saving.value = false
-    isSubmitted.value = true // 切換到討論觀摩模式
-  }, 800)
-}
+const loadQuizData = async () => {
+  try {
+    const url = `${API_BASE_URL}/api/courses/${courseId}/aiquizzes/${quizId}?role=${userRole}&studentId=${studentId}`
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('無法載入測驗內容')
+    
+    const data = await response.json()
+    quiz.value = data
 
-// 模擬載入資料
-const loadQuizData = () => {
-  const quizId = route.params.quizId
-  
-  // 模擬後端回傳的資料結構
-  quiz.value = {
-    id: quizId,
-    title: '基於 Chapter1_Intro.pdf 的平時測驗',
-    questions: [
-      { 
-        id: 'q1', 
-        questionText: '請簡述應力(Stress)與應變(Strain)的定義及其物理意義。',
-        // 老師看到的完整資料 (包含學號與時間)
-        allAnswers: [
-          { id: 'a1', studentName: '陳大明', studentId: '1100001', submitTime: '2026-05-04 10:15', answerText: '應力是單位面積承受的內力；應變是物體受力後的變形比例。' },
-          { id: 'a2', studentName: '林小華', studentId: '1100002', submitTime: '2026-05-04 11:20', answerText: '應力(σ = F/A)代表材料內部的抵抗力強度，應變(ε = ΔL/L)則是變形程度。' }
-        ],
-        // 學生看到的精簡資料 (為了隱私通常不會給學號等詳細資訊)
-        peerAnswers: [
-          { id: 'p1', studentName: '陳同學', answerText: '應力是單位面積承受的內力；應變是物體受力後的變形比例。' },
-          { id: 'p2', studentName: '林同學', answerText: '應力(σ = F/A)代表材料內部的抵抗力強度，應變(ε = ΔL/L)則是變形程度。' }
-        ]
-      },
-      { 
-        id: 'q2', 
-        questionText: '何謂虎克定律(Hooke\'s Law)？其適用的前提條件為何？',
-        allAnswers: [
-          { id: 'a3', studentName: '王大寶', studentId: '1100003', submitTime: '2026-05-04 09:30', answerText: '在彈性限度內，應力與應變成正比。前提是材料必須是線性彈性。' }
-        ],
-        peerAnswers: [
-          { id: 'p3', studentName: '王同學', answerText: '在彈性限度內，應力與應變成正比。前提是材料必須是線性彈性。' }
-        ]
+    // 老師不需要判斷是否提交，直接進入檢視模式
+    if (isTeacher.value) {
+      isSubmitted.value = true // 老師視角固定為「檢視模式」
+    } else {
+      // 學生才需要檢查是否已提交
+      const hasSubmitted = quiz.value.questions.some(q => q.myAnswer)
+      if (hasSubmitted) {
+        isSubmitted.value = true
+        quiz.value.questions.forEach(q => {
+          if (q.myAnswer) studentAnswers.value[q.id] = q.myAnswer.answerText
+        })
+      } else {
+        quiz.value.questions.forEach(q => {
+          studentAnswers.value[q.id] = ''
+        })
       }
-    ]
+    }
+  } catch (error) {
+    console.error("載入失敗:", error)
+    alert('載入測驗失敗：' + error.message)
+  }
+}
+
+// 🌐 呼叫 API：學生提交答案
+const submitAnswers = async () => {
+  // 簡單防呆：確認每一題都有寫
+  const allAnswered = quiz.value.questions.every(q => studentAnswers.value[q.id]?.trim() !== '')
+  if (!allAnswered) {
+    alert('請作答完所有題目後再提交喔！')
+    return
   }
 
-  // 只有學生才需要初始化作答欄位
-  if (!isTeacher.value) {
-    quiz.value.questions.forEach(q => {
-      studentAnswers.value[q.id] = ''
+  saving.value = true
+  
+  try {
+    const payload = {
+      studentId: studentId,
+      studentName: studentName,
+      answers: studentAnswers.value
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/aiquizzes/${quizId}/answers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     })
+
+    if (!response.ok) throw new Error('提交失敗')
+
+    // 提交成功後，重新載入資料以獲取同儕答案
+    await loadQuizData()
+    isSubmitted.value = true 
+    
+  } catch (error) {
+    console.error("提交失敗:", error)
+    alert('提交失敗：' + error.message)
+  } finally {
+    saving.value = false
   }
 }
 
@@ -205,13 +244,3 @@ onMounted(() => {
   loadQuizData()
 })
 </script>
-
-<style scoped>
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-in-out;
-}
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-</style>
