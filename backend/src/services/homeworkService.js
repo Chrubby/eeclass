@@ -39,9 +39,11 @@ export const HomeworkService = {
   // 獲取作業列表 (依據身分附加繳交狀態或批改統計)
   async getCourseHomeworks(courseId, role, userId) {
     const homeworks = await HomeworkModel.getHomeworksByCourse(courseId);
+    console.log(homeworks )
 
     if (role === 'student' && userId) {
       for (let hw of homeworks) {
+        console.log(hw.id)
         const sub = await HomeworkModel.getStudentSubmission(hw.id, userId);
         if (sub) {
           hw.submissionId = sub.id;

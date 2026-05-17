@@ -19,7 +19,7 @@ router.get("/homeworks/:hwId/submissions", HomeworkController.getSubmissionsList
 // 繳交紀錄與批改操作 (/api/submissions/...)
 // ========================
 router.get("/submissions/:submissionId", HomeworkController.getSubmissionDetail);
-router.put("/submissions/:submissionId/grade", HomeworkController.gradeSubmission);
+router.post("/submissions/:submissionId/grade", HomeworkController.gradeSubmission);
 router.get("/submissions/:submissionId/history", HomeworkController.getSubmissionHistory);
 
 export default router;

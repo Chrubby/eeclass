@@ -234,7 +234,7 @@ const submitGrade = async () => {
         feedback: ans.feedback
       }))
     }
-
+    console.log(payload)
     const response = await fetch(`${API_BASE_URL}/api/submissions/${submissionId}/grade`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

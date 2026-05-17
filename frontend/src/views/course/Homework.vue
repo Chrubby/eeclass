@@ -78,6 +78,7 @@ const loadHomeworkList = async () => {
     const response = await fetch(
       `${API_BASE_URL}/api/courses/${courseId}/homeworks?userId=${encodeURIComponent(userId)}&role=${userRole.value}`,
     )
+    console.log(response)
     const result = await response.json()
     if (!response.ok) throw new Error(result.message || '讀取作業失敗')
     homeworkList.value = result.map((item) => ({
