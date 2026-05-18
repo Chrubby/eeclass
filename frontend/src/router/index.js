@@ -5,13 +5,17 @@ import Login from "../views/Login.vue"
 import Register from "../views/Register.vue"
 import ForgotPassword from "../views/ForgotPassword.vue"
 import ResetPassword from "../views/ResetPassword.vue"
-import { getRoleFromToken } from '@/utils/auth.js'
+import ChangePassword from "../views/ChangePassword.vue"
+import Profile from "../views/Profile.vue"
+import { getRoleFromToken, getAccessToken, getMustChangePassword } from '@/utils/auth.js'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", redirect: "/login" },
     { path: '/dashboard', name: 'Home', component: Home },
+    { path: '/profile', name: 'Profile', component: Profile },
+    { path: '/change-password', name: 'ChangePassword', component: ChangePassword },
     { path: '/course/:id', name: 'Course', component: Course,
       children: [
         {
@@ -107,12 +111,25 @@ const router = createRouter({
 
 const staffRoles = ['teacher', 'ta']
 
-router.beforeEach((to, _from) => {
+const publicPaths = new Set(['/login', '/register', '/forgot-password', '/reset-password'])
+const mustChangeAllowedPaths = new Set(['/change-password', '/login'])
+
+router.beforeEach((to) => {
   const userRole = getRoleFromToken()
+  const token = getAccessToken()
+  const mustChange = getMustChangePassword()
 
   if (to.meta.requiresTeacher && !staffRoles.includes(userRole)) {
     alert('無法訪問此頁面。')
     return false
+  }
+
+  if (token && mustChange && !mustChangeAllowedPaths.has(to.path)) {
+    return '/change-password'
+  }
+
+  if (!token && !publicPaths.has(to.path) && to.path !== '/change-password') {
+    return '/login'
   }
 })
 

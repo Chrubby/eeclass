@@ -2,11 +2,10 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { AuthModel } from "../models/authModel.js";
 import { signAccessToken } from "../utils/jwt.js";
-import { sendPasswordResetEmail } from "../utils/mailer.js";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEFAULT_RECOVERY_CODE = "20260519";
 
-function validateRegisterInput({ username, password, confirmPassword, name, role, email }) {
+function validateRegisterInput({ username, password, confirmPassword, name, role }) {
   const u = String(username ?? "").trim();
   if (!u) throw new Error("帳號不可為空");
   if (u.length > 64) throw new Error("帳號過長");
@@ -19,21 +18,13 @@ function validateRegisterInput({ username, password, confirmPassword, name, role
     throw new Error("兩次輸入的密碼不相符");
   }
 
-  const em = String(email ?? "").trim();
-  if (!em) throw new Error("請填寫信箱");
-  if (!EMAIL_RE.test(em)) throw new Error("信箱格式不正確");
-
   if (!String(name ?? "").trim()) throw new Error("請填寫姓名");
 
   const allowedRoles = new Set(["student", "teacher", "ta"]);
   if (!allowedRoles.has(role)) throw new Error("身份不合法");
 }
 
-function hashPasswordResetToken(token) {
-  return crypto.createHash("sha256").update(String(token), "utf8").digest("hex");
-}
-
-function validateResetPassword(password, confirmPassword) {
+function validateNewPassword(password, confirmPassword) {
   if (!password || typeof password !== "string") throw new Error("請提供密碼");
   if (password.length < 8) throw new Error("密碼長度至少 8 個字元");
   if (password.length > 128) throw new Error("密碼過長");
@@ -42,16 +33,21 @@ function validateResetPassword(password, confirmPassword) {
   }
 }
 
-const PASSWORD_RESET_GENERIC_MESSAGE =
-  "若您輸入的帳號或信箱已註冊且已綁定電子郵件，我們將寄送重設密碼連結至該信箱。請檢查收信匣與垃圾郵件。";
+function hashPasswordResetToken(token) {
+  return crypto.createHash("sha256").update(String(token), "utf8").digest("hex");
+}
+
+function getRecoveryCode() {
+  return String(process.env.PASSWORD_RECOVERY_CODE || DEFAULT_RECOVERY_CODE).trim();
+}
 
 export const AuthService = {
-  async register({ username, password, name, role, email, confirmPassword }) {
-    validateRegisterInput({ username, password, confirmPassword, name, role, email });
+  async register({ username, password, name, role, confirmPassword }) {
+    validateRegisterInput({ username, password, confirmPassword, name, role });
 
     const passwordHash = await bcrypt.hash(password, 10);
     try {
-      await AuthModel.createAccount(username, passwordHash, email, role);
+      await AuthModel.createAccount(username, passwordHash, null, role);
 
       if (role === "student" || role === "ta") {
         await AuthModel.createStudent(name, username);
@@ -60,7 +56,7 @@ export const AuthService = {
       }
     } catch (e) {
       if (e.code === "ER_DUP_ENTRY" || e.errno === 1062) {
-        throw new Error("帳號或信箱已被使用");
+        throw new Error("帳號已被使用");
       }
       throw e;
     }
@@ -68,7 +64,7 @@ export const AuthService = {
 
   async login(username, password) {
     const account = await AuthModel.findAccountByUsernameOrEmail(username);
-    if (!account) throw new Error("帳號或信箱錯誤");
+    if (!account) throw new Error("帳號錯誤");
 
     const isMatch = await bcrypt.compare(password, account.password_hash);
     if (!isMatch) throw new Error("密碼錯誤");
@@ -78,79 +74,87 @@ export const AuthService = {
       username: account.username,
       role: account.role,
       token,
+      mustChangePassword: Boolean(account.must_change_password),
     };
   },
 
-  async getUserInfo(userId) {
-    const role = await AuthModel.getRoleByUsername(userId);
-    if (!role) throw new Error("找不到使用者");
+  async getUserInfo(username) {
+    const account = await AuthModel.findAccountByUsername(username);
+    if (!account) throw new Error("找不到使用者");
 
+    const role = account.role;
     let userData;
     if (role === "student" || role === "ta") {
-      userData = await AuthModel.getStudentById(userId);
+      userData = await AuthModel.getStudentById(username);
     } else {
-      userData = await AuthModel.getTeacherById(userId);
+      userData = await AuthModel.getTeacherById(username);
     }
 
-    return { role, user: userData || null };
-  },
-
-  /**
-   * 申請重設密碼：建立一次性 token 並寄信（SMTP 未設定時僅寫入資料庫，開發環境會於伺服器日誌輸出連結）
-   */
-  async requestPasswordReset(identifier) {
-    const raw = String(identifier ?? "").trim();
-    if (!raw) throw new Error("請輸入帳號或註冊信箱");
-
-    const account = await AuthModel.findAccountByUsernameOrEmail(raw);
-    if (!account) {
-      return { message: PASSWORD_RESET_GENERIC_MESSAGE };
-    }
-    if (!account.email || !String(account.email).trim()) {
-      console.warn("[password-reset] 帳號未綁定信箱，略過寄信:", account.username);
-      return { message: PASSWORD_RESET_GENERIC_MESSAGE };
-    }
-
-    const plainToken = crypto.randomBytes(32).toString("hex");
-    const tokenHash = hashPasswordResetToken(plainToken);
-    const ttlMs = (Number(process.env.PASSWORD_RESET_EXPIRE_MINUTES) || 60) * 60 * 1000;
-    const expiresAt = new Date(Date.now() + ttlMs);
-
-    await AuthModel.deletePasswordResetTokensForAccount(account.id);
-    await AuthModel.insertPasswordResetToken(account.id, tokenHash, expiresAt);
-
-    const base = (process.env.FRONTEND_URL || "http://127.0.0.1:5173").replace(/\/$/, "");
-    const resetUrl = `${base}/reset-password?token=${encodeURIComponent(plainToken)}`;
-
-    const sent = await sendPasswordResetEmail({
-      to: account.email.trim(),
-      resetUrl,
+    return {
+      role,
       username: account.username,
-    }).catch((err) => {
-      console.error("[password-reset] 寄信失敗:", err?.message || err);
-      return false;
-    });
-
-    if (!sent) {
-      if (process.env.NODE_ENV === "production") {
-        await AuthModel.deletePasswordResetTokensForAccount(account.id);
-      } else {
-        console.warn(
-          "[password-reset] 未成功寄信（請檢查 SMTP）。開發用重設連結（請勿於正式環境使用）：",
-          resetUrl,
-        );
-      }
-    }
-
-    return { message: PASSWORD_RESET_GENERIC_MESSAGE };
+      avatar_url: account.avatar_url || null,
+      must_change_password: Boolean(account.must_change_password),
+      user: userData || null,
+    };
   },
 
-  /** 以信件內連結的一次性 token 重設密碼 */
+  /** 忘記密碼：帳號 + 教師提供之重設代碼 */
+  async resetPasswordWithRecoveryCode({ username, recoveryCode, password, confirmPassword }) {
+    const u = String(username ?? "").trim();
+    if (!u) throw new Error("請輸入帳號");
+
+    const code = String(recoveryCode ?? "").trim();
+    if (code !== getRecoveryCode()) {
+      throw new Error("重設密碼代碼不正確");
+    }
+
+    validateNewPassword(password, confirmPassword);
+
+    const account = await AuthModel.findAccountByUsername(u);
+    if (!account) throw new Error("找不到此帳號");
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await AuthModel.updateAccountPasswordById(account.id, passwordHash);
+    await AuthModel.setMustChangePassword(account.id, false);
+
+    return { message: "密碼已重設，請使用新密碼登入" };
+  },
+
+  /** 登入後變更密碼（含首次強制變更） */
+  async changePassword(username, { password, confirmPassword, currentPassword }) {
+    validateNewPassword(password, confirmPassword);
+
+    const account = await AuthModel.findAccountByUsername(username);
+    if (!account) throw new Error("找不到使用者");
+
+    const mustChange = Boolean(account.must_change_password);
+    if (!mustChange) {
+      if (!currentPassword) throw new Error("請輸入目前密碼");
+      const ok = await bcrypt.compare(currentPassword, account.password_hash);
+      if (!ok) throw new Error("目前密碼不正確");
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await AuthModel.updateAccountPasswordById(account.id, passwordHash);
+    await AuthModel.setMustChangePassword(account.id, false);
+
+    return { message: "密碼已更新", mustChangePassword: false };
+  },
+
+  async updateAvatar(username, avatarUrl) {
+    const account = await AuthModel.findAccountByUsername(username);
+    if (!account) throw new Error("找不到使用者");
+    await AuthModel.updateAvatarUrl(account.id, avatarUrl);
+    return { avatar_url: avatarUrl };
+  },
+
+  /** 舊版信件 token 重設（保留相容） */
   async resetPasswordWithToken({ token, password, confirmPassword }) {
     const t = String(token ?? "").trim();
     if (!t) throw new Error("重設連結無效或已過期");
 
-    validateResetPassword(password, confirmPassword);
+    validateNewPassword(password, confirmPassword);
 
     const tokenHash = hashPasswordResetToken(t);
     const row = await AuthModel.findActivePasswordResetByTokenHash(tokenHash);
@@ -160,6 +164,7 @@ export const AuthService = {
     await AuthModel.updateAccountPasswordById(row.account_id, passwordHash);
     await AuthModel.markPasswordResetTokenUsed(row.id);
     await AuthModel.deletePasswordResetTokensForAccount(row.account_id);
+    await AuthModel.setMustChangePassword(row.account_id, false);
 
     return { message: "密碼已重設，請使用新密碼登入" };
   },

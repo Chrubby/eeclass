@@ -2,19 +2,26 @@
 import { ref, computed, watch} from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/api/client.js'
+import { setMustChangePassword } from '@/utils/auth.js'
 
 const isMenuOpen = ref(false)
 const router = useRouter()
 const route = useRoute()
 
 const user = ref({
-  //name: localStorage.getItem('user') || '尚未登入',
   name: '',
   user_id: '',
   role: '',
-  level: 7,
-  score: 10172,
-  maxScore: 15000,
+  avatar_url: '',
+})
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
+const avatarUrl = computed(() => {
+  const url = user.value.avatar_url
+  if (!url) return ''
+  if (url.startsWith('http')) return url
+  return `${API_BASE}${url}`
 })
 
 // 課程列表（
@@ -29,7 +36,14 @@ const currentCourse = computed(() =>
   courses.value.find((c) => c.id === courseId.value)
 )
 
-const isAuthPage = computed(() => ["Login", "Register", "ForgotPassword", "ResetPassword"].includes(route.name))
+const isAuthPage = computed(() =>
+  ['Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
+)
+
+const goToProfile = () => {
+  isMenuOpen.value = false
+  router.push('/profile')
+}
 
 const logout = () => {
   isMenuOpen.value = false
@@ -44,7 +58,8 @@ const loadUser = async() => {
     route.path === '/login' ||
     route.path === '/register' ||
     route.path === '/forgot-password' ||
-    route.path === '/reset-password'
+    route.path === '/reset-password' ||
+    route.path === '/change-password'
 
   if ((!stored || !token) && !isAuthRoute) {
     router.push('/login')
@@ -58,9 +73,11 @@ const loadUser = async() => {
   try {
     const res = await api.get('/api/auth/me')
     user.value.role = res.data.role
+    user.value.avatar_url = res.data.avatar_url || ''
 
     const user_inf = res.data.user
     user.value.name = user_inf?.name || ''
+    setMustChangePassword(Boolean(res.data.must_change_password))
     // if(user.value.role == 'student' || user.value.role == 'ta' ){
     // }else{    }
 
@@ -85,21 +102,21 @@ watch(() => route.path, () => {
         <div class="relative">
 
           <span class="cursor-pointer hover:text-blue-600" @click="isMenuOpen = !isMenuOpen">
-            {{ user.role }} ▾
+            {{ user.user_id || '使用者' }} ▾
           </span>
 
-          <div v-if="isMenuOpen" class="absolute right-0 mt-4 w-32 bg-white border border-gray-200 shadow-lg z-50">
+          <div v-if="isMenuOpen" class="absolute right-0 mt-4 w-36 bg-white border border-gray-200 shadow-lg z-50">
             <ul class="py-1 text-sm text-gray-700">
-              <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer">我的筆記</li>
-              <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer">問卷中心</li>
-              <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer">個人資訊</li>
+              <!-- <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer">我的筆記</li> -->
+              <!-- <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer">問卷中心</li> -->
+              <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer" @click="goToProfile">個人資訊</li>
               <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer" @click="logout">登出</li>
             </ul>
           </div>
 
         </div>
 
-        <span class="cursor-pointer hover:text-blue-600">🌐 EN</span>
+        <!-- <span class="cursor-pointer hover:text-blue-600">🌐 EN</span> -->
       </div>
     </header>
 
@@ -119,8 +136,12 @@ watch(() => route.path, () => {
         <div v-if="!isCoursePage" class="bg-white border mb-4">
           <div class="bg-gray-100 px-4 py-2 font-bold text-center border-b text-sm">我的首頁</div>
           <div class="p-4 flex flex-col items-center">
-            <div class="w-20 h-20 bg-gray-200 rounded-full mb-3"></div>
-            <div class="font-bold text-sm">{{ user.name }}</div>
+            <div class="w-20 h-20 bg-gray-200 rounded-full mb-3 overflow-hidden flex items-center justify-center">
+              <img v-if="avatarUrl" :src="avatarUrl" alt="" class="w-full h-full object-cover" />
+            </div>
+            <div class="font-bold text-sm">{{ user.name || user.user_id }}</div>
+            <div class="text-xs text-gray-500">{{ user.user_id }}</div>
+            <!-- 等級／積分進度條（尚未實作）
             <div class="text-xs text-gray-500 mb-2 mt-1">等級 {{ user.level }}</div>
             <div class="w-full text-right text-xs text-blue-600 mb-1 font-bold">
               {{ user.score }} 分 >
@@ -131,6 +152,7 @@ watch(() => route.path, () => {
                 :style="{ width: (user.score / user.maxScore * 100) + '%' }"
               ></div>
             </div>
+            -->
           </div>
         </div>
         <!-- 課程頁 -->
@@ -150,6 +172,7 @@ watch(() => route.path, () => {
           </div>
         </div>
 
+        <!-- 首頁側欄選單（功能尚未實作，先隱藏）
         <ul v-if="!isCoursePage" class="bg-white text-[15px] text-gray-700 py-2">
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer">成績查詢</li>
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2">我的課表</li>
@@ -165,8 +188,9 @@ watch(() => route.path, () => {
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer border-b border-dashed border-gray-300 pb-4 mb-2">檔案庫</li>
           <li class="px-6 py-2.5 hover:bg-gray-100 cursor-pointer">教學評量</li>
         </ul>
+        -->
 
-        <ul v-else class="bg-white text-[15px] text-gray-700 py-2">
+        <ul v-if="isCoursePage" class="bg-white text-[15px] text-gray-700 py-2">
 
           <router-link :to="`/course/${courseId}`" custom v-slot="{ navigate, isExactActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isExactActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">

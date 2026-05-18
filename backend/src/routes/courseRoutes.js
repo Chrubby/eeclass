@@ -7,6 +7,7 @@ import { MaterialController } from "../controllers/materialController.js";
 import { uploadPdf, upload} from "../middlewares/upload.js";
 import { requireRole } from "../middlewares/requireRole.js";
 import courseAiRoutes from "./courseAiRoutes.js";
+import aiQuizRoutes from "./AiQuizRoutes.js";
 
 const router = express.Router();
 
@@ -32,5 +33,6 @@ router.get("/:courseId/materials", MaterialController.getMaterials);
 router.post("/:courseId/materials", staff, upload.single("file"), MaterialController.uploadMaterial);
 router.delete("/:courseId/materials/:materialId", staff, MaterialController.deleteMaterial);
 
-
+//AIQuiz
+router.use("/:courseId/aiquizzes", aiQuizRoutes);
 export default router;

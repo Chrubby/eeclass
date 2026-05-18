@@ -85,8 +85,25 @@ export const HomeworkModel = {
 
   // 學生端：取得繳交紀錄
   async getStudentSubmission(hwId, studentId) {
+    console.log(hwId)
+    console.log(studentId)
+    // const [rows] = await pool.execute(
+    //   "SELECT id, answer_text, file_name, file_path, score, feedback, graded_details, ai_estimated_score, ai_estimated_reason, ai_estimated_at as aiEstimatedAt FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
+    //   [hwId, studentId]
+    // );
     const [rows] = await pool.execute(
-      "SELECT id, answer_text, file_name, file_path, score, feedback, graded_details, ai_estimated_score, ai_estimated_reason, ai_estimated_at as aiEstimatedAt FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
+      `
+      SELECT
+        id,
+        answer_text,
+        file_name,
+        file_path,
+        score,
+        feedback,
+        graded_details
+      FROM homework_submissions
+      WHERE homework_id = ? AND student_id = ?
+      `,
       [hwId, studentId]
     );
     return rows[0] || null;
@@ -135,8 +152,21 @@ export const HomeworkModel = {
 
   // 老師端：取得單一作業的所有繳交清單
   async getSubmissionsList(hwId) {
+    // const [rows] = await pool.execute(
+    //   "SELECT id, student_id as studentId, submitted_at as submittedAt, score, feedback, ai_estimated_score as aiEstimatedScore, ai_estimated_at as aiEstimatedAt FROM homework_submissions WHERE homework_id = ?",
+    //   [hwId]
+    // );
     const [rows] = await pool.execute(
-      "SELECT id, student_id as studentId, submitted_at as submittedAt, score, feedback, ai_estimated_score as aiEstimatedScore, ai_estimated_at as aiEstimatedAt FROM homework_submissions WHERE homework_id = ?",
+      `
+      SELECT
+        id,
+        student_id as studentId,
+        submitted_at as submittedAt,
+        score,
+        feedback
+      FROM homework_submissions
+      WHERE homework_id = ?
+      `,
       [hwId]
     );
     return rows;

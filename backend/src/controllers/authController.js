@@ -4,7 +4,7 @@ export const AuthController = {
   async register(req, res) {
     try {
       await AuthService.register(req.body);
-      res.json({ message: "註冊成功！" });
+      res.json({ message: "註冊成功！請登入並變更密碼。" });
     } catch (error) {
       res.status(400).json({ message: error.message });
     }
@@ -20,7 +20,6 @@ export const AuthController = {
     }
   },
 
-  /** 需搭配 authMiddleware：依 JWT 回傳目前使用者資料 */
   async me(req, res) {
     try {
       const result = await AuthService.getUserInfo(req.user.username);
@@ -32,10 +31,36 @@ export const AuthController = {
 
   async forgotPassword(req, res) {
     try {
-      const { identifier, email, username } = req.body;
-      const id = identifier ?? email ?? username;
-      const result = await AuthService.requestPasswordReset(id);
+      const { username, recoveryCode, password, confirmPassword } = req.body;
+      const result = await AuthService.resetPasswordWithRecoveryCode({
+        username,
+        recoveryCode,
+        password,
+        confirmPassword,
+      });
       res.json(result);
+    } catch (error) {
+      res.status(400).json({ message: error.message });
+    }
+  },
+
+  async changePassword(req, res) {
+    try {
+      const result = await AuthService.changePassword(req.user.username, req.body);
+      res.json(result);
+    } catch (error) {
+      res.status(400).json({ message: error.message });
+    }
+  },
+
+  async uploadAvatar(req, res) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "請選擇圖片檔案" });
+      }
+      const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+      const result = await AuthService.updateAvatar(req.user.username, avatarUrl);
+      res.json({ message: "頭貼已更新", ...result });
     } catch (error) {
       res.status(400).json({ message: error.message });
     }

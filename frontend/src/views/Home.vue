@@ -9,11 +9,8 @@ const user = ref({
   role: '',
 })
 
-const announcements = ref([
-  { id: 1, date: '03-04', title: 'Announcement 1', hot: true },
-  { id: 2, date: '03-02', title: 'Announcement 2', hot: true },
-  { id: 3, date: '02-25', title: 'Announcement 3', hot: false },
-])
+const announcements = ref([])
+const announcementsLoading = ref(false)
 
 const courses = ref([])
 const searchText = ref('')
@@ -53,6 +50,57 @@ const fetchMyCourses = async () => {
   }
 }
 
+const formatAnnouncementDate = (raw) => {
+  if (!raw) return ''
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return ''
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${mm}-${dd}`
+}
+
+const fetchLatestAnnouncements = async () => {
+  if (!courses.value.length) {
+    announcements.value = []
+    return
+  }
+
+  announcementsLoading.value = true
+  try {
+    const results = await Promise.all(
+      courses.value.map(async (course) => {
+        try {
+          const res = await api.get(`/api/courses/${course.course_code}/announcements`)
+          const list = res.data?.announcements || []
+          return list.map((item) => ({
+            id: item.id,
+            title: item.title,
+            created_at: item.created_at,
+            courseCode: course.course_code,
+            courseName: course.course_name,
+            isNew: item.isNew,
+          }))
+        } catch {
+          return []
+        }
+      }),
+    )
+
+    const merged = results.flat()
+    merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    announcements.value = merged.slice(0, 3).map((item) => ({
+      ...item,
+      date: formatAnnouncementDate(item.created_at),
+      hot: Boolean(item.isNew),
+    }))
+  } catch {
+    console.error('取得最新公告失敗')
+    announcements.value = []
+  } finally {
+    announcementsLoading.value = false
+  }
+}
+
 const goToCourse = (courseId) => {
   router.push(`/course/${courseId}`)
 }
@@ -87,6 +135,7 @@ const addCourse = async () => {
     alert(res.data.message)
     showModal.value = false
     await fetchMyCourses()
+    await fetchLatestAnnouncements()
   } catch (err) {
     alert(err.response?.data?.message || '選課失敗')
   }
@@ -115,15 +164,21 @@ const createCourse = async () => {
       description: '',
     }
     await fetchMyCourses()
+    await fetchLatestAnnouncements()
   } catch (err) {
     alert(err.response?.data?.message || '建立課程失敗')
   }
+}
+
+const goToAnnouncement = (courseCode) => {
+  router.push(`/course/${courseCode}`)
 }
 
 onMounted(async () => {
   await loadUser()
   if (!user.value.user_id) return
   await fetchMyCourses()
+  await fetchLatestAnnouncements()
 })
 </script>
 
@@ -132,12 +187,20 @@ onMounted(async () => {
     <div class="grid grid-cols-2 gap-x-8 gap-y-6 bg-white p-6 border">
       <div>
         <h3 class="text-sm font-bold border-b border-dashed pb-2 mb-3">最新公告</h3>
-        <ul class="text-xs space-y-2 text-blue-600">
-          <li v-for="item in announcements" :key="item.id" class="hover:text-blue-900">
+        <p v-if="announcementsLoading" class="text-xs text-gray-500">讀取中...</p>
+        <ul v-else-if="announcements.length" class="text-xs space-y-2 text-blue-600">
+          <li
+            v-for="item in announcements"
+            :key="`${item.courseCode}-${item.id}`"
+            class="hover:text-blue-900 cursor-pointer"
+            @click="goToAnnouncement(item.courseCode)"
+          >
+            <span class="text-gray-500">[{{ item.courseName || item.courseCode }}]</span>
             {{ item.date }} {{ item.title }}
-            <span v-if="item.hot" class="bg-red-500 text-white px-1 rounded text-[10px]">HOT</span>
+            <span v-if="item.hot" class="bg-red-500 text-white px-1 rounded text-[10px]">NEW</span>
           </li>
         </ul>
+        <p v-else class="text-xs text-gray-500">目前沒有公告，或您尚未加入任何課程。</p>
       </div>
     </div>
 

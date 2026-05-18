@@ -109,6 +109,7 @@ export const HomeworkController = {
   async getSubmissionsList(req, res) {
     try {
       const { hwId } = req.params;
+      console.log(hwId)
       const list = await HomeworkModel.getSubmissionsList(hwId);
       res.json(list);
     } catch {
@@ -136,6 +137,10 @@ export const HomeworkController = {
     try {
       const { submissionId } = req.params;
       const { score, feedback, gradedDetails } = req.body;
+      console.log(submissionId)
+      console.log(score)
+      console.log(feedback)
+      console.log(gradedDetails)
       await HomeworkService.gradeSubmission(submissionId, score, feedback, gradedDetails);
       res.json({ message: "批改完成！" });
     } catch {

@@ -31,12 +31,12 @@
             {{ quiz.title }}
             <span class="text-xs text-gray-500 ml-2 font-normal">({{ quiz.sourceFile }})</span>
           </div>
-          <div class="w-24 text-center text-gray-600">{{ quiz.questions.length }} 題</div>
+          <div class="w-24 text-center text-gray-600">{{ quiz.questionCount || 0}} 題</div>
           <div class="w-36 text-center text-gray-500 text-sm">{{ formatDate(quiz.createdAt) }}</div>
           <div class="w-32 text-center flex items-center justify-center gap-3">
             <!-- 改為使用 Router 導航 -->
-            <button 
-              @click="goToQuiz(quiz.id)" 
+            <button
+              @click="goToQuiz(quiz.id)"
               class="text-[#337ab7] hover:underline text-sm font-bold"
             >
               作答 / 討論
@@ -59,14 +59,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import api from '@/api/client.js'
 import { getRoleFromToken } from '@/utils/auth.js'
 
 const router = useRouter()
 const route = useRoute()
-const courseId = route.params.id
 
+const courseId = route.params.id || route.params.courseId
 const userRole = computed(() => getRoleFromToken())
 const canManage = computed(() => ['teacher', 'ta'].includes(userRole.value))
 
@@ -74,6 +75,7 @@ const quizzes = ref([])
 
 // 格式化時間
 const formatDate = (raw) => {
+  if (!raw) return ''
   const d = new Date(raw)
   return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
 }
@@ -82,31 +84,35 @@ const goToCreateQuiz = () => {
   router.push(`/course/${courseId}/aiquiz/create`)
 }
 
-// 導向獨立的測驗頁面
 const goToQuiz = (aiquizId) => {
-  // 請確保你的 vue-router 有設定對應的路由，例如: path: '/quiz/:quizId'
   router.push(`/course/${courseId}/aiquiz/${aiquizId}`)
 }
 
-// 模擬載入資料
+// 🌐 呼叫 API：載入測驗列表
 const loadQuizzes = async () => {
-  quizzes.value = [
-    {
-      id: 'q_001',
-      title: '第一章：結構力學基礎測驗',
-      sourceFile: 'Chapter1_Intro.pdf',
-      createdAt: Date.now() - 86400000,
-      questions: [
-        { id: 'q1_1', questionText: '請簡述應力(Stress)與應變(Strain)的定義及其物理意義。' },
-        { id: 'q1_2', questionText: '何謂虎克定律(Hooke\'s Law)？其適用的前提條件為何？' }
-      ]
-    }
-  ]
+  try {
+    const { data } = await api.get(`/api/courses/${courseId}/aiquizzes`)
+    quizzes.value = data
+  } catch (error) {
+    console.error('載入失敗:', error)
+    const msg = error.response?.data?.message || '無法載入測驗列表'
+    alert(`載入測驗列表失敗：${msg}`)
+  }
 }
 
-const deleteQuiz = (quizId) => {
+// 🌐 呼叫 API：刪除測驗
+const deleteQuiz = async (quizId) => {
   if (!confirm('確定刪除這份測驗？學生的作答紀錄也將一併遺失。')) return
-  quizzes.value = quizzes.value.filter(q => q.id !== quizId)
+
+  try {
+    await api.delete(`/api/courses/${courseId}/aiquizzes/${quizId}`)
+    quizzes.value = quizzes.value.filter(q => q.id !== quizId)
+    alert('測驗已成功刪除。')
+  } catch (error) {
+    console.error('刪除失敗:', error)
+    const msg = error.response?.data?.message || error.message || '刪除失敗'
+    alert(`刪除失敗：${msg}`)
+  }
 }
 
 onMounted(() => {

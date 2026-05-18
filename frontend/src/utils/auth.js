@@ -37,3 +37,14 @@ export function getUsernameFromToken() {
   const payload = parseJwtPayload(getAccessToken());
   return payload?.sub || "";
 }
+
+const MUST_CHANGE_KEY = "mustChangePassword";
+
+export function setMustChangePassword(required) {
+  if (required) localStorage.setItem(MUST_CHANGE_KEY, "1");
+  else localStorage.removeItem(MUST_CHANGE_KEY);
+}
+
+export function getMustChangePassword() {
+  return localStorage.getItem(MUST_CHANGE_KEY) === "1";
+}

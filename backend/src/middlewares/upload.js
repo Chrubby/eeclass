@@ -57,6 +57,31 @@ export const upload = multer({
   fileFilter: generalFileFilter,
 });
 
+const avatarsDir = path.join(uploadsRoot, "avatars");
+if (!fs.existsSync(avatarsDir)) {
+  fs.mkdirSync(avatarsDir, { recursive: true });
+}
+
+const AVATAR_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
+
+export const uploadAvatar = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, avatarsDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      cb(null, `${Date.now()}-${Math.random().toString(16).slice(2)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    if (!AVATAR_EXTENSIONS.has(ext)) {
+      return cb(new Error("頭貼僅支援 png、jpg、jpeg、gif、webp"));
+    }
+    cb(null, true);
+  },
+});
+
 // 討論區：維持僅 PDF、較小上限
 export const uploadPdf = multer({
   storage,

@@ -69,19 +69,6 @@
 
         <div>
           <label class="block text-gray-800 mb-1.5 text-[15px]">
-            信箱 <span class="text-red-500">*</span>
-          </label>
-          <input
-            v-model="email"
-            type="email"
-            placeholder=""
-            required
-            class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
-          />
-        </div>
-
-        <div>
-          <label class="block text-gray-800 mb-1.5 text-[15px]">
             身份 <span class="text-red-500">*</span>
           </label>
           <select
@@ -146,7 +133,6 @@ const account = ref("")
 const name = ref("")
 const password = ref("")
 const confirmPassword = ref("")
-const email = ref("")
 const role = ref("student")
 const agreeTerms = ref(false)
 const captcha = ref("")
@@ -166,7 +152,6 @@ const register = async () => {
     password: password.value,
     confirmPassword: confirmPassword.value,
     name: name.value,
-    email: email.value,
     role: role.value
   }
 

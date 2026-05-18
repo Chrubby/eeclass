@@ -6,7 +6,7 @@
         <div>
           <input
             v-model="email"
-            type="text"  placeholder="帳號 或 Email" required
+            type="text" placeholder="帳號" required
             class="w-full bg-[#eef3fe] border-b-[3px] border-gray-300 px-4 py-3 text-lg text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#e4ebf9] transition-colors"
           />
         </div>
@@ -69,7 +69,7 @@
 <script setup>
 import { ref } from "vue"
 import api from "@/api/client.js"
-import { setAccessToken } from "@/utils/auth.js"
+import { setAccessToken, setMustChangePassword } from "@/utils/auth.js"
 
 const email = ref("")
 const password = ref("")
@@ -87,8 +87,9 @@ const login = async () => {
 
     setAccessToken(data.token)
     localStorage.setItem("user", data.username)
+    setMustChangePassword(Boolean(data.mustChangePassword))
 
-    window.location.href = '/dashboard'
+    window.location.href = data.mustChangePassword ? '/change-password' : '/dashboard'
   } catch (error) {
     const msg = error.response?.data?.message || "連線失敗"
     alert(msg)

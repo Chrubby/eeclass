@@ -15,6 +15,10 @@ export const PdfHelper = {
   resolveFilePath(filePath) {
     if (!filePath) return null;
 
+    if (path.isAbsolute(filePath)) {
+      return filePath;
+    }
+
     const cleanPath = filePath.replace(/^[/\\]/, "");
 
     return path.join(projectRoot, cleanPath);

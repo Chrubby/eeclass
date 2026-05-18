@@ -153,9 +153,9 @@ export const CourseAiService = {
     
         ORDER BY h.deadline ASC
         `,
-        [student.student_id, course.id]
+        [student.student_id, courseCode]
       );
-    
+      console.log(student.student_id,courseCode)
       extraInfo += `
 【學生作業成績分析】
       

@@ -12,9 +12,23 @@ const initDB = async () => {
         password_hash VARCHAR(255) NOT NULL,
         email VARCHAR(100),
         role VARCHAR(20) NOT NULL,
+        must_change_password TINYINT(1) NOT NULL DEFAULT 0,
+        avatar_url VARCHAR(500) NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
+
+    const accountColumnMigrations = [
+      "ALTER TABLE accounts ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0",
+      "ALTER TABLE accounts ADD COLUMN avatar_url VARCHAR(500) NULL",
+    ];
+    for (const sql of accountColumnMigrations) {
+      try {
+        await pool.execute(sql);
+      } catch (e) {
+        if (e.code !== "ER_DUP_FIELDNAME") throw e;
+      }
+    }
 
     await pool.execute(`
         CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -220,6 +234,59 @@ const initDB = async () => {
         )
     `);
 
+    //aiquizzes (測驗主表)
+    await pool.execute(`
+        CREATE TABLE IF NOT EXISTS AIQuizzes (
+            id VARCHAR(50) PRIMARY KEY,
+            courseId VARCHAR(50) NOT NULL,
+            teacherId VARCHAR(50) NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            sourceFile VARCHAR(255),
+            deadline DATETIME,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    //aiquestions (題目表)
+    await pool.execute(`
+        CREATE TABLE IF NOT EXISTS AIQuestions (
+            id VARCHAR(50) PRIMARY KEY,
+            quizId VARCHAR(50) NOT NULL,
+            questionText TEXT NOT NULL,
+            discussionPrompt TEXT,
+            FOREIGN KEY (quizId) REFERENCES AIQuizzes(id) ON DELETE CASCADE
+        )
+    `);
+
+    //student_answers (學生作答表)
+    await pool.execute(`
+        CREATE TABLE IF NOT EXISTS StudentAnswers (
+            id VARCHAR(50) PRIMARY KEY,
+            questionId VARCHAR(50) NOT NULL,
+            studentId VARCHAR(50) NOT NULL,
+            studentName VARCHAR(100) NOT NULL,
+            answerText TEXT NOT NULL,
+            submitTime DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (questionId) REFERENCES AIQuestions(id) ON DELETE CASCADE
+        )
+    `);
+
+    // AIQuizComments (AI測驗作答留言表)
+    await pool.execute(`
+        CREATE TABLE IF NOT EXISTS AIQuizComments (
+            id VARCHAR(50) PRIMARY KEY,
+            answerId VARCHAR(50) NOT NULL,
+            parentId VARCHAR(50) DEFAULT NULL,
+            userId VARCHAR(50) NOT NULL,
+            userName VARCHAR(100) NOT NULL,
+            role VARCHAR(20) NOT NULL,
+            content TEXT NOT NULL,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (answerId) REFERENCES StudentAnswers(id) ON DELETE CASCADE,
+            FOREIGN KEY (parentId) REFERENCES AIQuizComments(id) ON DELETE CASCADE
+        )
+    `);
+
     try {
         await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
     } catch (e) { /* 欄位已存在就忽略 */ }
@@ -292,6 +359,12 @@ const initDB = async () => {
         await pool.execute(`
         ALTER TABLE course_ai_prompts
         ADD COLUMN grading_prompt TEXT NOT NULL
+        `)
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    try {
+        await pool.execute(`
+        ALTER TABLE StudentAnswers
+        ADD COLUMN aiFeedback TEXT NOT NULL
         `)
     } catch (e) { /* 欄位已存在就忽略 */ }
 
