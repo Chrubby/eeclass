@@ -243,6 +243,22 @@ const initDB = async () => {
         )
     `);
 
+    // AIQuizComments (AI測驗作答留言表)
+    await pool.execute(`
+        CREATE TABLE IF NOT EXISTS AIQuizComments (
+            id VARCHAR(50) PRIMARY KEY,
+            answerId VARCHAR(50) NOT NULL,
+            parentId VARCHAR(50) DEFAULT NULL,
+            userId VARCHAR(50) NOT NULL,
+            userName VARCHAR(100) NOT NULL,
+            role VARCHAR(20) NOT NULL,
+            content TEXT NOT NULL,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (answerId) REFERENCES StudentAnswers(id) ON DELETE CASCADE,
+            FOREIGN KEY (parentId) REFERENCES AIQuizComments(id) ON DELETE CASCADE
+        )
+    `);
+
     try {
         await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
     } catch (e) { /* 欄位已存在就忽略 */ }

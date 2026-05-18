@@ -93,5 +93,16 @@ export const AIQuizController = {
         } catch (error) {
             res.status(500).json({ message: '刪除測驗失敗' });
         }
+    },
+
+    async postComment(req, res) {
+    try {
+        const { answerId } = req.params;
+        const { userId, userName, role, content, parentId } = req.body;
+        await AIQuizService.addComment({ answerId, userId, userName, role, content, parentId });
+        res.status(201).json({ message: '留言成功' });
+    } catch (error) {
+        res.status(500).json({ message: '留言失敗' });
     }
+}
 };

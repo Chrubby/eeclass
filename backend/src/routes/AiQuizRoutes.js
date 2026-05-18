@@ -25,4 +25,5 @@ router.post('/:quizId/answers', AIQuizController.submitAnswers);
 // 6. 教師刪除測驗
 router.delete('/:quizId', AIQuizController.deleteQuiz);
 
+router.post('/answers/:answerId/comments', AIQuizController.postComment);
 export default router;

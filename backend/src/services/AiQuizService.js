@@ -1,6 +1,7 @@
 import { AIQuizModel } from '../models/AiQuizModel.js';
 import { OpenAiHelper } from '../utils/openaiHelper.js';
 import { PdfHelper } from '../utils/pdfHelper.js';
+import { v4 as uuidv4 } from 'uuid';
 
 export const AIQuizService = {
     /**
@@ -123,5 +124,62 @@ export const AIQuizService = {
      */
     async deleteQuiz(quizId) {
         return await AIQuizModel.deleteQuiz(quizId);
+    },
+
+    async getQuizDetail(quizId, userRole, studentId) {
+        const quiz = await AIQuizModel.getQuizById(quizId);
+        if (!quiz) throw new Error('找不到該測驗');
+
+        const myAnswers = await AIQuizModel.getStudentAnswersForQuiz(quizId, studentId);
+        const myAnswerMap = Object.fromEntries(myAnswers.map(a => [a.questionId, a]));
+
+        const processAnswers = async (answers) => {
+            for (let ans of answers) {
+                // 抓取該答案下的所有留言
+                const rawComments = await AIQuizModel.getCommentsByAnswer(ans.id);
+                // 轉換成巢狀結構 (樹狀)
+                ans.comments = this.buildCommentTree(rawComments);
+            }
+            return answers;
+        };
+
+        for (let q of quiz.questions) {
+            q.myAnswer = myAnswerMap[q.id] || null;
+            if (q.myAnswer) await processAnswers([q.myAnswer]);
+
+            if (userRole === 'teacher' || userRole === 'ta') {
+                q.allAnswers = await AIQuizModel.getAllAnswersByQuestion(q.id);
+                await processAnswers(q.allAnswers);
+            } else if (q.myAnswer) {
+                q.peerAnswers = await AIQuizModel.getPeerAnswers(q.id, studentId);
+                await processAnswers(q.peerAnswers);
+            }
+        }
+        return quiz;
+    },
+
+    // 輔助方法：建立留言樹
+    buildCommentTree(comments) {
+        const map = {};
+        const tree = [];
+        comments.forEach(c => {
+            map[c.id] = { ...c, children: [] };
+        });
+        comments.forEach(c => {
+            if (c.parentId && map[c.parentId]) {
+                map[c.parentId].children.push(map[c.id]);
+            } else {
+                tree.push(map[c.id]);
+            }
+        });
+        return tree;
+    },
+
+    async addComment(commentData) {
+        const data = {
+            id: uuidv4(),
+            ...commentData
+        };
+        return await AIQuizModel.saveComment(data);
     }
 };

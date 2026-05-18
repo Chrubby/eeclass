@@ -152,5 +152,31 @@ export const AIQuizModel = {
         const sql = `DELETE FROM AIQuizzes WHERE id = ?`;
         const [result] = await pool.execute(sql, [quizId]);
         return result.affectedRows > 0;
+    },
+
+    /**
+     * 儲存留言
+     */
+    async saveComment(commentData) {
+        const { id, answerId, parentId, userId, userName, role, content } = commentData;
+        const sql = `
+            INSERT INTO AIQuizComments (id, answerId, parentId, userId, userName, role, content)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+        await pool.execute(sql, [id, answerId, parentId, userId, userName, role, content]);
+        return id;
+    },
+
+    /**
+     * 取得特定作答的所有留言
+     */
+    async getCommentsByAnswer(answerId) {
+        const sql = `
+            SELECT * FROM AIQuizComments 
+            WHERE answerId = ? 
+            ORDER BY createdAt ASC
+        `;
+        const [rows] = await pool.execute(sql, [answerId]);
+        return rows;
     }
 };
