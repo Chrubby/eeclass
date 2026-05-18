@@ -148,11 +148,11 @@ const register = async () => {
     return
   }
   const userData = {
-    username: account.value,
+    username: account.value.trim(),
     password: password.value,
     confirmPassword: confirmPassword.value,
-    name: name.value,
-    role: role.value
+    name: name.value.trim(),
+    role: role.value,
   }
 
   try {
@@ -164,8 +164,8 @@ const register = async () => {
     }
   } catch (error) {
     const msg = error.response?.data?.message || "連線失敗"
-    alert(msg)
-    console.error(error)
+    alert(`註冊失敗：${msg}`)
+    console.error("註冊錯誤:", error.response?.data || error)
   }
 }
 </script>

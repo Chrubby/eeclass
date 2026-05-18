@@ -6,7 +6,8 @@ export const AuthController = {
       await AuthService.register(req.body);
       res.json({ message: "註冊成功！請登入並變更密碼。" });
     } catch (error) {
-      res.status(400).json({ message: error.message });
+      console.error("[register]", error);
+      res.status(400).json({ message: error.message || "註冊失敗" });
     }
   },
 

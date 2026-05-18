@@ -1,11 +1,23 @@
 import { pool } from "../config/db.js";
 
+function isMissingColumnError(err) {
+  return err?.code === "ER_BAD_FIELD_ERROR" || err?.errno === 1054;
+}
+
 export const AuthModel = {
   async createAccount(username, passwordHash, email, role) {
-    return pool.execute(
-      "INSERT INTO accounts (username, password_hash, email, role, must_change_password) VALUES (?, ?, ?, ?, 1)",
-      [username, passwordHash, email ?? null, role],
-    );
+    try {
+      return await pool.execute(
+        "INSERT INTO accounts (username, password_hash, email, role, must_change_password) VALUES (?, ?, ?, ?, 1)",
+        [username, passwordHash, email ?? null, role],
+      );
+    } catch (err) {
+      if (!isMissingColumnError(err)) throw err;
+      return pool.execute(
+        "INSERT INTO accounts (username, password_hash, email, role) VALUES (?, ?, ?, ?)",
+        [username, passwordHash, email ?? null, role],
+      );
+    }
   },
 
   async findAccountByUsernameOrEmail(identifier) {
@@ -74,10 +86,21 @@ export const AuthModel = {
   },
 
   async setMustChangePassword(accountId, value) {
-    await pool.execute("UPDATE accounts SET must_change_password = ? WHERE id = ?", [value ? 1 : 0, accountId]);
+    try {
+      await pool.execute("UPDATE accounts SET must_change_password = ? WHERE id = ?", [
+        value ? 1 : 0,
+        accountId,
+      ]);
+    } catch (err) {
+      if (!isMissingColumnError(err)) throw err;
+    }
   },
 
   async updateAvatarUrl(accountId, avatarUrl) {
-    await pool.execute("UPDATE accounts SET avatar_url = ? WHERE id = ?", [avatarUrl, accountId]);
+    try {
+      await pool.execute("UPDATE accounts SET avatar_url = ? WHERE id = ?", [avatarUrl, accountId]);
+    } catch (err) {
+      if (!isMissingColumnError(err)) throw err;
+    }
   },
 };

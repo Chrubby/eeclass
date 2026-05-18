@@ -41,24 +41,48 @@ function getRecoveryCode() {
   return String(process.env.PASSWORD_RECOVERY_CODE || DEFAULT_RECOVERY_CODE).trim();
 }
 
+function mapDbError(e, context) {
+  if (e?.code === "ER_DUP_ENTRY" || e?.errno === 1062) {
+    return new Error("帳號已被使用");
+  }
+  if (e?.code === "ER_BAD_FIELD_ERROR" || e?.errno === 1054) {
+    return new Error(
+      "資料庫結構尚未更新，請在伺服器執行：node scripts/initDB.js（或手動為 accounts 表新增 must_change_password 欄位）",
+    );
+  }
+  if (e?.code === "ER_NO_SUCH_TABLE" || e?.errno === 1146) {
+    return new Error("資料庫表尚未建立，請在伺服器執行：node scripts/initDB.js");
+  }
+  console.error(`[${context}]`, e);
+  const msg = typeof e?.message === "string" ? e.message : "";
+  if (msg.includes("Unknown column")) {
+    return new Error("資料庫結構與程式不符，請執行 node scripts/initDB.js 更新資料庫");
+  }
+  return new Error(msg || "註冊失敗，請稍後再試");
+}
+
 export const AuthService = {
   async register({ username, password, name, role, confirmPassword }) {
-    validateRegisterInput({ username, password, confirmPassword, name, role });
+    const trimmedUsername = String(username ?? "").trim();
+    validateRegisterInput({
+      username: trimmedUsername,
+      password,
+      confirmPassword,
+      name,
+      role,
+    });
 
     const passwordHash = await bcrypt.hash(password, 10);
     try {
-      await AuthModel.createAccount(username, passwordHash, null, role);
+      await AuthModel.createAccount(trimmedUsername, passwordHash, null, role);
 
       if (role === "student" || role === "ta") {
-        await AuthModel.createStudent(name, username);
+        await AuthModel.createStudent(name, trimmedUsername);
       } else if (role === "teacher") {
-        await AuthModel.createTeacher(name, username);
+        await AuthModel.createTeacher(name, trimmedUsername);
       }
     } catch (e) {
-      if (e.code === "ER_DUP_ENTRY" || e.errno === 1062) {
-        throw new Error("帳號已被使用");
-      }
-      throw e;
+      throw mapDbError(e, "register");
     }
   },
 
