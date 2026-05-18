@@ -3,6 +3,9 @@ import Home from '../views/Home.vue'
 import Course from '../views/Course.vue'
 import Login from "../views/Login.vue"
 import Register from "../views/Register.vue"
+import ForgotPassword from "../views/ForgotPassword.vue"
+import ResetPassword from "../views/ResetPassword.vue"
+import { getRoleFromToken } from '@/utils/auth.js'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -68,7 +71,7 @@ const router = createRouter({
           path: 'homework/:hwId',
           name: 'HomeworkDetail',
           component: async () => {
-            const role = localStorage.getItem('userRole') || 'student'
+            const role = getRoleFromToken()
 
             if (role === 'teacher' || role === 'ta') {
               return (await import('../views/course/teacher/HomeworkTeacher.vue')).default
@@ -96,14 +99,16 @@ const router = createRouter({
       ]
     },
     { path: "/login", name: 'Login', component: Login },
-    { path: "/register", name: 'Register', component: Register }
+    { path: "/register", name: 'Register', component: Register },
+    { path: "/forgot-password", name: 'ForgotPassword', component: ForgotPassword },
+    { path: "/reset-password", name: 'ResetPassword', component: ResetPassword }
   ]
 })
 
 const staffRoles = ['teacher', 'ta']
 
-router.beforeEach((to, from) => {
-  const userRole = localStorage.getItem('userRole') || 'student'
+router.beforeEach((to, _from) => {
+  const userRole = getRoleFromToken()
 
   if (to.meta.requiresTeacher && !staffRoles.includes(userRole)) {
     alert('無法訪問此頁面。')

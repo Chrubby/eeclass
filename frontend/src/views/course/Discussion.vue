@@ -34,7 +34,7 @@
           <div class="w-32 text-center text-gray-500 text-sm">{{ formatDate(item.date) }}</div>
 
           <button
-            v-if="user.role === 'teacher'"
+            v-if="['teacher', 'ta'].includes(user.role)"
             @click.stop="deleteDiscussion(item.id)"
             class="ml-2 text-red-500 hover:text-red-700 text-sm"
           >
@@ -81,7 +81,7 @@
               />
             </div>
 
-            <div v-if="user.role === 'teacher'" class="mb-4">
+            <div v-if="['teacher', 'ta'].includes(user.role)" class="mb-4">
             <label class="block text-gray-700 font-bold mb-1">AI Prompt</label>
             <textarea
                 v-model="newDiscussion.ai_prompt"
@@ -108,14 +108,12 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '@/api/client.js'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
 
-// 環境變數與參數
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
 const courseCode = route.params.id
 
 // 狀態管理
@@ -158,9 +156,7 @@ const loadUser = async () => {
   user.value.user_id = stored
 
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/auth/user_inf`, {
-      params: { user_id: user.value.user_id }
-    })
+    const res = await api.get('/api/auth/me')
     user.value.role = res.data.role
     if (res.data.user) {
       user.value.name = res.data.user.name
@@ -173,7 +169,7 @@ const loadUser = async () => {
 // 取得討論列表
 const fetchDiscussions = async () => {
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/courses/${courseCode}/discussions`)
+    const res = await api.get(`/api/courses/${courseCode}/discussions`)
     discussions.value = res.data
   } catch (err) {
     console.error("載入討論區失敗", err)
@@ -188,37 +184,33 @@ const createDiscussion = async () => {
   }
 
   try {
-    // 使用 FormData 才能傳送檔案
     const formData = new FormData()
     formData.append('course_code', courseCode)
     formData.append('title', newDiscussion.value.title)
     formData.append('content', newDiscussion.value.content)
     formData.append('ai_prompt', newDiscussion.value.ai_prompt)
-    
-    // 如果有選擇檔案，則加入 FormData
+
     if (newDiscussion.value.file) {
       formData.append('file', newDiscussion.value.file)
     }
 
-    // Axios post 傳送 FormData (Content-Type 會自動設定為 multipart/form-data)
-    await axios.post(`${API_BASE_URL}/api/courses/${courseCode}/discussions`, formData, {
+    await api.post(`/api/courses/${courseCode}/discussions`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     })
-    
+
     alert('討論主題建立成功')
     showAddModal.value = false
-    
-    // 重置表單狀態
+
     newDiscussion.value.title = ''
     newDiscussion.value.content = ''
     newDiscussion.value.ai_prompt = ''
     newDiscussion.value.file = null
     if (fileInputRef.value) {
-      fileInputRef.value.value = '' // 清空檔案選擇器畫面
+      fileInputRef.value.value = ''
     }
-    
+
     fetchDiscussions()
   } catch (err) {
     console.error('建立討論主題失敗', err)
@@ -231,7 +223,7 @@ const deleteDiscussion = async (id) => {
   if (!confirm('確定要刪除這個討論嗎？')) return
 
   try {
-    await axios.delete(`${API_BASE_URL}/api/discussions/${id}`)
+    await api.delete(`/api/discussions/${id}`)
 
     alert('刪除成功')
     fetchDiscussions()

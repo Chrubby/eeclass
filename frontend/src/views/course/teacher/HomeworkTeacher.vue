@@ -180,6 +180,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import api from '@/api/client.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -215,13 +216,11 @@ const eventTypeLabel = (t) => ({
 const loadData = async () => {
   try {
     const [hwRes, subRes] = await Promise.all([
-      fetch(`${API_BASE_URL}/api/homeworks/${hwId}`),
-      fetch(`${API_BASE_URL}/api/homeworks/${hwId}/submissions`),
+      api.get(`/api/homeworks/${hwId}`),
+      api.get(`/api/homeworks/${hwId}/submissions`),
     ])
-    const hw = await hwRes.json()
-    const subs = await subRes.json()
-    if (!hwRes.ok) throw new Error(hw.message || '讀取作業失敗')
-    if (!subRes.ok) throw new Error(subs.message || '讀取繳交資料失敗')
+    const hw = hwRes.data
+    const subs = subRes.data
 
     homeworkTitle.value = hw.title
     homeworkDeadline.value = formatDate(hw.deadline)
@@ -236,7 +235,7 @@ const loadData = async () => {
       uploadedAt: formatDate(s.submittedAt),
     }))
   } catch (error) {
-    alert(error.message)
+    alert(error.response?.data?.message || error.message)
   }
 }
 
@@ -245,12 +244,10 @@ const openHistory = async (sub) => {
   historyLoading.value = true
   currentHistory.value = null
   try {
-    const res = await fetch(`${API_BASE_URL}/api/submissions/${sub.id}/history`)
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message || '讀取歷程失敗')
+    const { data } = await api.get(`/api/submissions/${sub.id}/history`)
     currentHistory.value = data
   } catch (e) {
-    alert(e.message)
+    alert(e.response?.data?.message || e.message)
     historyModalOpen.value = false
   } finally {
     historyLoading.value = false
@@ -261,13 +258,11 @@ const deleteHomework = async () => {
   if (!confirm('確定要刪除此作業嗎？刪除後學生繳交資料也會一併清除，此動作無法還原。')) return
   deletingHomework.value = true
   try {
-    const res = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}`, { method: 'DELETE' })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.message || '刪除失敗')
+    const { data } = await api.delete(`/api/homeworks/${hwId}`)
     alert(data.message || '作業已刪除')
     router.push(`/course/${courseId}/homework`)
   } catch (e) {
-    alert(e.message)
+    alert(e.response?.data?.message || e.message)
   } finally {
     deletingHomework.value = false
   }

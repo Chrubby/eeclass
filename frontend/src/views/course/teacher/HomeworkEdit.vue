@@ -148,12 +148,12 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import api from '@/api/client.js'
 
 const router = useRouter()
 const route = useRoute()
 const courseId = route.params.id
 const hwId = route.params.hwId
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 const loading = ref(true)
 const homeworkFiles = ref([])
@@ -188,9 +188,7 @@ function mapQuestionFromApi(q) {
 const loadHomework = async () => {
   loading.value = true
   try {
-    const res = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}`)
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message || '讀取作業失敗')
+    const { data } = await api.get(`/api/homeworks/${hwId}`)
     const qs = data.questions && data.questions.length
       ? data.questions.map(mapQuestionFromApi)
       : [
@@ -203,7 +201,7 @@ const loadHomework = async () => {
       questions: qs,
     }
   } catch (e) {
-    alert(e.message)
+    alert(e.response?.data?.message || e.message)
     goBack()
   } finally {
     loading.value = false
@@ -265,18 +263,13 @@ const saveHomework = async () => {
   })
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}`, {
-      method: 'PUT',
-      body: formData,
+    await api.put(`/api/homeworks/${hwId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     })
-    const text = await response.text()
-    if (!text) throw new Error('伺服器沒有回傳資料')
-    const result = JSON.parse(text)
-    if (!response.ok) throw new Error(result.message || '更新失敗')
     alert('作業已更新！')
     goBack()
   } catch (error) {
-    alert('更新失敗：' + error.message)
+    alert('更新失敗：' + (error.response?.data?.message || error.message))
   }
 }
 

@@ -20,13 +20,34 @@ export const AuthController = {
     }
   },
 
-  async getUserInfo(req, res) {
+  /** 需搭配 authMiddleware：依 JWT 回傳目前使用者資料 */
+  async me(req, res) {
     try {
-      const { user_id } = req.query;
-      const result = await AuthService.getUserInfo(user_id);
+      const result = await AuthService.getUserInfo(req.user.username);
+      res.json(result);
+    } catch {
+      res.status(500).json({ message: "系統發生異常" });
+    }
+  },
+
+  async forgotPassword(req, res) {
+    try {
+      const { identifier, email, username } = req.body;
+      const id = identifier ?? email ?? username;
+      const result = await AuthService.requestPasswordReset(id);
       res.json(result);
     } catch (error) {
-      res.status(500).json({ message: error.message });
+      res.status(400).json({ message: error.message });
     }
-  }
+  },
+
+  async resetPassword(req, res) {
+    try {
+      const { token, password, confirmPassword } = req.body;
+      const result = await AuthService.resetPasswordWithToken({ token, password, confirmPassword });
+      res.json(result);
+    } catch (error) {
+      res.status(400).json({ message: error.message });
+    }
+  },
 };

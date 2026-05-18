@@ -1,9 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '@/api/client.js'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const router = useRouter()
 const user = ref({
   user_id: '',
@@ -29,7 +28,8 @@ const courseForm = ref({
 
 const loadUser = async () => {
   const stored = localStorage.getItem('user')
-  if (!stored) {
+  const token = localStorage.getItem('accessToken')
+  if (!stored || !token) {
     router.push('/login')
     return
   }
@@ -37,25 +37,18 @@ const loadUser = async () => {
   user.value.user_id = stored
 
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/auth/user_inf`, {
-      params: { user_id: user.value.user_id },
-    })
+    const res = await api.get('/api/auth/me')
     user.value.role = res.data.role
-  } catch (err) {
+  } catch {
     console.error('取得使用者資訊失敗')
   }
 }
 
 const fetchMyCourses = async () => {
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/courses/user`, {
-      params: {
-        user_id: user.value.user_id,
-        role: user.value.role,
-      },
-    })
+    const res = await api.get('/api/courses/user')
     courses.value = res.data
-  } catch (err) {
+  } catch {
     console.error('取得課程失敗')
   }
 }
@@ -73,13 +66,13 @@ const searchCourse = async () => {
   try {
     const input = searchText.value.trim()
     const isCourseCode = /^[A-Za-z]{2}\d+/.test(input)
-    const res = await axios.get(`${API_BASE_URL}/api/courses`, {
+    const res = await api.get('/api/courses', {
       params: isCourseCode ? { code: input } : { name: input },
     })
     searchResult.value = res.data
     showModal.value = true
     searchText.value = ''
-  } catch (err) {
+  } catch {
     searchResult.value = null
     alert('找不到課程')
   }
@@ -88,8 +81,7 @@ const searchCourse = async () => {
 const addCourse = async () => {
   if (!searchResult.value) return
   try {
-    const res = await axios.post(`${API_BASE_URL}/api/courses/enroll`, {
-      student_id: user.value.user_id,
+    const res = await api.post('/api/courses/enroll', {
       course_code: searchResult.value.course_code,
     })
     alert(res.data.message)
@@ -107,8 +99,7 @@ const createCourse = async () => {
   }
 
   try {
-    const res = await axios.post(`${API_BASE_URL}/api/courses`, {
-      teacher_id: user.value.user_id,
+    const res = await api.post('/api/courses', {
       course_name: courseForm.value.course_name,
       course_code: courseForm.value.course_code,
       academic_year: courseForm.value.academic_year,

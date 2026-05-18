@@ -61,13 +61,13 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import axios from 'axios'
+import api from '@/api/client.js'
 // 記得引入我們剛剛建立的元件 (路徑請依照你的專案結構調整)
-import ThreadItem from './DiscussionThread.vue' 
+import ThreadItem from './DiscussionThread.vue'
 
 const route = useRoute()
-const roomId = route.params.discussionId 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+const roomId = route.params.discussionId
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 const room = ref({})
 const allThreads = ref([])
@@ -103,7 +103,7 @@ const threadTree = computed(() => {
 
 const fetchData = async () => {
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/discussions/${roomId}/threads`)
+    const res = await api.get(`/api/discussions/${roomId}/threads`)
     room.value = res.data.room
     allThreads.value = res.data.threads
   } catch (error) {
@@ -117,8 +117,7 @@ const submitThread = async (parentId, contentText) => {
   isSubmitting.value = true
 
   try {
-    await axios.post(`${API_BASE_URL}/api/discussions/${roomId}/threads`, {
-      user_id: localStorage.getItem('user'),
+    await api.post(`/api/discussions/${roomId}/threads`, {
       content: contentText.trim(),
       parent_thread_id: parentId // 後端原本就支援吃這個參數
     })

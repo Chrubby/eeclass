@@ -119,6 +119,7 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import api from '@/api/client.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -164,14 +165,12 @@ watch(
 const loadData = async () => {
   try {
     const [subRes, hwRes] = await Promise.all([
-      fetch(`${API_BASE_URL}/api/submissions/${submissionId}`),
-      fetch(`${API_BASE_URL}/api/homeworks/${hwId}`)
+      api.get(`/api/submissions/${submissionId}`),
+      api.get(`/api/homeworks/${hwId}`)
     ])
 
-    if (!subRes.ok || !hwRes.ok) throw new Error('讀取資料失敗')
-
-    const subData = await subRes.json()
-    const hwData = await hwRes.json()
+    const subData = subRes.data
+    const hwData = hwRes.data
 
     studentData.value = {
       id: subData.studentId,
@@ -217,7 +216,7 @@ const loadData = async () => {
     })
 
   } catch (error) {
-    alert(error.message)
+    alert(error.response?.data?.message || error.message)
     console.error(error)
   }
 }
@@ -235,19 +234,12 @@ const submitGrade = async () => {
       }))
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/submissions/${submissionId}/grade`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-
-    const result = await response.json()
-    if (!response.ok) throw new Error(result.message || '評分失敗')
+    await api.post(`/api/submissions/${submissionId}/grade`, payload)
 
     alert('批改儲存成功')
     goBack()
   } catch (error) {
-    alert(error.message)
+    alert(error.response?.data?.message || error.message)
     console.error(error)
   }
 }

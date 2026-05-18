@@ -63,16 +63,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import api from '@/api/client.js'
+import { getRoleFromToken } from '@/utils/auth.js'
 
 const route = useRoute()
 const courseId = route.params.id
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
-const userRole = localStorage.getItem('userRole') || ''
-const canManageMaterials = ['teacher', 'ta'].includes(userRole)
+
+const canManageMaterials = computed(() => ['teacher', 'ta'].includes(getRoleFromToken()))
 const deletingId = ref(null)
-const uploaderId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
 
 const materials = ref([])
 const selectedFile = ref(null)
@@ -83,12 +84,10 @@ const formatDate = (raw) => (raw ? new Date(raw).toLocaleString() : '-')
 
 const loadMaterials = async () => {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/courses/${courseId}/materials`)
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message || '讀取教材失敗')
+    const { data } = await api.get(`/api/courses/${courseId}/materials`)
     materials.value = data.materials || []
   } catch (e) {
-    alert(e.message)
+    alert(e.response?.data?.message || '讀取教材失敗')
   }
 }
 
@@ -108,17 +107,13 @@ const uploadMaterial = async () => {
   try {
     const fd = new FormData()
     fd.append('file', selectedFile.value)
-    fd.append('uploaderId', uploaderId)
-    const res = await fetch(`${API_BASE_URL}/api/courses/${courseId}/materials`, {
-      method: 'POST',
-      body: fd,
+    await api.post(`/api/courses/${courseId}/materials`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message || '上傳失敗')
     selectedFile.value = null
     await loadMaterials()
   } catch (e) {
-    alert(e.message)
+    alert(e.response?.data?.message || '上傳失敗')
   } finally {
     uploading.value = false
   }
@@ -128,14 +123,10 @@ const deleteMaterial = async (materialId) => {
   if (!confirm('確定刪除此教材？')) return
   deletingId.value = materialId
   try {
-    const res = await fetch(`${API_BASE_URL}/api/courses/${courseId}/materials/${materialId}`, {
-      method: 'DELETE',
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.message || '刪除失敗')
+    await api.delete(`/api/courses/${courseId}/materials/${materialId}`)
     await loadMaterials()
   } catch (e) {
-    alert(e.message)
+    alert(e.response?.data?.message || '刪除失敗')
   } finally {
     deletingId.value = null
   }

@@ -3,6 +3,7 @@ import { OpenAiHelper } from "../utils/openaiHelper.js";
 import { CourseAiModel } from "../models/courseAiModel.js";
 import { HomeworkModel } from "../models/homeworkModel.js";
 import { PdfHelper } from "../utils/pdfHelper.js";
+import { tryParseJsonObject } from "../utils/aiJsonParse.js";
 
 export const HomeworkAiService = {
   parseHomeworkAttachments(hw) {
@@ -102,18 +103,31 @@ export const HomeworkAiService = {
     console.log("========== 【AI 讀到的題目、附件與學生作答】 ==========");
     console.log(userContent);
 
-    const raw = await OpenAiHelper.chat([
-      { role: "system", content: system },
-      { role: "user", content: userContent }
-    ], { jsonMode: true });
-    console.log("========== 【AI 原始回覆】 ==========");
-    console.log(raw);
-    const parsed = JSON.parse(raw);
-    return {
-      suggested_score: Math.min(maxForThis, Math.max(0, Number(parsed.suggested_score) || 0)),
-      reason: parsed.reason,
-      question_order: q.questionOrder
-    };
+    const maxAttempts = 3;
+    let lastError;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const raw = await OpenAiHelper.chat(
+        [
+          { role: "system", content: system },
+          { role: "user", content: userContent },
+        ],
+        { jsonMode: true },
+      );
+      console.log("========== 【AI 原始回覆】 ==========");
+      console.log(raw);
+      try {
+        const parsed = tryParseJsonObject(raw);
+        return {
+          suggested_score: Math.min(maxForThis, Math.max(0, Number(parsed.suggested_score) || 0)),
+          reason: parsed.reason,
+          question_order: q.questionOrder,
+        };
+      } catch (e) {
+        lastError = e;
+        console.warn(`[HomeworkAi] JSON 解析失敗，重試 ${attempt + 1}/${maxAttempts}:`, e.message);
+      }
+    }
+    throw lastError || new Error("無法解析 AI 回傳之 JSON");
   },
 
   async runAiGradeAllQuestions(submissionId, homeworkId) {

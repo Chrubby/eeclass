@@ -49,7 +49,7 @@ export const HomeworkService = {
           hw.feedback = sub.feedback;
         }
       }
-    } else if (role === 'teacher') {
+    } else if (role === "teacher" || role === "ta") {
       for (let hw of homeworks) {
         const stats = await HomeworkModel.getHomeworkStats(hw.id);
         hw.submitCount = stats.submitCount || 0;

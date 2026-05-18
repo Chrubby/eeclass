@@ -140,6 +140,7 @@
 <script setup>
 import { ref } from "vue"
 import { useRouter } from "vue-router"
+import api from "@/api/client.js"
 
 const account = ref("")
 const name = ref("")
@@ -154,7 +155,6 @@ const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 
 const router = useRouter()
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 const register = async () => {
   if (password.value !== confirmPassword.value) {
@@ -164,32 +164,23 @@ const register = async () => {
   const userData = {
     username: account.value,
     password: password.value,
+    confirmPassword: confirmPassword.value,
     name: name.value,
     email: email.value,
     role: role.value
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(userData)
-    })
+    const { data } = await api.post("/api/auth/register", userData)
 
-    const result = await response.json()
-
-    if (response.ok) {
-      alert(result.message)
+    if (data.message) {
+      alert(data.message)
       router.push("/login")
-    } else {
-      alert(result.message)
     }
-
   } catch (error) {
-    alert("連線失敗")
-    console.error( error)
+    const msg = error.response?.data?.message || "連線失敗"
+    alert(msg)
+    console.error(error)
   }
 }
 </script>

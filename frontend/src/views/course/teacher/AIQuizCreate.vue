@@ -191,13 +191,11 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import api from '@/api/client.js'
 
 const router = useRouter()
 const route = useRoute()
 const courseId = route.params.id || 'default_course'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
-const teacherId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
 
 /** AI 出題專用狀態 */
 const isGenerating = ref(false)
@@ -310,7 +308,6 @@ const submitAssignment = async () => {
   
   const formattedDeadline = form.value.deadline.replace('T', ' ') + ':00'
   formData.append('deadline', formattedDeadline)
-  formData.append('teacherId', teacherId)
 
   // 整理題目格式 (只保留需要的文字與 Prompt)
   const questionsData = form.value.questions.map(q => ({
@@ -325,22 +322,15 @@ const submitAssignment = async () => {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/homeworks`, {
-      method: 'POST',
-      body: formData
+    await api.post(`/api/courses/${courseId}/homeworks`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     })
-
-    const text = await response.text()
-    if (!text) throw new Error('伺服器沒有回傳任何資料')
-
-    const result = JSON.parse(text)
-    if (!response.ok) throw new Error(result.message || '作業發布失敗')
 
     alert('作業發布成功！')
     goBack()
 
   } catch (error) {
-    alert('發布失敗：' + error.message)
+    alert('發布失敗：' + (error.response?.data?.message || error.message))
     console.error("詳細錯誤:", error)
   }
 }

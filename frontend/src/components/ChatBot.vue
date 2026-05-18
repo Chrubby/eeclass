@@ -3,7 +3,7 @@
   <div class="fixed bottom-4 right-4 flex flex-col items-end space-y-2">
     <!-- 👨‍🏫 teacher：Prompt 管理 -->
     <button
-      v-if="role === 'teacher'"
+      v-if="['teacher', 'ta'].includes(role)"
       class="bg-purple-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-purple-700 transition"
       @click="open = true"
     >
@@ -23,7 +23,7 @@
 
     <!-- fallback：AI 對話 -->
     <button
-      v-else-if="role !== 'teacher'"
+      v-else-if="!['teacher', 'ta'].includes(role)"
       class="bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-700 transition"
       @click="open = true"
     >
@@ -64,7 +64,7 @@
 
       <!-- Teacher Settings -->
       <div
-        v-if="role === 'teacher'"
+        v-if="['teacher', 'ta'].includes(role)"
         class="p-4 space-y-5"
       >
 
@@ -226,7 +226,7 @@
 
       <!-- Chat Messages -->
       <div
-        v-if="role !== 'teacher'"
+        v-if="!['teacher', 'ta'].includes(role)"
         class="p-4 space-y-3"
         ref="chatContainer"
       >
@@ -289,7 +289,7 @@
 
     <!-- Input -->
     <div
-      v-if="role !== 'teacher'"
+      v-if="!['teacher', 'ta'].includes(role)"
       class="shrink-0 border-t border-gray-200 bg-white p-3"
     >
 
@@ -319,6 +319,7 @@
 <script setup>
 import { ref, watch, nextTick, computed } from 'vue'
 import { marked } from 'marked'
+import api from '@/api/client.js'
 
 const chatPrompt = ref('')
 const discussionPrompt = ref('')
@@ -350,7 +351,8 @@ const sendAnnouncements = ref(false)
 const sendAssignments = ref(false)
 const sendStudentInfo = ref(false)
 const sendGrades = ref(false)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000"
+
+const courseAiBase = () => `/api/courses/${props.courseCode?.trim() || ''}`
 
 /* ======================
    Utils
@@ -396,15 +398,13 @@ const fetchReminder = async () => {
   if (!courseCode || !studentCode) return
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/courses/ai-assistant/remind`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseCode, studentCode }) // courseCode 已經在網址裡了
+    const { data } = await api.post(`${courseAiBase()}/ai-assistant/remind`, {
+      courseCode,
+      studentCode,
     })
 
-    const data = await res.json()
     reminder.value = data.reply || '⚠ 無法取得作業提醒'
-  } catch (err) {
+  } catch {
     reminder.value = '⚠ 無法取得作業提醒'
   }
 }
@@ -413,7 +413,7 @@ const fetchReminder = async () => {
    Chat history（teacher 不打）
 ====================== */
 const fetchChatHistory = async () => {
-  if (props.role === 'teacher') return
+  if (['teacher', 'ta'].includes(props.role)) return
 
   const courseCode = props.courseCode?.trim()
   const studentCode = props.studentCode?.trim()
@@ -421,11 +421,9 @@ const fetchChatHistory = async () => {
   if (!courseCode || !studentCode) return
 
   try {
-    const res = await fetch(
-      `${API_BASE_URL}/api/courses/ai-assistant/history/${courseCode}/${studentCode}`
+    const { data } = await api.get(
+      `${courseAiBase()}/ai-assistant/history/${courseCode}/${studentCode}`,
     )
-
-    const data = await res.json()
 
     messages.value = (data.chats || []).map(m => ({
       role: m.role,
@@ -453,33 +451,22 @@ const savePrompt = async () => {
   }
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/courses/${props.courseCode}/ai-prompts`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_prompt: chatPrompt.value,
-        discussion_prompt: discussionPrompt.value,
-        grading_prompt: gradingPrompt.value,
-        role: props.role,
-        send_announcements: sendAnnouncements.value,
-        send_assignments: sendAssignments.value,
-        send_student_info: sendStudentInfo.value,
-        send_grades: sendGrades.value
-      })
+    await api.put(`${courseAiBase()}/ai-prompts`, {
+      chat_prompt: chatPrompt.value,
+      discussion_prompt: discussionPrompt.value,
+      grading_prompt: gradingPrompt.value,
+      send_announcements: sendAnnouncements.value,
+      send_assignments: sendAssignments.value,
+      send_student_info: sendStudentInfo.value,
+      send_grades: sendGrades.value
     })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      throw new Error(data.message || '更新失敗')
-    }
 
     alert("✅ Prompt 更新成功")
     open.value = false
 
   } catch (err) {
     console.error(err)
-    alert("❌ 更新失敗：" + err.message)
+    alert("❌ 更新失敗：" + (err.response?.data?.message || err.message))
   }
 }
 
@@ -487,16 +474,10 @@ const savePrompt = async () => {
 // fetchTeacherPrompt
 // ======================
 const fetchTeacherPrompt = async () => {
-  if (props.role !== 'teacher') return
+  if (!['teacher', 'ta'].includes(props.role)) return
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/courses/${props.courseCode}/ai-prompts`)
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      throw new Error(data.message)
-    }
+    const { data } = await api.get(`${courseAiBase()}/ai-prompts`)
 
     chatPrompt.value = data?.chat_prompt || ''
     discussionPrompt.value = data?.discussion_prompt || ''
@@ -520,10 +501,7 @@ const fetchTeacherPrompt = async () => {
    Send message（student/ta）
 ====================== */
 const handleSend = async () => {
-console.log(`API_BASE_URL: ${API_BASE_URL}`);
-console.log(`courseCode: ${props.courseCode}`);
-console.log(`studentCode: ${props.studentCode}`);
-  if (props.role === 'teacher') return
+  if (['teacher', 'ta'].includes(props.role)) return
 
   if (!input.value.trim()) return
 
@@ -540,17 +518,11 @@ console.log(`studentCode: ${props.studentCode}`);
   loading.value = true
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/courses/ai-assistant/ask`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        courseCode: props.courseCode,
-        studentCode: props.studentCode, // 後端現在預期收到 studentCode
-        userMessage: msgToSend          // 後端現在預期收到 userMessage (依據我們剛剛重構的 Service)
-      })
+    const { data } = await api.post(`${courseAiBase()}/ai-assistant/ask`, {
+      courseCode: props.courseCode,
+      studentCode: props.studentCode,
+      userMessage: msgToSend
     })
-
-    const data = await res.json()
 
     messages.value.push({
       role: 'assistant',
@@ -559,7 +531,7 @@ console.log(`studentCode: ${props.studentCode}`);
     })
 
     scrollToBottom()
-  } catch (err) {
+  } catch {
     messages.value.push({
       role: 'assistant',
       message: '無法取得 AI 回覆，請稍後再試。',

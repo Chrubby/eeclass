@@ -52,16 +52,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import api from '@/api/client.js'
+import { getRoleFromToken } from '@/utils/auth.js'
 
 const router = useRouter()
 const route = useRoute()
 const courseId = route.params.id
 
-const userRole = ref(localStorage.getItem('userRole') || 'student')
-const userId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const userRole = computed(() => getRoleFromToken())
 const isLoading = ref(false)
 
 const homeworkList = ref([])
@@ -72,14 +72,9 @@ const formatDate = (raw) => {
 }
 
 const loadHomeworkList = async () => {
-  if (!userId) return
   isLoading.value = true
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/courses/${courseId}/homeworks?userId=${encodeURIComponent(userId)}&role=${userRole.value}`,
-    )
-    const result = await response.json()
-    if (!response.ok) throw new Error(result.message || '讀取作業失敗')
+    const { data: result } = await api.get(`/api/courses/${courseId}/homeworks`)
     homeworkList.value = result.map((item) => ({
       ...item,
       deadlineText: formatDate(item.deadline),
@@ -96,7 +91,7 @@ const loadHomeworkList = async () => {
               : '未繳交',
     }))
   } catch (error) {
-    alert(error.message)
+    alert(error.response?.data?.message || error.message || '讀取作業失敗')
   } finally {
     isLoading.value = false
   }

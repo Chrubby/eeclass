@@ -9,7 +9,7 @@
     <!-- 教師上傳與生成區 -->
     <div class="flex">
       <button
-        v-if="['teacher', 'ta'].includes(userRole)"
+        v-if="canManage"
         @click="goToCreateQuiz"
         class="bg-[#337ab7] text-white px-4 py-1.5 rounded text-sm font-bold tracking-wide hover:bg-[#285e8e] shadow-sm transition-colors flex items-center gap-1 mb-4"
       >
@@ -59,12 +59,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router' // 引入 Router
+import { ref, onMounted, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { getRoleFromToken } from '@/utils/auth.js'
 
 const router = useRouter()
-const userRole = localStorage.getItem('userRole') || 'teacher'
-const canManage = ['teacher', 'ta'].includes(userRole)
+const route = useRoute()
+const courseId = route.params.id
+
+const userRole = computed(() => getRoleFromToken())
+const canManage = computed(() => ['teacher', 'ta'].includes(userRole.value))
 
 const quizzes = ref([])
 

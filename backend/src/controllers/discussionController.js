@@ -1,4 +1,3 @@
-
 import { DiscussionService } from "../services/discussionService.js";
 
 export const DiscussionController = {
@@ -7,7 +6,11 @@ export const DiscussionController = {
       const rooms = await DiscussionService.getCourseDiscussions(req.params.courseCode);
       res.json(rooms);
     } catch (error) {
-      res.status(404).json({ message: error.message || "讀取討論區失敗" });
+      const msg = error.message || "";
+      if (msg.includes("找不到")) {
+        return res.status(404).json({ message: msg || "讀取討論區失敗" });
+      }
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
     }
   },
 
@@ -19,7 +22,11 @@ export const DiscussionController = {
       await DiscussionService.createDiscussion(course_code, title, content, ai_prompt, req.file);
       res.json({ message: "討論區建立成功" });
     } catch (error) {
-      res.status(500).json({ message: "建立失敗: " + error.message });
+      const msg = error.message || "";
+      if (msg.includes("只允許") || msg.includes("不允許") || msg.includes("PDF")) {
+        return res.status(400).json({ message: msg });
+      }
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
     }
   },
 
@@ -27,8 +34,8 @@ export const DiscussionController = {
     try {
       await DiscussionService.deleteDiscussion(req.params.id);
       res.json({ message: "刪除成功" });
-    } catch (error) {
-      res.status(500).json({ error: "刪除失敗" });
+    } catch {
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
     }
   },
 
@@ -36,21 +43,25 @@ export const DiscussionController = {
     try {
       const result = await DiscussionService.getRoomAndThreads(req.params.roomId);
       res.json(result);
-    } catch (error) {
+    } catch {
       res.status(500).json({ message: "讀取內容失敗" });
     }
   },
 
   async addThread(req, res) {
     try {
-      const { user_id, content, parent_thread_id } = req.body;
+      const { content, parent_thread_id } = req.body;
       if (!content) return res.status(400).json({ message: "內容不能為空" });
 
-      // 使用者發文及觸發 AI 皆由 Service 處理，API 不需等待 AI 回覆即可回傳（若嫌 AI 處理太慢，Service 可改為非同步不 await）
-      await DiscussionService.addThreadAndTriggerAI(req.params.roomId, user_id, content, parent_thread_id);
+      await DiscussionService.addThreadAndTriggerAI(
+        req.params.roomId,
+        req.user.username,
+        content,
+        parent_thread_id,
+      );
       res.json({ message: "發表成功" });
-    } catch (error) {
-      res.status(500).json({ message: "伺服器錯誤: " + error.message });
+    } catch {
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
     }
-  }
+  },
 };

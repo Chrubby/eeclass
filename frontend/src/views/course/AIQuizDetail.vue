@@ -125,13 +125,13 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { getRoleFromToken } from '@/utils/auth.js'
 
 const route = useRoute()
 const router = useRouter()
 
-// 取得使用者角色 (實務上可能從 Vuex, Pinia 或 localStorage 取得)
-const userRole = localStorage.getItem('userRole') || 'student' // 測試時可改為 'teacher'
-const isTeacher = computed(() => ['teacher', 'ta'].includes(userRole))
+const userRole = computed(() => getRoleFromToken())
+const isTeacher = computed(() => ['teacher', 'ta'].includes(userRole.value))
 
 const quiz = ref(null)
 const studentAnswers = ref({})
@@ -143,7 +143,7 @@ const goBack = () => {
   if (!isTeacher.value && !isSubmitted.value && Object.values(studentAnswers.value).some(ans => ans.trim() !== '')) {
     if (!confirm('你的答案尚未儲存，確定要離開嗎？')) return
   }
-  router.push('/quizzes') // 請替換成你實際的路由
+  router.push(`/course/${route.params.id}/aiquiz`)
 }
 
 // 學生提交答案

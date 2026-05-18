@@ -1,12 +1,11 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '@/api/client.js'
 import ChatBot from '@/components/ChatBot.vue'
 
 const route = useRoute()
 const router = useRouter()
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const courseCode = route.params.id
 const announcements = ref([])
 const selectedAnnouncement = ref(null)
@@ -36,19 +35,16 @@ const loadUser = async() => {
   user.value.user_id = stored
 
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/auth/user_inf`, {
-      params: {
-        user_id: user.value.user_id
-    }})
+    const res = await api.get('/api/auth/me')
     user.value.role = res.data.role
 
     const user_inf = res.data.user
-    user.value.name = user_inf.name
+    user.value.name = user_inf?.name || ''
     // if(user.value.role == 'student' || user.value.role == 'ta' ){
     // }else{    }
 
 
-  } catch (err) {
+  } catch {
     console.error('取得使用者資訊失敗')
   }
 }
@@ -57,12 +53,7 @@ const fetchAnnouncements = async () => {
   try {
 
 
-    const res = await axios.get(`${API_BASE_URL}/api/courses/${courseCode}/announcements`, {
-      params: {
-        course_code: courseCode,
-        student_id: user.value.user_id
-      }
-    })
+    const res = await api.get(`/api/courses/${courseCode}/announcements`)
 
     announcements.value = res.data.announcements
 
@@ -109,8 +100,7 @@ const formatDate = (datetime) => {
 const markAsRead = async (announcementId) => {
   try {
 
-    await axios.post(`${API_BASE_URL}/api/announcements/${announcementId}/read`, {
-      student_id: user.value.user_id,
+    await api.post(`/api/announcements/${announcementId}/read`, {
       announcement_id: announcementId
     })
 
@@ -126,9 +116,8 @@ const createAnnouncement = async () => {
   }
 
   try {
-    await axios.post(`${API_BASE_URL}/api/courses/${courseCode}/announcements`, {
+    await api.post(`/api/courses/${courseCode}/announcements`, {
       course_code: courseCode,
-      teacher_id: user.value.user_id,
       title: newAnnouncement.value.title,
       content: newAnnouncement.value.content,
       is_pinned: newAnnouncement.value.is_pinned

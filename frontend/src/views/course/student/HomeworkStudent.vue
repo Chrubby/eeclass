@@ -221,11 +221,11 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import api from '@/api/client.js'
 
 const route = useRoute()
 const hwId = route.params.hwId
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
-const studentId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
 
 function perQuestionMaxScores(n) {
   if (!n || n < 1) return [100]
@@ -329,20 +329,16 @@ const sendChat = async () => {
   chatApiMessages.value.push({ role: 'user', content: text })
   chatLoading.value = true
   try {
-    const res = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}/questions/${activeQuestionId.value}/ai-chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: chatApiMessages.value }), // body 只需要傳 messages
+    const { data } = await api.post(`/api/homeworks/${hwId}/questions/${activeQuestionId.value}/ai-chat`, {
+      messages: chatApiMessages.value,
     })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message || 'AI 回覆失敗')
     const reply = data.reply || '（無回覆）'
     chatApiMessages.value.push({ role: 'assistant', content: reply })
     chatMessages.value.push({ role: 'assistant', content: reply })
   } catch (e) {
     chatMessages.value.push({
       role: 'assistant',
-      content: `抱歉，暫時無法取得 AI 回覆：${e.message}`,
+      content: `抱歉，暫時無法取得 AI 回覆：${e.response?.data?.message || e.message}`,
     })
     chatApiMessages.value.pop()
   } finally {
@@ -353,21 +349,23 @@ const sendChat = async () => {
 const loadData = async () => {
   try {
     const [hwRes, listRes, mySubRes] = await Promise.all([
-      fetch(`${API_BASE_URL}/api/homeworks/${hwId}`),
-      fetch(`${API_BASE_URL}/api/courses/${route.params.id}/homeworks?userId=${encodeURIComponent(studentId)}&role=student`),
-      fetch(`${API_BASE_URL}/api/homeworks/${hwId}/submissions/me?studentId=${encodeURIComponent(studentId)}`)
+      api.get(`/api/homeworks/${hwId}`),
+      api.get(`/api/courses/${route.params.id}/homeworks`),
+      api.get(`/api/homeworks/${hwId}/submissions/me`),
     ])
 
-    const hw = await hwRes.json()
-    const list = await listRes.json()
-    const mySub = await mySubRes.json()
+    const hw = hwRes.data
+    const list = listRes.data
+    const mySub = mySubRes.data
 
     const current = list.find((x) => Number(x.id) === Number(hwId))
 
     let gradedDetails = []
     try {
       if (mySub?.graded_details) gradedDetails = JSON.parse(mySub.graded_details)
-    } catch(e) {}
+    } catch {
+      gradedDetails = []
+    }
 
     homeworkData.value = {
       ...hw,
@@ -385,8 +383,8 @@ const loadData = async () => {
     }
 
     if (hw.questions) {
-      answers.value = new Array(hw.questions.length).fill('')
-      files.value = new Array(hw.questions.length).fill(null)
+      answers.value = Array.from({ length: hw.questions.length }, () => '')
+      files.value = Array.from({ length: hw.questions.length }, () => null)
 
       if (mySub && mySub.answer_text) {
         try {
@@ -430,7 +428,6 @@ const submitHomework = async () => {
   }
   try {
     const formData = new FormData()
-    formData.append('studentId', studentId)
 
     formData.append('answerText', JSON.stringify(answers.value))
 
@@ -439,16 +436,13 @@ const submitHomework = async () => {
       formData.append('file', firstFile)
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}/submissions`, {
-      method: 'POST',
-      body: formData,
+    const { data: result } = await api.post(`/api/homeworks/${hwId}/submissions`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     })
-    const result = await response.json()
-    if (!response.ok) throw new Error(result.message)
     alert(result.message)
     await loadData()
   } catch (error) {
-    alert(error.message)
+    alert(error.response?.data?.message || error.message)
   }
 }
 
@@ -459,18 +453,12 @@ const estimateMyScore = async () => {
   }
   estimating.value = true
   try {
-    const res = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}/self-estimate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId }),
-    })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message || '預估評分失敗')
+    const { data } = await api.post(`/api/homeworks/${hwId}/self-estimate`, {})
     homeworkData.value.aiEstimatedScore = data.suggested_score
     homeworkData.value.aiEstimatedReason = data.reason || ''
     homeworkData.value.aiEstimatedAt = new Date().toLocaleString()
   } catch (error) {
-    alert(error.message)
+    alert(error.response?.data?.message || error.message)
   } finally {
     estimating.value = false
   }
@@ -482,24 +470,17 @@ const unsubmitHomework = async () => {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/homeworks/${hwId}/submissions/me`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId })
-    })
-
-    const result = await response.json()
-    if (!response.ok) throw new Error(result.message || '收回失敗')
+    const { data: result } = await api.delete(`/api/homeworks/${hwId}/submissions/me`)
 
     alert(result.message)
 
-    answers.value = new Array(answers.value.length).fill('')
-    files.value = new Array(files.value.length).fill(null)
+    answers.value = Array.from({ length: answers.value.length }, () => '')
+    files.value = Array.from({ length: files.value.length }, () => null)
     homeworkData.value.submittedFileName = null
 
     await loadData()
   } catch (error) {
-    alert(error.message)
+    alert(error.response?.data?.message || error.message)
   }
 }
 

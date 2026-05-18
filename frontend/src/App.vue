@@ -1,12 +1,11 @@
 <script setup>
-import { ref, computed, onMounted, watch} from 'vue'
+import { ref, computed, watch} from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
+import api from '@/api/client.js'
 
 const isMenuOpen = ref(false)
 const router = useRouter()
 const route = useRoute()
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 const user = ref({
   //name: localStorage.getItem('user') || '尚未登入',
@@ -30,7 +29,7 @@ const currentCourse = computed(() =>
   courses.value.find((c) => c.id === courseId.value)
 )
 
-const isAuthPage = computed(() => ["Login", "Register"].includes(route.name))
+const isAuthPage = computed(() => ["Login", "Register", "ForgotPassword", "ResetPassword"].includes(route.name))
 
 const logout = () => {
   isMenuOpen.value = false
@@ -40,9 +39,14 @@ const logout = () => {
 
 const loadUser = async() => {
   const stored = localStorage.getItem("user")
-  const isAuthRoute = route.path === '/login' || route.path === '/register'
+  const token = localStorage.getItem("accessToken")
+  const isAuthRoute =
+    route.path === '/login' ||
+    route.path === '/register' ||
+    route.path === '/forgot-password' ||
+    route.path === '/reset-password'
 
-  if (!stored && !isAuthRoute) {
+  if ((!stored || !token) && !isAuthRoute) {
     router.push('/login')
     return
   }
@@ -52,19 +56,16 @@ const loadUser = async() => {
   }
   user.value.user_id = stored
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/auth/user_inf`, {
-      params: {
-        user_id: user.value.user_id
-    }})
+    const res = await api.get('/api/auth/me')
     user.value.role = res.data.role
 
     const user_inf = res.data.user
-    user.value.name = user_inf.name
+    user.value.name = user_inf?.name || ''
     // if(user.value.role == 'student' || user.value.role == 'ta' ){
     // }else{    }
 
 
-  } catch (err) {
+  } catch {
     console.error('取得使用者資訊失敗')
   }
 }

@@ -54,8 +54,11 @@
         </button>
       </form>
 
-      <div class="mt-6 text-center">
-        <router-link to="/register" class="text-[#337ab7] hover:text-[#285e8e] text-[15px]">
+      <div class="mt-6 text-center flex flex-col gap-2 text-[15px]">
+        <router-link to="/forgot-password" class="text-[#337ab7] hover:text-[#285e8e]">
+          忘記密碼
+        </router-link>
+        <router-link to="/register" class="text-[#337ab7] hover:text-[#285e8e]">
           註冊
         </router-link>
       </div>
@@ -65,45 +68,30 @@
 
 <script setup>
 import { ref } from "vue"
-import { useRouter } from "vue-router"
+import api from "@/api/client.js"
+import { setAccessToken } from "@/utils/auth.js"
 
 const email = ref("")
 const password = ref("")
 const showPassword = ref(false)
 const rememberMe = ref(false)
 
-const router = useRouter()
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
-
 const login = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        username: email.value,
-        password: password.value
-      })
+    const { data } = await api.post("/api/auth/login", {
+      username: email.value,
+      password: password.value,
     })
 
-    const result = await response.json()
+    alert(data.message)
 
-    if (response.ok) {
-      alert(result.message)
+    setAccessToken(data.token)
+    localStorage.setItem("user", data.username)
 
-      localStorage.setItem("user", result.username)
-      localStorage.setItem("userId", result.username)
-      localStorage.setItem("userRole", result.role || "student")
-
-      window.location.href = '/dashboard'
-    } else {
-      alert(result.message)
-    }
-
+    window.location.href = '/dashboard'
   } catch (error) {
-    alert("連線失敗")
+    const msg = error.response?.data?.message || "連線失敗"
+    alert(msg)
     console.error("錯誤詳細資訊:", error)
   }
 }

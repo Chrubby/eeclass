@@ -219,13 +219,11 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import api from '@/api/client.js'
 
 const router = useRouter()
 const route = useRoute()
 const courseId = route.params.id
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
-const teacherId = localStorage.getItem('userId') || localStorage.getItem('user') || ''
 
 /** 作業層級附件（後端欄位 homework_files） */
 const homeworkFiles = ref([])
@@ -310,7 +308,6 @@ const submitAssignment = async () => {
   formData.append('deadline', formattedDeadline)
 
   formData.append('description', form.value.description || '')
-  formData.append('teacherId', teacherId)
 
   const questionsData = form.value.questions.map(q => ({
     title: q.title,
@@ -327,23 +324,15 @@ const submitAssignment = async () => {
   })
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/homeworks`, {
-      method: 'POST',
-      body: formData
+    await api.post(`/api/courses/${courseId}/homeworks`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     })
-
-    const text = await response.text()
-    if (!text) throw new Error('伺服器沒有回傳任何資料 (後端可能崩潰了)')
-
-    const result = JSON.parse(text)
-
-    if (!response.ok) throw new Error(result.message || '作業發布失敗')
 
     alert('作業發布成功！')
     goBack()
 
   } catch (error) {
-    alert('發布失敗：' + error.message)
+    alert('發布失敗：' + (error.response?.data?.message || error.message))
     console.error("詳細錯誤:", error)
   }
 }

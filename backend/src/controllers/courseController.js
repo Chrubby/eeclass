@@ -5,49 +5,61 @@ export const CourseController = {
     try {
       const { code, name } = req.query;
       if (!code && !name) return res.status(404).json({ message: "找不到課程" });
-      
+
       const course = await CourseService.searchCourse(code, name);
       res.json(course);
     } catch (error) {
-      res.status(error.message === "找不到課程" ? 404 : 500).json({ message: error.message || "課程查詢失敗" });
+      const msg = error.message || "";
+      if (msg === "找不到課程") {
+        return res.status(404).json({ message: msg });
+      }
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
     }
   },
 
   async enroll(req, res) {
     try {
-      const { student_id, course_code } = req.body;
-      if (!student_id || !course_code) return res.status(400).json({ message: "缺少參數" });
+      const { course_code } = req.body;
+      if (!course_code) return res.status(400).json({ message: "缺少參數" });
 
+      const student_id = req.user.username;
       await CourseService.enrollCourse(student_id, course_code);
       res.json({ message: "選課成功！" });
     } catch (error) {
-      res.status(error.message.includes("已經選過") ? 400 : 404).json({ message: error.message || "選課失敗" });
+      const msg = error.message || "";
+      if (msg.includes("已經選過")) return res.status(400).json({ message: msg });
+      if (msg.includes("找不到")) return res.status(404).json({ message: msg });
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
     }
   },
 
   async getUserCourses(req, res) {
     try {
-      const { user_id, role } = req.query;
-      if (!user_id || !role) return res.status(400).json({ message: "缺少 user_id 或 role" });
-
-      const courses = await CourseService.getUserCourses(user_id, role);
+      const courses = await CourseService.getUserCourses(req.user.username, req.user.role);
       res.json(courses);
     } catch (error) {
-      res.status(error.message.includes("無效") ? 400 : 500).json({ message: error.message || "讀取課程失敗" });
+      const msg = error.message || "";
+      if (msg.includes("無效")) return res.status(400).json({ message: msg });
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
     }
   },
 
   async createCourse(req, res) {
     try {
-      const { teacher_id, course_name, course_code, description, academic_year } = req.body;
-      if (!teacher_id || !course_name || !course_code || !academic_year) {
+      const { course_name, course_code, description, academic_year } = req.body;
+      if (!course_name || !course_code || !academic_year) {
         return res.status(400).json({ message: "缺少必要欄位" });
       }
 
-      const courseId = await CourseService.createCourse(req.body);
+      const body = {
+        ...req.body,
+        teacher_id: req.user.username,
+      };
+
+      const courseId = await CourseService.createCourse(body);
       res.json({ message: "課程建立成功", course_id: courseId });
     } catch (error) {
       res.status(400).json({ message: error.message || "課程建立失敗" });
     }
-  }
+  },
 };
