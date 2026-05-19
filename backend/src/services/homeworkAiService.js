@@ -33,11 +33,17 @@ export const HomeworkAiService = {
     for (const file of attachments.slice(0, 5)) {
       const fileName = file?.file_name || "未命名檔案";
       const filePath = file?.file_path || "";
-      if (this.isPdfFile(fileName) || this.isPdfFile(filePath)) {
-        const text = await PdfHelper.extractText(filePath, 10);
-        if (text?.trim()) {
-          blocks.push(`檔名：${fileName}\n內容摘錄：\n${text}`);
-        } else {
+     if (this.isPdfFile(fileName) || this.isPdfFile(filePath)) {
+        try {
+          const text = await PdfHelper.extractText(filePath, 10);
+          if (text?.trim()) {
+            blocks.push(`檔名：${fileName}\n內容摘錄：\n${text}`);
+          } else {
+            blocks.push(`檔名：${fileName}\n內容摘錄：無法擷取內容或檔案為空`);
+          }
+        } catch (error) {
+          console.error("讀取老師附件 PDF 失敗：", error);
+          console.error("當時嘗試讀取的路徑是：", filePath);
           blocks.push(`檔名：${fileName}\n內容摘錄：無法擷取內容或檔案為空`);
         }
       } else {
@@ -76,10 +82,16 @@ export const HomeworkAiService = {
       const fileName = sub.file_name || "無";
       studentBlock = `[檔案繳交] 檔名：${fileName}`;
       if (this.isPdfSubmission(sub)) {
-        const pdfText = await PdfHelper.extractText(sub.file_path);
-        if (pdfText?.trim()) {
-          studentBlock += `\n[PDF 內容摘錄]\n${pdfText}`;
-        } else {
+        try {
+          const pdfText = await PdfHelper.extractText(sub.file_path);
+          if (pdfText?.trim()) {
+            studentBlock += `\n[PDF 內容摘錄]\n${pdfText}`;
+          } else {
+            studentBlock += `\n[PDF 內容摘錄] （無法擷取內容或檔案為空）`;
+          }
+        } catch (error) {
+          console.error("讀取學生作業 PDF 失敗：", error);
+          console.error("當時嘗試讀取的路徑是：", sub.file_path);
           studentBlock += `\n[PDF 內容摘錄] （無法擷取內容或檔案為空）`;
         }
       } else {
