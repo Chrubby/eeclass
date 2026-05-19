@@ -48,7 +48,7 @@ export const PdfHelper = {
         return pdfText.substring(0, 50000);
       } else {
       }
-    } catch (err) {catch (error) {
+    } catch (err) {
 
       console.error("[pdfHelper] 底層解析 PDF 發生錯誤：", error);
       console.error("失敗的檔案路徑是：", filePath);
