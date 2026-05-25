@@ -93,7 +93,7 @@ export const HomeworkAiController = {
     try {
       const { hwId } = req.params;
       const [subRows] = await pool.execute(
-        "SELECT id, student_id as studentId FROM homework_submissions WHERE homework_id = ?",
+        "SELECT id, student_id as studentId FROM homework_submissions WHERE homework_id = ? AND is_submitted = 1",
         [hwId],
       );
       const results = [];
@@ -128,7 +128,9 @@ export const HomeworkAiController = {
       const studentId = req.user.username;
       const sub = await HomeworkModel.getStudentSubmission(hwId, studentId);
 
-      if (!sub) return res.status(404).json({ message: "找不到繳交紀錄" });
+      if (!sub || !sub.is_submitted) {
+        return res.status(404).json({ message: "請先送出作業後再進行預估評分" });
+      }
 
       const out = await HomeworkAiService.runAiGradeAllQuestions(sub.id, hwId);
 

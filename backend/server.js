@@ -14,6 +14,7 @@ import homeworkRoutes from "./src/routes/homeworkRoutes.js";
 import homeworkAiRoutes from "./src/routes/homeworkAiRoutes.js";
 import { authMiddleware } from "./src/middlewares/authMiddleware.js";
 import { errorHandler } from "./src/middlewares/errorHandler.js";
+import { ensureSchema } from "./src/utils/ensureSchema.js";
 
 dotenv.config();
 
@@ -42,4 +43,8 @@ app.use("/api", authMiddleware, homeworkAiRoutes);
 app.use(errorHandler);
 
 const port = process.env.PORT || 5000;
-app.listen(port, () => console.log(`Server running at http://127.0.0.1:${port}`));
+ensureSchema()
+  .catch((e) => console.warn("[ensureSchema] 初始化檢查發生例外：", e?.message || e))
+  .finally(() => {
+    app.listen(port, () => console.log(`Server running at http://127.0.0.1:${port}`));
+  });

@@ -44,7 +44,14 @@
           <div class="flex-1 truncate pr-4 text-gray-800">{{ m.fileName }}</div>
           <div class="w-36 text-center text-gray-500 text-sm">{{ formatDate(m.createdAt) }}</div>
           <div class="w-32 text-center flex items-center justify-center gap-2">
-            <a :href="`${API_BASE_URL}${m.filePath}`" target="_blank" class="text-blue-600 hover:underline text-sm font-bold">下載</a>
+            <button
+              type="button"
+              class="text-blue-600 hover:underline text-sm font-bold disabled:opacity-50"
+              :disabled="downloadingId === m.id"
+              @click="onDownload(m)"
+            >
+              {{ downloadingId === m.id ? '下載中...' : '下載' }}
+            </button>
             <button
               v-if="canManageMaterials"
               type="button"
@@ -67,13 +74,25 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/api/client.js'
 import { getRoleFromToken } from '@/utils/auth.js'
+import { downloadFile } from '@/utils/files.js'
 
 const route = useRoute()
 const courseId = route.params.id
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 const canManageMaterials = computed(() => ['teacher', 'ta'].includes(getRoleFromToken()))
 const deletingId = ref(null)
+const downloadingId = ref(null)
+
+const onDownload = async (m) => {
+  downloadingId.value = m.id
+  try {
+    await downloadFile(m.filePath, m.fileName)
+  } catch (e) {
+    alert(e.response?.data?.message || '下載失敗，請確認檔案是否存在')
+  } finally {
+    downloadingId.value = null
+  }
+}
 
 const materials = ref([])
 const selectedFile = ref(null)

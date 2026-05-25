@@ -30,9 +30,15 @@
                   <div class="flex items-center gap-2">
                     <span class="text-sm text-gray-700 font-bold">{{ ans.fileName || '未上傳檔案' }}</span>
                   </div>
-                  <a v-if="ans.filePath" :href="`${API_BASE_URL}${ans.filePath}`" :download="ans.fileName" class="text-[#337ab7] hover:underline text-sm font-bold bg-blue-50 px-3 py-1 rounded border border-blue-200">
-                    下載附件
-                  </a>
+                  <button
+                    v-if="ans.filePath"
+                    type="button"
+                    class="text-[#337ab7] hover:underline text-sm font-bold bg-blue-50 px-3 py-1 rounded border border-blue-200 disabled:opacity-60"
+                    :disabled="downloadingAnswerId === ans.questionId"
+                    @click="onDownloadAnswer(ans)"
+                  >
+                    {{ downloadingAnswerId === ans.questionId ? '下載中...' : '下載附件' }}
+                  </button>
                 </div>
 
                 <div v-else-if="ans.format === 'text'" class="bg-white p-4 border border-gray-200 rounded text-[15px] text-gray-700 whitespace-pre-line font-mono">
@@ -120,15 +126,27 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/client.js'
+import { downloadFile } from '@/utils/files.js'
 
 const route = useRoute()
 const router = useRouter()
 const courseId = route.params.id
 const hwId = route.params.hwId
 const submissionId = route.params.submissionId
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 const goBack = () => router.push(`/course/${courseId}/homework/${hwId}`)
+
+const downloadingAnswerId = ref(null)
+const onDownloadAnswer = async (ans) => {
+  downloadingAnswerId.value = ans.questionId
+  try {
+    await downloadFile(ans.filePath, ans.fileName)
+  } catch (e) {
+    alert(e.response?.data?.message || '下載失敗，請確認檔案是否存在')
+  } finally {
+    downloadingAnswerId.value = null
+  }
+}
 
 const studentData = ref({
   id: '',

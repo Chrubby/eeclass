@@ -83,10 +83,11 @@ export const CourseAiService = {
         FROM homework_submissions s
         JOIN homeworks h ON h.id = s.homework_id
         WHERE s.student_id = ?
+          AND s.is_submitted = 1
         `,
         [student.id]
       );
-    
+
       const [missing] = await pool.execute(
         `
         SELECT h.id, h.title, h.deadline
@@ -96,6 +97,7 @@ export const CourseAiService = {
           SELECT homework_id
           FROM homework_submissions
           WHERE student_id = ?
+            AND is_submitted = 1
         )
         `,
         [course.id, student.id]
@@ -136,26 +138,26 @@ export const CourseAiService = {
           h.id,
           h.title,
           h.deadline,
-    
+
           s.answer_text,
           s.score,
           s.feedback,
           s.submitted_at,
-          s.graded_at
-    
+          s.graded_at,
+          s.is_submitted
+
         FROM homeworks h
-    
+
         LEFT JOIN homework_submissions s
           ON s.homework_id = h.id
           AND s.student_id = ?
-    
+
         WHERE h.course_id = ?
-    
+
         ORDER BY h.deadline ASC
         `,
         [student.student_id, courseCode]
       );
-      console.log(student.student_id,courseCode)
       extraInfo += `
 【學生作業成績分析】
       
@@ -186,7 +188,7 @@ export const CourseAiService = {
     
         const stats = statRows[0] || {};
   
-        const status = g.submitted_at ? "已繳交" : "未繳交";
+        const status = g.is_submitted ? "已繳交" : "未繳交";
     
         extraInfo += `
 作業：${g.title}
@@ -211,7 +213,6 @@ export const CourseAiService = {
       }
     }
 
-    console.log(extraInfo)
 
     await CourseAiModel.saveMessage(course.id, student.id, 'user', userMessage);
     const reply = await OpenAiHelper.chat([
@@ -241,7 +242,8 @@ export const CourseAiService = {
         LEFT JOIN homework_submissions s
           ON s.homework_id = h.id
           AND s.student_id = ?
-  
+          AND s.is_submitted = 1
+
         WHERE c.course_code = ?
           AND h.deadline >= NOW()
           AND s.id IS NULL

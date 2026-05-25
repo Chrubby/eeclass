@@ -22,14 +22,14 @@
         <span class="text-sm font-bold text-gray-700 block mb-2">老師提供的附件（請下載參考）</span>
         <ul class="space-y-2">
           <li v-for="(att, i) in homeworkAttachments" :key="i">
-            <a
-              :href="`${API_BASE_URL}${attachmentHref(att)}`"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-sm text-blue-600 hover:underline font-medium"
+            <button
+              type="button"
+              class="text-sm text-blue-600 hover:underline font-medium disabled:opacity-60"
+              :disabled="downloadingIndex === i"
+              @click="onDownloadAttachment(att, i)"
             >
-              📎 {{ attachmentName(att) }}
-            </a>
+              📎 {{ attachmentName(att) }}{{ downloadingIndex === i ? '（下載中...）' : '' }}
+            </button>
           </li>
         </ul>
       </div>
@@ -110,9 +110,14 @@
           <p class="text-gray-700 whitespace-pre-line mb-4">{{ q.description || '（無題目說明）' }}</p>
 
           <div v-if="legacyQuestionAttachment(q)" class="mb-4">
-            <a :href="`${API_BASE_URL}${q.filePath || q.file_path}`" target="_blank" class="text-sm text-blue-600 hover:underline flex items-center gap-1">
-              📎 下載題目附件（舊版）：{{ q.fileName || q.file_name }}
-            </a>
+            <button
+              type="button"
+              class="text-sm text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-60"
+              :disabled="legacyDownloadingId === q.id"
+              @click="onDownloadLegacyQuestion(q)"
+            >
+              📎 下載題目附件（舊版）：{{ q.fileName || q.file_name }}{{ legacyDownloadingId === q.id ? '（下載中...）' : '' }}
+            </button>
           </div>
 
           <div v-if="q.answerFormat === 'text'">
@@ -128,10 +133,26 @@
 
           <div v-else>
             <label class="block text-xs font-bold text-gray-500 mb-1">上傳檔案</label>
-            <input type="file" accept=".pdf" @change="handleFileChange(index, $event)" :disabled="answerInputsDisabled" class="block w-full text-xs text-gray-600" />
+            <input
+              type="file"
+              accept=".pdf"
+              :disabled="answerInputsDisabled"
+              class="block w-full text-xs text-gray-600 disabled:opacity-60"
+              @change="handleFileChange(index, $event)"
+            />
 
-            <div v-if="homeworkData.isSubmitted && homeworkData.submittedFileName" class="mt-2 text-xs font-bold text-green-600 bg-green-50 p-2 rounded border border-green-200 inline-block">
+            <div
+              v-if="homeworkData.isSubmitted && homeworkData.submittedFileName"
+              class="mt-2 text-xs font-bold text-green-600 bg-green-50 p-2 rounded border border-green-200 inline-block"
+            >
               已繳交檔案：{{ homeworkData.submittedFileName }}
+            </div>
+            <div
+              v-else-if="!homeworkData.isSubmitted && homeworkData.submittedFileName"
+              class="mt-2 text-xs text-blue-700 bg-blue-50 p-2 rounded border border-blue-200 inline-block"
+            >
+              上次繳交檔案：{{ homeworkData.submittedFileName }}
+              <span class="text-gray-600 font-normal">（若不重新選擇，再次繳交時將沿用此檔案）</span>
             </div>
           </div>
 
@@ -222,10 +243,35 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/api/client.js'
+import { downloadFile } from '@/utils/files.js'
 
 const route = useRoute()
 const hwId = route.params.hwId
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+
+const downloadingIndex = ref(null)
+const legacyDownloadingId = ref(null)
+
+const onDownloadAttachment = async (att, index) => {
+  downloadingIndex.value = index
+  try {
+    await downloadFile(att?.file_path || att?.filePath, att?.file_name || att?.fileName)
+  } catch (e) {
+    alert(e.response?.data?.message || '下載失敗，請確認檔案是否存在')
+  } finally {
+    downloadingIndex.value = null
+  }
+}
+
+const onDownloadLegacyQuestion = async (q) => {
+  legacyDownloadingId.value = q.id
+  try {
+    await downloadFile(q.filePath || q.file_path, q.fileName || q.file_name)
+  } catch (e) {
+    alert(e.response?.data?.message || '下載失敗，請確認檔案是否存在')
+  } finally {
+    legacyDownloadingId.value = null
+  }
+}
 
 function perQuestionMaxScores(n) {
   if (!n || n < 1) return [100]
@@ -255,9 +301,17 @@ const isPastDeadline = computed(() => {
   return new Date() > new Date(d)
 })
 
-/** 已批改、或已過期且尚未繳交時，不可編輯作答區 */
+/**
+ * 不可編輯作答區的情境：
+ * - 已批改
+ * - 已繳交（須先收回才能修改）
+ * - 已過繳交期限且尚未繳交
+ */
 const answerInputsDisabled = computed(
-  () => homeworkData.value.isGraded || (isPastDeadline.value && !homeworkData.value.isSubmitted),
+  () =>
+    homeworkData.value.isGraded ||
+    homeworkData.value.isSubmitted ||
+    (isPastDeadline.value && !homeworkData.value.isSubmitted),
 )
 
 const questionMaxScores = computed(() => perQuestionMaxScores(homeworkData.value.questions?.length || 0))
@@ -270,7 +324,6 @@ const homeworkAttachments = computed(() => {
   return []
 })
 
-const attachmentHref = (att) => att?.file_path || att?.filePath || ''
 const attachmentName = (att) => att?.file_name || att?.fileName || '下載'
 
 const legacyQuestionAttachment = (q) =>
@@ -367,11 +420,14 @@ const loadData = async () => {
       gradedDetails = []
     }
 
+    const subHasRow = Boolean(mySub)
+    const subIsSubmitted = subHasRow && Boolean(mySub.is_submitted)
+
     homeworkData.value = {
       ...hw,
       deadlineRaw: hw.deadline || null,
       deadlineText: hw.deadline ? new Date(hw.deadline).toLocaleString() : '-',
-      isSubmitted: Boolean(current?.submissionId),
+      isSubmitted: subIsSubmitted,
       isGraded: Boolean(current?.score),
       score: current?.score || null,
       feedback: current?.feedback || '',
@@ -422,7 +478,8 @@ const submitHomework = async () => {
   }
   const hasFile = files.value.some((f) => f != null)
   const hasText = (answers.value || []).some((a) => String(a || '').trim() !== '')
-  if (!hasFile && !hasText) {
+  const hasPreviousFile = Boolean(homeworkData.value.submittedFileName)
+  if (!hasFile && !hasText && !hasPreviousFile) {
     alert('不能繳交空內容')
     return
   }
@@ -465,19 +522,13 @@ const estimateMyScore = async () => {
 }
 
 const unsubmitHomework = async () => {
-  if (!confirm('確定要收回作業嗎？')) {
+  if (!confirm('確定要收回作業嗎？\n\n您先前的答案與已上傳的檔案會保留下來，方便您重新編輯。')) {
     return
   }
 
   try {
     const { data: result } = await api.delete(`/api/homeworks/${hwId}/submissions/me`)
-
     alert(result.message)
-
-    answers.value = Array.from({ length: answers.value.length }, () => '')
-    files.value = Array.from({ length: files.value.length }, () => null)
-    homeworkData.value.submittedFileName = null
-
     await loadData()
   } catch (error) {
     alert(error.response?.data?.message || error.message)

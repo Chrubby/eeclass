@@ -153,6 +153,7 @@ const initDB = async () => {
         file_path VARCHAR(255),
         score VARCHAR(10),
         feedback TEXT,
+        is_submitted TINYINT(1) NOT NULL DEFAULT 1,
         submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         graded_at DATETIME NULL,
         UNIQUE KEY uniq_hw_student (homework_id, student_id)
@@ -293,6 +294,10 @@ const initDB = async () => {
 
     try {
         await pool.execute("ALTER TABLE homework_submissions ADD COLUMN graded_details TEXT");
+    } catch (e) { /* 欄位已存在就忽略 */ }
+
+    try {
+        await pool.execute("ALTER TABLE homework_submissions ADD COLUMN is_submitted TINYINT(1) NOT NULL DEFAULT 1");
     } catch (e) { /* 欄位已存在就忽略 */ }
 
     try {

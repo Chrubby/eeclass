@@ -11,28 +11,32 @@
     <p class="text-gray-700 mb-2 whitespace-pre-line">{{ node.content }}</p>
 
     <div class="flex gap-2 mt-2 mb-4">
-      <input 
-        v-model="replyText" 
-        class="flex-1 text-sm border p-1.5 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white" 
+      <input
+        v-model="replyText"
+        class="flex-1 text-sm border p-1.5 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white disabled:bg-gray-100"
         placeholder="回覆此留言..."
+        :disabled="isSubmitting"
         @keyup.enter="handleReply"
       />
-      <button 
+      <button
+        type="button"
+        class="text-sm font-bold transition-colors text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+        :disabled="isSubmitting"
         @click="handleReply"
-        class="text-sm font-bold transition-colors text-blue-600 hover:text-blue-800"
       >
-        送出回覆
+        {{ isSubmitting ? '發表中...' : '送出回覆' }}
       </button>
     </div>
 
-    <div 
-      v-if="node.children && node.children.length > 0" 
+    <div
+      v-if="node.children && node.children.length > 0"
       class="ml-6 border-l-2 pl-4 border-gray-300 space-y-2"
     >
       <DiscussionThread
         v-for="child in node.children"
         :key="child.id"
         :node="child"
+        :is-submitting="isSubmitting"
         @submit-reply="(id, text) => $emit('submit-reply', id, text)"
       />
     </div>
@@ -45,8 +49,12 @@ import { ref } from 'vue'
 const props = defineProps({
   node: {
     type: Object,
-    required: true
-  }
+    required: true,
+  },
+  isSubmitting: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 // 定義向上層傳遞的事件
@@ -54,10 +62,10 @@ const emit = defineEmits(['submit-reply'])
 const replyText = ref('')
 
 const handleReply = () => {
+  if (props.isSubmitting) return
   if (!replyText.value.trim()) return
-  // 將父留言的 ID 與輸入內容往上傳遞給主頁面
   emit('submit-reply', props.node.id, replyText.value)
-  replyText.value = '' // 送出後清空輸入框
+  replyText.value = ''
 }
 
 // 共用方法

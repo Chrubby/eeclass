@@ -39,13 +39,11 @@ export const HomeworkService = {
   // 獲取作業列表 (依據身分附加繳交狀態或批改統計)
   async getCourseHomeworks(courseId, role, userId) {
     const homeworks = await HomeworkModel.getHomeworksByCourse(courseId);
-    console.log(homeworks )
 
     if (role === 'student' && userId) {
       for (let hw of homeworks) {
-        console.log(hw.id)
         const sub = await HomeworkModel.getStudentSubmission(hw.id, userId);
-        if (sub) {
+        if (sub && sub.is_submitted) {
           hw.submissionId = sub.id;
           hw.score = sub.score;
           hw.feedback = sub.feedback;
@@ -98,15 +96,36 @@ export const HomeworkService = {
       }
     }
 
-    const correctFileName = file ? Buffer.from(file.originalname, 'latin1').toString('utf8') : null;
+    const correctFileName = file ? Buffer.from(file.originalname, "latin1").toString("utf8") : null;
     const filePath = file ? `/uploads/${file.filename}` : null;
+
+    // 判斷是否有任何內容可繳交（包含先前已暫存的檔案或答案）
+    const existing = await HomeworkModel.getStudentSubmission(hwId, studentId);
+    const trimmedAnswerText = typeof answerText === "string" ? answerText.trim() : "";
+    let hasNonEmptyText = false;
+    if (trimmedAnswerText) {
+      try {
+        const parsed = JSON.parse(trimmedAnswerText);
+        if (Array.isArray(parsed)) {
+          hasNonEmptyText = parsed.some((item) => String(item ?? "").trim() !== "");
+        } else {
+          hasNonEmptyText = String(parsed ?? "").trim() !== "";
+        }
+      } catch {
+        hasNonEmptyText = true;
+      }
+    }
+    const hasExistingFile = Boolean(existing?.file_path);
+    if (!file && !hasNonEmptyText && !hasExistingFile) {
+      throw new Error("不能繳交空內容");
+    }
 
     const subId = await HomeworkModel.upsertSubmission(hwId, studentId, answerText, correctFileName, filePath);
 
     await appendSubmissionHistory(subId, "submit", {
       studentId,
-      hasFile: Boolean(file),
-      fileName: correctFileName,
+      hasFile: Boolean(file) || hasExistingFile,
+      fileName: correctFileName || existing?.file_name || null,
       answerText: answerText || "",
     });
 
@@ -163,12 +182,12 @@ export const HomeworkService = {
     await HomeworkModel.deleteHomeworkById(hwId);
   },
 
-  // 學生收回作業
+  // 學生收回作業：保留原本作答與檔案，僅標記為未繳交
   async unsubmitHomework(hwId, studentId) {
     const sub = await HomeworkModel.getStudentSubmission(hwId, studentId);
     if (sub) {
       await appendSubmissionHistory(sub.id, "unsubmit", { studentId });
-      await HomeworkModel.deleteSubmission(hwId, studentId);
+      await HomeworkModel.markSubmissionUnsubmitted(hwId, studentId);
     }
   },
 

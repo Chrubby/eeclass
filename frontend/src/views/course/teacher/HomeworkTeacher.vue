@@ -30,15 +30,16 @@
     <div v-if="homeworkAttachments.length" class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700">作業附件（全班統一下載）</div>
       <div class="p-5 space-y-2">
-        <a
+        <button
           v-for="(att, i) in homeworkAttachments"
           :key="i"
-          :href="`${API_BASE_URL}${att.file_path || att.filePath}`"
-          target="_blank"
-          class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-800 text-sm rounded hover:bg-blue-100"
+          type="button"
+          class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-800 text-sm rounded hover:bg-blue-100 disabled:opacity-60"
+          :disabled="attachmentDownloading[i]"
+          @click="onDownloadAttachment(att, i)"
         >
-          📎 {{ att.file_name || att.fileName || '附件' }}
-        </a>
+          📎 {{ att.file_name || att.fileName || '附件' }}{{ attachmentDownloading[i] ? '（下載中...）' : '' }}
+        </button>
       </div>
     </div>
 
@@ -51,14 +52,14 @@
 
           <div v-if="q.has_attachment && q.file_path" class="flex items-start gap-2 border-t pt-3 mt-1 border-gray-200">
             <span class="text-[14px] font-bold text-gray-700 mt-1">題目附件：</span>
-            <a
-              :href="`${API_BASE_URL}${q.file_path}`"
-              target="_blank"
-              :download="q.file_name"
-              class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 text-gray-600 text-sm rounded shadow-sm transition-colors"
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 text-gray-600 text-sm rounded shadow-sm transition-colors disabled:opacity-60"
+              :disabled="questionDownloadingId === q.id"
+              @click="onDownloadQuestion(q)"
             >
-              {{ q.file_name || '下載附件' }}
-            </a>
+              {{ questionDownloadingId === q.id ? '下載中...' : (q.file_name || '下載附件') }}
+            </button>
           </div>
         </div>
         <div v-if="questions.length === 0" class="text-gray-500">目前無題目資料</div>
@@ -181,12 +182,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/client.js'
+import { downloadFile } from '@/utils/files.js'
 
 const route = useRoute()
 const router = useRouter()
 const courseId = route.params.id
 const hwId = route.params.hwId
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 const homeworkTitle = ref('')
 const homeworkDeadline = ref('')
@@ -197,6 +198,30 @@ const historyModalOpen = ref(false)
 const historyLoading = ref(false)
 const currentHistory = ref(null)
 const deletingHomework = ref(false)
+const attachmentDownloading = ref({})
+const questionDownloadingId = ref(null)
+
+const onDownloadAttachment = async (att, index) => {
+  attachmentDownloading.value = { ...attachmentDownloading.value, [index]: true }
+  try {
+    await downloadFile(att.file_path || att.filePath, att.file_name || att.fileName)
+  } catch (e) {
+    alert(e.response?.data?.message || '下載失敗，請確認檔案是否存在')
+  } finally {
+    attachmentDownloading.value = { ...attachmentDownloading.value, [index]: false }
+  }
+}
+
+const onDownloadQuestion = async (q) => {
+  questionDownloadingId.value = q.id
+  try {
+    await downloadFile(q.file_path, q.file_name)
+  } catch (e) {
+    alert(e.response?.data?.message || '下載失敗，請確認檔案是否存在')
+  } finally {
+    questionDownloadingId.value = null
+  }
+}
 
 const formatDate = (raw) => (raw ? new Date(raw).toLocaleString() : '-')
 const progressText = computed(() => {
