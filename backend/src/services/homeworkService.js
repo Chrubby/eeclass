@@ -184,6 +184,13 @@ export const HomeworkService = {
 
   // 學生收回作業：保留原本作答與檔案，僅標記為未繳交
   async unsubmitHomework(hwId, studentId) {
+    const homework = await HomeworkModel.getHomeworkById(hwId);
+    if (homework && homework.deadline) {
+      if (new Date() > new Date(homework.deadline)) {
+        throw new Error("已超過繳交截止時間，無法收回作業");
+      }
+    }
+
     const sub = await HomeworkModel.getStudentSubmission(hwId, studentId);
     if (sub) {
       await appendSubmissionHistory(sub.id, "unsubmit", { studentId });

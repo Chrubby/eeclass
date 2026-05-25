@@ -163,15 +163,25 @@
         </div>
       </div>
 
-      <div v-if="!homeworkData.isGraded" class="bg-gray-50 px-5 py-4 border-t flex justify-end gap-3">
-        <button v-if="homeworkData.isSubmitted" @click="unsubmitHomework" class="bg-red-500 text-white px-8 py-2.5 rounded text-[16px] hover:bg-red-600 transition-colors">
+      <div v-if="!homeworkData.isGraded" class="bg-gray-50 px-5 py-4 border-t flex flex-wrap justify-end items-center gap-3">
+        <span v-if="homeworkData.isSubmitted && isPastDeadline" class="text-xs text-red-600">
+          已超過繳交截止時間，無法收回作業
+        </span>
+        <button
+          v-if="homeworkData.isSubmitted"
+          type="button"
+          :disabled="isPastDeadline"
+          class="bg-red-500 text-white px-8 py-2.5 rounded text-[16px] hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          @click="unsubmitHomework"
+        >
           收回作業
         </button>
         <button
           v-else
+          type="button"
           :disabled="isPastDeadline"
-          @click="submitHomework"
           class="bg-[#337ab7] text-white px-8 py-2.5 rounded text-[16px] hover:bg-[#285e8e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          @click="submitHomework"
         >
           確認送出作業
         </button>
@@ -522,6 +532,10 @@ const estimateMyScore = async () => {
 }
 
 const unsubmitHomework = async () => {
+  if (isPastDeadline.value) {
+    alert('已超過繳交截止時間，無法收回作業')
+    return
+  }
   if (!confirm('確定要收回作業嗎？\n\n您先前的答案與已上傳的檔案會保留下來，方便您重新編輯。')) {
     return
   }

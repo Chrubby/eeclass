@@ -98,7 +98,11 @@ export const HomeworkController = {
       const { hwId } = req.params;
       await HomeworkService.unsubmitHomework(hwId, req.user.username);
       res.json({ message: "作業已收回" });
-    } catch {
+    } catch (error) {
+      const msg = error.message || "";
+      if (msg.includes("截止")) {
+        return res.status(400).json({ message: msg });
+      }
       res.status(500).json({ message: "收回失敗" });
     }
   },
