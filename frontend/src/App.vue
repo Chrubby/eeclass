@@ -37,7 +37,7 @@ const currentCourse = computed(() =>
 )
 
 const isAuthPage = computed(() =>
-  ['Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
+  ['MainPage', 'Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
 )
 
 const goToProfile = () => {
@@ -48,13 +48,15 @@ const goToProfile = () => {
 const logout = () => {
   isMenuOpen.value = false
   localStorage.clear()
-  window.location.href = '/login'
+  // window.location.href = '/login'
+  window.location.href = '/'
 }
 
 const loadUser = async() => {
   const stored = localStorage.getItem("user")
   const token = localStorage.getItem("accessToken")
   const isAuthRoute =
+    route.path === '/' ||
     route.path === '/login' ||
     route.path === '/register' ||
     route.path === '/forgot-password' ||
@@ -95,14 +97,14 @@ watch(() => route.path, () => {
 
 <template>
   <div class="min-h-screen bg-gray-50 text-gray-800 font-sans">
-    <header v-if="!isAuthPage" class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm">
-      <div class="font-bold text-base">國立中央大學「新 ee-class 系統」</div>
+    <header v-if="!isAuthPage" class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm h-12">
+      <router-link to ="/" class="font-bold text-base p-1 border-2 border-transparent focus:border-black rounded ">國立中央大學「新 ee-class 系統」</router-link>
       <div class="flex space-x-6 items-center text-gray-600">
         <router-link to="/dashboard" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
         <div class="relative">
 
           <span class="cursor-pointer hover:text-blue-600" @click="isMenuOpen = !isMenuOpen">
-            {{ user.user_id || '使用者' }} ▾
+            {{ user.name || '使用者' }} ▾
           </span>
 
           <div v-if="isMenuOpen" class="absolute right-0 mt-4 w-36 bg-white border border-gray-200 shadow-lg z-50">
@@ -121,17 +123,18 @@ watch(() => route.path, () => {
     </header>
 
     <div v-if="!isAuthPage && !isCoursePage" class="h-32 bg-gray-300 relative flex items-center px-10">
-      <h1 class="text-3xl text-white font-bold z-10">ee-class 易課平台</h1>
+      <h1 class="text-3xl text-white font-bold">ee-class 易課平台</h1>
     </div>
 
     <div v-else-if="!isAuthPage && isCoursePage" class="h-28 bg-[#a39481] flex items-center px-10">
       <h1 class="text-2xl text-white font-bold">課程代碼：{{ courseId }}</h1>
     </div>
 
-    <div class="max-w-7xl mx-auto flex gap-6 mt-6 px-4 pb-10">
+    <!--div class="max-w-7xl mx-auto flex gap-6 mt-6 px-4 pb-10"-->
+    <div class="max-w-7xl mx-auto flex gap-6 pb-10">
       <!-- sidebar -->
 
-      <aside v-if="!isAuthPage" class="w-[260px] flex-shrink-0">
+      <aside v-if="!isAuthPage" class="w-[260px] mt-6 px-4 flex-shrink-0">
         <!-- 首頁-->
         <div v-if="!isCoursePage" class="bg-white border mb-4">
           <div class="bg-gray-100 px-4 py-2 font-bold text-center border-b text-sm">我的首頁</div>

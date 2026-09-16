@@ -183,7 +183,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div class="flex flex-col gap-6 mt-6 px-4">
     <div class="grid grid-cols-2 gap-x-8 gap-y-6 bg-white p-6 border">
       <div>
         <h3 class="text-sm font-bold border-b border-dashed pb-2 mb-3">最新公告</h3>
