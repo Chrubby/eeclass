@@ -11,6 +11,16 @@ export const AuthController = {
     }
   },
 
+  async createAccount(req, res) {
+    try {
+      const result = await AuthService.createManagedAccount(req.user.role, req.body);
+      res.json({ message: "帳號建立成功！請通知對方登入後變更密碼。", ...result });
+    } catch (error) {
+      console.error("[createAccount]", error);
+      res.status(400).json({ message: error.message || "建立帳號失敗" });
+    }
+  },
+
   async login(req, res) {
     try {
       const { username, password } = req.body;

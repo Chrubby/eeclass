@@ -98,7 +98,12 @@ watch(() => route.path, () => {
     <header v-if="!isAuthPage" class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm">
       <div class="font-bold text-base">國立中央大學「新 ee-class 系統」</div>
       <div class="flex space-x-6 items-center text-gray-600">
-        <router-link to="/dashboard" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
+        <router-link
+          v-if="user.role === 'admin'"
+          to="/admin/accounts"
+          class="cursor-pointer hover:text-blue-600"
+        >【帳號管理】</router-link>
+        <router-link v-else to="/dashboard" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
         <div class="relative">
 
           <span class="cursor-pointer hover:text-blue-600" @click="isMenuOpen = !isMenuOpen">

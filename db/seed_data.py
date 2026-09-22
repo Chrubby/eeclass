@@ -1,13 +1,9 @@
 import mysql.connector
 from werkzeug.security import generate_password_hash
 
-# DB 連線
-conn = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="Evan+921003",
-    database="classroom_data"
-)
+from db_config import CONNECTION, DB_NAME
+
+conn = mysql.connector.connect(**CONNECTION, database=DB_NAME)
 
 cursor = conn.cursor()
 

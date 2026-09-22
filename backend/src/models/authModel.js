@@ -46,6 +46,15 @@ export const AuthModel = {
     return pool.execute("INSERT INTO teachers (name, teacher_id) VALUES (?, ?)", [name, teacherId]);
   },
 
+  async createAdmin(name, adminId) {
+    return pool.execute("INSERT INTO admins (name, admin_id) VALUES (?, ?)", [name, adminId]);
+  },
+
+  async countAdmins() {
+    const [rows] = await pool.execute("SELECT COUNT(*) AS total FROM accounts WHERE role = 'admin'");
+    return Number(rows[0]?.total ?? 0);
+  },
+
   async getStudentById(studentId) {
     const [rows] = await pool.execute("SELECT * FROM students WHERE student_id = ?", [studentId]);
     return rows[0];
@@ -53,6 +62,11 @@ export const AuthModel = {
 
   async getTeacherById(teacherId) {
     const [rows] = await pool.execute("SELECT * FROM teachers WHERE teacher_id = ?", [teacherId]);
+    return rows[0];
+  },
+
+  async getAdminById(adminId) {
+    const [rows] = await pool.execute("SELECT * FROM admins WHERE admin_id = ?", [adminId]);
     return rows[0];
   },
 

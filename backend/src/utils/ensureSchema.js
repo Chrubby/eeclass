@@ -10,6 +10,14 @@ const MIGRATIONS = [
   // accounts：強制變更密碼與頭貼欄位
   "ALTER TABLE accounts ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0",
   "ALTER TABLE accounts ADD COLUMN avatar_url VARCHAR(500) NULL",
+  // role in old db is an enum without admin, so change to varchar
+  "ALTER TABLE accounts MODIFY COLUMN role VARCHAR(20) NOT NULL",
+  `CREATE TABLE IF NOT EXISTS admins (
+     id INT AUTO_INCREMENT PRIMARY KEY,
+     name VARCHAR(100) NOT NULL,
+     admin_id VARCHAR(50) UNIQUE NOT NULL,
+     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   )`,
 ];
 
 const IGNORABLE_CODES = new Set([

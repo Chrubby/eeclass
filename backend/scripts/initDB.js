@@ -62,6 +62,16 @@ const initDB = async () => {
         )
     `);
 
+    // 3.5 系統管理員表
+    await pool.execute(`
+        CREATE TABLE IF NOT EXISTS admins (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        admin_id VARCHAR(50) UNIQUE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
     // 4. 課程主表
     await pool.execute(`
         CREATE TABLE IF NOT EXISTS courses (

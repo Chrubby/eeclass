@@ -14,6 +14,12 @@ const router = createRouter({
   routes: [
     { path: "/", redirect: "/login" },
     { path: '/dashboard', name: 'Home', component: Home },
+    {
+      path: '/admin/accounts',
+      name: 'AdminAccounts',
+      component: () => import('../views/admin/AccountManage.vue'),
+      meta: { requiresAdmin: true }
+    },
     { path: '/profile', name: 'Profile', component: Profile },
     { path: '/change-password', name: 'ChangePassword', component: ChangePassword },
     { path: '/course/:id', name: 'Course', component: Course,
@@ -124,12 +130,23 @@ router.beforeEach((to) => {
     return false
   }
 
+  if (to.meta.requiresAdmin && userRole !== 'admin') {
+    alert('無法訪問此頁面。')
+    return false
+  }
+
   if (token && mustChange && !mustChangeAllowedPaths.has(to.path)) {
     return '/change-password'
   }
 
   if (!token && !publicPaths.has(to.path) && to.path !== '/change-password') {
     return '/login'
+  }
+
+  // admin doesnt participate in courses, redirect to creation (for now)
+  // TODO: let admin be able manage every course present
+  if (token && userRole === 'admin' && (to.path === '/dashboard' || to.path.startsWith('/course/'))) {
+    return '/admin/accounts'
   }
 })
 

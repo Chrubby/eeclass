@@ -1,16 +1,13 @@
 import mysql.connector
 
-# MySQL連線
-conn = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="Evan+921003"
-)
+from db_config import CONNECTION, DB_NAME
+
+conn = mysql.connector.connect(**CONNECTION)
 
 cursor = conn.cursor()
 
 # 資料庫名稱
-dbname = "classroom_data"
+dbname = DB_NAME
 
 # ⚠️ 先刪除資料庫（如果存在）
 cursor.execute(f"DROP DATABASE IF EXISTS {dbname}")
@@ -41,6 +38,16 @@ CREATE TABLE IF NOT EXISTS teachers (
     name VARCHAR(100) NOT NULL,
     teacher_id VARCHAR(20) UNIQUE,
     department VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+""")
+
+# admin
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS admins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    admin_id VARCHAR(50) UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)
@@ -210,7 +217,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     username VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     email VARCHAR(100) UNIQUE,
-    role ENUM('student', 'teacher', 'ta') DEFAULT 'student',
+    role ENUM('student', 'teacher', 'ta', 'admin') DEFAULT 'student',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)

@@ -5,7 +5,12 @@ import { signAccessToken } from "../utils/jwt.js";
 
 const DEFAULT_RECOVERY_CODE = "20260519";
 
-function validateRegisterInput({ username, password, confirmPassword, name, role }) {
+// admin can only create admin and teacher accounts
+const ROLE_CREATION_MATRIX = {
+  admin: ["admin", "teacher"],
+};
+
+function validateAccountInput({ username, password, confirmPassword, name }) {
   const u = String(username ?? "").trim();
   if (!u) throw new Error("帳號不可為空");
   if (u.length > 64) throw new Error("帳號過長");
@@ -19,9 +24,17 @@ function validateRegisterInput({ username, password, confirmPassword, name, role
   }
 
   if (!String(name ?? "").trim()) throw new Error("請填寫姓名");
+}
 
-  const allowedRoles = new Set(["student", "teacher", "ta"]);
-  if (!allowedRoles.has(role)) throw new Error("身份不合法");
+// fill in the corresponding names
+async function createProfileForRole(role, name, username) {
+  if (role === "student" || role === "ta") {
+    await AuthModel.createStudent(name, username);
+  } else if (role === "teacher") {
+    await AuthModel.createTeacher(name, username);
+  } else if (role === "admin") {
+    await AuthModel.createAdmin(name, username);
+  }
 }
 
 function validateNewPassword(password, confirmPassword) {
@@ -62,28 +75,50 @@ function mapDbError(e, context) {
 }
 
 export const AuthService = {
-  async register({ username, password, name, role, confirmPassword }) {
+// register screen can only register students
+  async register({ username, password, name, confirmPassword }) {
     const trimmedUsername = String(username ?? "").trim();
-    validateRegisterInput({
+    validateAccountInput({
       username: trimmedUsername,
       password,
       confirmPassword,
       name,
-      role,
     });
 
     const passwordHash = await bcrypt.hash(password, 10);
     try {
-      await AuthModel.createAccount(trimmedUsername, passwordHash, null, role);
-
-      if (role === "student" || role === "ta") {
-        await AuthModel.createStudent(name, trimmedUsername);
-      } else if (role === "teacher") {
-        await AuthModel.createTeacher(name, trimmedUsername);
-      }
+      await AuthModel.createAccount(trimmedUsername, passwordHash, null, "student");
+      await createProfileForRole("student", name, trimmedUsername);
     } catch (e) {
       throw mapDbError(e, "register");
     }
+  },
+
+// creating admin and teacher accounts from a logged in admin
+  async createManagedAccount(creatorRole, { username, password, name, role, confirmPassword }) {
+    const allowedTargets = ROLE_CREATION_MATRIX[creatorRole] ?? [];
+    const targetRole = String(role ?? "").trim();
+    if (!allowedTargets.includes(targetRole)) {
+      throw new Error("權限不足，無法建立此身份的帳號");
+    }
+
+    const trimmedUsername = String(username ?? "").trim();
+    validateAccountInput({
+      username: trimmedUsername,
+      password,
+      confirmPassword,
+      name,
+    });
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    try {
+      await AuthModel.createAccount(trimmedUsername, passwordHash, null, targetRole);
+      await createProfileForRole(targetRole, name, trimmedUsername);
+    } catch (e) {
+      throw mapDbError(e, "createManagedAccount");
+    }
+
+    return { username: trimmedUsername, role: targetRole };
   },
 
   async login(username, password) {
@@ -110,6 +145,8 @@ export const AuthService = {
     let userData;
     if (role === "student" || role === "ta") {
       userData = await AuthModel.getStudentById(username);
+    } else if (role === "admin") {
+      userData = await AuthModel.getAdminById(username);
     } else {
       userData = await AuthModel.getTeacherById(username);
     }
