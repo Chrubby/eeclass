@@ -1,10 +1,17 @@
 import { pool } from "../config/db.js";
 import { HomeworkModel } from "../models/homeworkModel.js";
 import { appendSubmissionHistory } from "../utils/dbHistoryLogger.js";
+import { NotificationService, previewText } from "./notificationService.js";
+
+function deadlineIsInFuture(value) {
+  if (value == null || value === "") return false;
+  const date = value instanceof Date ? value : new Date(String(value).replace(" ", "T"));
+  return !Number.isNaN(date.getTime()) && date.getTime() > Date.now();
+}
 
 export const HomeworkService = {
   // 老師發布作業
-  async publishHomework(courseId, bodyData, files) {
+  async publishHomework(courseId, bodyData, files, actorUsername = null) {
     const { title, deadline, description, questions } = bodyData;
     let connection;
     try {
@@ -27,6 +34,22 @@ export const HomeworkService = {
       }
 
       await connection.commit();
+
+      try {
+        const courseCode = String(courseId);
+        await NotificationService.notifyByCourseCode({
+          courseCode,
+          type: "homework",
+          refId: hwId,
+          headline: `新作業：${title}`,
+          message: previewText(description),
+          excludeUsername: actorUsername,
+          linkPath: `/course/${courseCode}/homework/${hwId}`,
+        });
+      } catch (notifyError) {
+        console.error("[notify] 作業通知失敗", notifyError?.message || notifyError);
+      }
+
       return hwId;
     } catch (error) {
       if (connection) await connection.rollback();
@@ -143,10 +166,12 @@ export const HomeworkService = {
       connection = await pool.getConnection();
       await connection.beginTransaction();
 
+      const nextDeadline = deadline ?? existing.deadline;
       await HomeworkModel.updateHomeworkById(connection, hwId, {
         title: title ?? existing.title,
-        deadline: deadline ?? existing.deadline,
+        deadline: nextDeadline,
         description: description !== undefined ? description : existing.description,
+        resetGradeNotice: deadlineIsInFuture(nextDeadline),
       });
 
       const mainFiles = (files || []).filter((f) => f.fieldname === "homework_files" || f.fieldname === "homework_file");
@@ -179,6 +204,10 @@ export const HomeworkService = {
     if (!existing) throw new Error("找不到作業");
     await HomeworkModel.deleteSubmissionsByHomeworkId(hwId);
     await HomeworkModel.deleteQuestionsByHomeworkId(null, hwId);
+    await pool.execute(
+      "DELETE FROM notifications WHERE type = 'homework_grade' AND ref_id = ?",
+      [String(hwId)],
+    );
     await HomeworkModel.deleteHomeworkById(hwId);
   },
 

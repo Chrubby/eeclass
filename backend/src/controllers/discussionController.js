@@ -19,7 +19,7 @@ export const DiscussionController = {
       const { course_code, title, content, ai_prompt } = req.body;
       if (!course_code || !title) return res.status(400).json({ message: "缺少必要參數" });
 
-      await DiscussionService.createDiscussion(course_code, title, content, ai_prompt, req.file);
+      await DiscussionService.createDiscussion(course_code, title, content, ai_prompt, req.file, req.user?.username);
       res.json({ message: "討論區建立成功" });
     } catch (error) {
       const msg = error.message || "";

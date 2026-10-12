@@ -5,7 +5,7 @@ export const HomeworkController = {
   async publishHomework(req, res) {
     try {
       const { courseId } = req.params;
-      await HomeworkService.publishHomework(courseId, req.body, req.files);
+      await HomeworkService.publishHomework(courseId, req.body, req.files, req.user?.username);
       res.json({ message: "作業發布成功！" });
     } catch (error) {
       const msg = error.message || "";

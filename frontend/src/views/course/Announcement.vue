@@ -1,12 +1,12 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api/client.js'
 import ChatBot from '@/components/ChatBot.vue'
 
 const route = useRoute()
 const router = useRouter()
-const courseCode = route.params.id
+const courseCode = computed(() => route.params.id)
 const announcements = ref([])
 const selectedAnnouncement = ref(null)
 const showModal = ref(false)
@@ -53,7 +53,7 @@ const fetchAnnouncements = async () => {
   try {
 
 
-    const res = await api.get(`/api/courses/${courseCode}/announcements`)
+    const res = await api.get(`/api/courses/${courseCode.value}/announcements`)
 
     announcements.value = res.data.announcements
 
@@ -116,8 +116,8 @@ const createAnnouncement = async () => {
   }
 
   try {
-    await api.post(`/api/courses/${courseCode}/announcements`, {
-      course_code: courseCode,
+    await api.post(`/api/courses/${courseCode.value}/announcements`, {
+      course_code: courseCode.value,
       title: newAnnouncement.value.title,
       content: newAnnouncement.value.content,
       is_pinned: newAnnouncement.value.is_pinned
@@ -134,10 +134,32 @@ const createAnnouncement = async () => {
   }
 }
 
+// 從通知點進來時（?announcement=ID）自動開啟該公告
+const openFromQuery = async () => {
+  const targetId = Number(route.query.announcement)
+  if (!targetId) return
+  const target = announcements.value.find((a) => a.id === targetId)
+  if (target) await openAnnouncement(target)
+  router.replace({ query: { ...route.query, announcement: undefined } })
+}
+
 onMounted(async() => {
   await loadUser()
-  fetchAnnouncements()
+  await fetchAnnouncements()
+  await openFromQuery()
 })
+
+// 同一元件被重用（切換課程或再次點擊通知）時重新載入
+watch(
+  () => [route.params.id, route.query.announcement],
+  async ([newId, newAnn], [oldId]) => {
+    if (newId !== oldId) {
+      closeModal()
+      await fetchAnnouncements()
+    }
+    if (newAnn) await openFromQuery()
+  },
+)
 </script>
 
 

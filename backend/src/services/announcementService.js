@@ -2,6 +2,8 @@ import { pool } from "../config/db.js";
 import { AnnouncementModel } from "../models/announcementModel.js";
 import { CourseModel } from "../models/courseModel.js";
 import { AuthModel } from "../models/authModel.js";
+import { NotificationModel } from "../models/notificationModel.js";
+import { NotificationService, previewText } from "../services/notificationService.js";
 
 export const AnnouncementService = {
   async getAnnouncements(courseCode, studentIdentifier) {
@@ -37,11 +39,13 @@ export const AnnouncementService = {
     if (!student) throw new Error("找不到學生");
 
     await AnnouncementModel.markAsRead(student.id, announcementId);
+    await NotificationModel.markAsReadByRef(student.id, "announcement", announcementId);
   },
 
   async createAnnouncement(courseCode, teacherIdentifier, title, content, isPinned) {
     const connection = await pool.getConnection();
     await connection.beginTransaction();
+    let emailPayload = null;
 
     try {
       const course = await CourseModel.findCourseByCode(courseCode, connection);
@@ -63,8 +67,20 @@ export const AnnouncementService = {
         }
       }
 
-      await AnnouncementModel.create(course.id, finalTeacherId, title, content, isPinned, connection);
-      
+      const [result] = await AnnouncementModel.create(course.id, finalTeacherId, title, content, isPinned, connection);
+
+      // 站內通知寫入同一筆交易；信箱在提交成功後才寄
+      emailPayload = await NotificationService.notifyByCourseCode({
+        courseCode,
+        type: "announcement",
+        refId: result.insertId,
+        headline: `新公告：${title}`,
+        message: previewText(content, 100),
+        excludeUsername: teacher ? null : teacherIdentifier,
+        linkPath: `/course/${course.course_code}?announcement=${result.insertId}`,
+        conn: connection,
+      });
+
       await connection.commit();
     } catch (error) {
       await connection.rollback();
@@ -72,5 +88,7 @@ export const AnnouncementService = {
     } finally {
       connection.release();
     }
+
+    NotificationService.sendEmailPayload(emailPayload);
   }
 };

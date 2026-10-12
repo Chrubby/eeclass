@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, watch} from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/api/client.js'
 import { setMustChangePassword } from '@/utils/auth.js'
+import NotificationBell from '@/components/NotificationBell.vue'
 
 const isMenuOpen = ref(false)
 const router = useRouter()
@@ -12,7 +13,9 @@ const user = ref({
   name: '',
   user_id: '',
   role: '',
+  email: '',
   avatar_url: '',
+  profileLoaded: false,
 })
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
@@ -40,6 +43,10 @@ const isAuthPage = computed(() =>
   ['Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
 )
 
+const showEmailPrompt = computed(() =>
+  !isAuthPage.value && user.value.profileLoaded && !String(user.value.email || '').trim(),
+)
+
 const goToProfile = () => {
   isMenuOpen.value = false
   router.push('/profile')
@@ -61,19 +68,20 @@ const loadUser = async() => {
     route.path === '/reset-password' ||
     route.path === '/change-password'
 
-  if ((!stored || !token) && !isAuthRoute) {
+  if (isAuthRoute) return
+
+  if (!stored || !token) {
     router.push('/login')
     return
   }
 
-  if (!stored) {
-    return
-  }
   user.value.user_id = stored
   try {
     const res = await api.get('/api/auth/me')
     user.value.role = res.data.role
+    user.value.email = res.data.email || ''
     user.value.avatar_url = res.data.avatar_url || ''
+    user.value.profileLoaded = true
 
     const user_inf = res.data.user
     user.value.name = user_inf?.name || ''
@@ -89,6 +97,18 @@ const loadUser = async() => {
 
 watch(() => route.path, () => {
   loadUser()
+}, { immediate: true })
+
+const onProfileUpdated = () => {
+  loadUser()
+}
+
+onMounted(() => {
+  window.addEventListener('eeclass-profile-updated', onProfileUpdated)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('eeclass-profile-updated', onProfileUpdated)
 })
 
 </script>
@@ -99,6 +119,7 @@ watch(() => route.path, () => {
       <div class="font-bold text-base">國立中央大學「新 ee-class 系統」</div>
       <div class="flex space-x-6 items-center text-gray-600">
         <router-link to="/dashboard" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
+        <NotificationBell v-if="user.role === 'student' || user.role === 'ta' || user.role === 'teacher'" />
         <div class="relative">
 
           <span class="cursor-pointer hover:text-blue-600" @click="isMenuOpen = !isMenuOpen">
@@ -119,6 +140,15 @@ watch(() => route.path, () => {
         <!-- <span class="cursor-pointer hover:text-blue-600">🌐 EN</span> -->
       </div>
     </header>
+
+    <div
+      v-if="showEmailPrompt"
+      class="bg-amber-50 border-b border-amber-200 text-amber-900 text-sm px-6 py-2 text-center"
+    >
+      請到
+      <router-link to="/profile" class="font-bold underline">個人資訊</router-link>
+      填寫信箱。課程公告、作業、測驗與討論的通知會同時寄到信箱。
+    </div>
 
     <div v-if="!isAuthPage && !isCoursePage" class="h-32 bg-gray-300 relative flex items-center px-10">
       <h1 class="text-3xl text-white font-bold z-10">ee-class 易課平台</h1>

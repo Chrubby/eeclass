@@ -11,10 +11,11 @@ export const DiscussionModel = {
   },
 
   async createRoom(courseId, title, content, aiPrompt, filePath) {
-    return pool.execute(
+    const [result] = await pool.execute(
       "INSERT INTO discussion_rooms (course_id, title, content, ai_prompt, file_path) VALUES (?, ?, ?, ?, ?)",
       [courseId, title, content || "", aiPrompt || "", filePath]
     );
+    return result.insertId;
   },
 
   async deleteRoom(roomId) {
@@ -23,7 +24,11 @@ export const DiscussionModel = {
 
   async getRoomById(roomId) {
     const [rows] = await pool.execute(
-      "SELECT id, title, content, ai_prompt, file_path FROM discussion_rooms WHERE id = ?", 
+      `SELECT r.id, r.title, r.content, r.ai_prompt, r.file_path, r.course_id,
+              c.course_code, c.course_name
+       FROM discussion_rooms r
+       LEFT JOIN courses c ON c.id = r.course_id
+       WHERE r.id = ?`,
       [roomId]
     );
     return rows[0];

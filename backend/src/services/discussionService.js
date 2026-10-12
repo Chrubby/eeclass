@@ -2,6 +2,7 @@ import { DiscussionModel } from "../models/discussionModel.js";
 import { CourseModel } from "../models/courseModel.js";
 import { AuthModel } from "../models/authModel.js";
 import { PdfHelper } from "../utils/pdfHelper.js";
+import { NotificationService, previewText } from "./notificationService.js";
 
 export const DiscussionService = {
   async getCourseDiscussions(courseCode) {
@@ -10,12 +11,26 @@ export const DiscussionService = {
     return DiscussionModel.getRoomsByCourseId(course.id);
   },
 
-  async createDiscussion(courseCode, title, content, aiPrompt, file) {
+  async createDiscussion(courseCode, title, content, aiPrompt, file, actorUsername = null) {
     const course = await CourseModel.findCourseByCode(courseCode);
     if (!course) throw new Error("找不到課程");
 
     const filePath = file ? `uploads/${file.filename}` : null;
-    await DiscussionModel.createRoom(course.id, title, content, aiPrompt, filePath);
+    const roomId = await DiscussionModel.createRoom(course.id, title, content, aiPrompt, filePath);
+
+    try {
+      await NotificationService.notifyByCourseCode({
+        courseCode,
+        type: "discussion",
+        refId: roomId,
+        headline: `新討論：${title}`,
+        message: previewText(content),
+        excludeUsername: actorUsername,
+        linkPath: `/course/${courseCode}/discussion/${roomId}`,
+      });
+    } catch (notifyError) {
+      console.error("[notify] 討論主題通知失敗", notifyError?.message || notifyError);
+    }
   },
 
   async deleteDiscussion(roomId) {
@@ -37,6 +52,21 @@ export const DiscussionService = {
     const newThreadId = await DiscussionModel.createThread(roomId, user.id, content, parentThreadId);
 
     const roomInfo = await DiscussionModel.getRoomById(roomId);
+    if (roomInfo?.course_code) {
+      try {
+        await NotificationService.notifyByCourseCode({
+          courseCode: roomInfo.course_code,
+          type: "discussion_post",
+          refId: roomId,
+          headline: `討論區新留言：${roomInfo.title}`,
+          message: previewText(content),
+          excludeUsername: userId,
+          linkPath: `/course/${roomInfo.course_code}/discussion/${roomId}`,
+        });
+      } catch (notifyError) {
+        console.error("[notify] 討論留言通知失敗", notifyError?.message || notifyError);
+      }
+    }
     if (!roomInfo?.ai_prompt) return; // 沒有設定 AI，結束處理
 
     // 2. 處理 AI 邏輯

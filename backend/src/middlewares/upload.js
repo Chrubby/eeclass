@@ -94,3 +94,18 @@ export const uploadPdf = multer({
   },
   limits: { fileSize: 10 * 1024 * 1024 },
 });
+
+/** 批次帳號匯入：僅 Excel/CSV，存記憶體（交給獨立模組解析） */
+const BULK_ACCOUNT_EXTENSIONS = new Set([".xlsx", ".xls", ".csv"]);
+
+export const uploadBulkAccountFile = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    if (!BULK_ACCOUNT_EXTENSIONS.has(ext)) {
+      return cb(new Error("僅允許上傳 .xlsx、.xls 或 .csv"));
+    }
+    cb(null, true);
+  },
+});

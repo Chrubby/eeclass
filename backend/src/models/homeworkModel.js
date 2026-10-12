@@ -17,7 +17,14 @@ export const HomeworkModel = {
     );
   },
 
-  async updateHomeworkById(connection, hwId, { title, deadline, description }) {
+  async updateHomeworkById(connection, hwId, { title, deadline, description, resetGradeNotice = false }) {
+    if (resetGradeNotice) {
+      await connection.execute(
+        "UPDATE homeworks SET title = ?, deadline = ?, description = ?, grade_notified_at = NULL WHERE id = ?",
+        [title, deadline, description, hwId]
+      );
+      return;
+    }
     await connection.execute(
       "UPDATE homeworks SET title = ?, deadline = ?, description = ? WHERE id = ?",
       [title, deadline, description, hwId]
