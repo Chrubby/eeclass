@@ -1,5 +1,7 @@
 import { pool } from "../config/db.js";
 
+// threads.student_id 是字串、accounts.id 是數字。比較時兩邊都 CAST 成字串，
+// 讓兩邊用同一個連線定序；只轉一邊在預設定序為 utf8mb4_0900_ai_ci 的資料庫會報定序衝突。
 export const DiscussionModel = {
   async getRoomsByCourseId(courseId) {
     const [rows] = await pool.execute(
@@ -12,7 +14,7 @@ export const DiscussionModel = {
                   FROM threads th
                   LEFT JOIN accounts acc
                     ON th.student_id <> 'AI'
-                   AND CAST(acc.id AS CHAR) = th.student_id
+                   AND CAST(acc.id AS CHAR) = CAST(th.student_id AS CHAR)
                   LEFT JOIN teachers tchr ON tchr.teacher_id = acc.username
                   LEFT JOIN students stu ON stu.student_id = acc.username
                   WHERE th.room_id = r.id AND th.parent_thread_id IS NULL AND th.student_id <> 'AI'
@@ -70,7 +72,7 @@ export const DiscussionModel = {
                   ELSE (SELECT name FROM students WHERE student_id = a.username LIMIT 1)
              END as author_name
       FROM threads t
-      LEFT JOIN accounts a ON t.student_id <> 'AI' AND CAST(a.id AS CHAR) = t.student_id
+      LEFT JOIN accounts a ON t.student_id <> 'AI' AND CAST(a.id AS CHAR) = CAST(t.student_id AS CHAR)
       WHERE t.room_id = ?
       ORDER BY t.created_at ASC
     `, [roomId]);
@@ -81,7 +83,7 @@ export const DiscussionModel = {
     const [rows] = await pool.execute(
       `SELECT t.id, t.room_id, t.student_id, t.content, a.username AS author_username, a.role
        FROM threads t
-       LEFT JOIN accounts a ON t.student_id <> 'AI' AND CAST(a.id AS CHAR) = t.student_id
+       LEFT JOIN accounts a ON t.student_id <> 'AI' AND CAST(a.id AS CHAR) = CAST(t.student_id AS CHAR)
        WHERE t.id = ?`,
       [threadId],
     );
@@ -132,7 +134,7 @@ export const DiscussionModel = {
                WHERE s.student_id = a.username AND e.course_id = dr.course_id AND e.role = 'ta'
              ) THEN 'ta' ELSE a.role END as acc_role
       FROM threads t
-      LEFT JOIN accounts a ON t.student_id <> 'AI' AND CAST(a.id AS CHAR) = t.student_id
+      LEFT JOIN accounts a ON t.student_id <> 'AI' AND CAST(a.id AS CHAR) = CAST(t.student_id AS CHAR)
       WHERE t.id = ?`,
       [threadId]
     );
