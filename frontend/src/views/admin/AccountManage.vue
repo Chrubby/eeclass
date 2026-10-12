@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col gap-6">
+  <div class="flex flex-col gap-6 mt-6 px-4">
   <div class="bg-white p-6 border">
     <h3 class="text-sm font-bold border-b border-dashed pb-2 mb-4">建立帳號</h3>
 

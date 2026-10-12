@@ -229,7 +229,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="!isAuthPage && !isCoursePage" class="h-32 bg-gray-300 relative flex items-center px-10">
-      <h1 class="text-3xl text-white font-bold">ee-class 易課平台</h1>
+      <h1 class="text-3xl text-white font-bold">國立中央大學「LMS 計畫」</h1>
     </div>
 
     <div v-else-if="!isAuthPage && isCoursePage" class="h-28 bg-[#a39481] flex items-center px-10">
