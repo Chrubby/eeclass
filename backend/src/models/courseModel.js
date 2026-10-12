@@ -26,6 +26,26 @@ export const CourseModel = {
     );
     return rows;
   },
+  
+  // 取得該課程的選課名單
+  async getCourseStudents(courseId, conn = pool){
+    const [rows] = await conn.execute(
+      `SELECT s.id, s.name, s.student_id , e.role FROM students s
+      JOIN enrollments e ON s.id = e.student_id
+      WHERE e.course_id = ?
+      ORDER BY 
+        CASE e.role
+          WHEN 'student' THEN 1
+          WHEN 'external' THEN 2
+          WHEN 'auditor' THEN 3
+          WHEN 'dropped' THEN 4
+          ELSE 5
+        END ASC,
+       s.student_id ASC`,
+      [courseId]
+    );
+    return rows;
+  },
 
   // 選課相關
   async checkEnrollment(studentId, courseId, conn = pool) {
@@ -35,14 +55,40 @@ export const CourseModel = {
     );
     return rows.length > 0;
   },
-  async enrollStudent(studentId, courseId, conn = pool) {
-    return conn.execute("INSERT INTO enrollments (student_id, course_id) VALUES (?, ?)", [studentId, courseId]);
+
+  async enrollStudent(studentId, courseId, conn = pool, role = 'student') {
+    const [existing] = await conn.execute(
+      "SELECT id, role FROM enrollments WHERE student_id = ? AND course_id = ?",
+      [studentId, courseId]
+    );
+    if (existing.length > 0) {
+      return conn.execute("UPDATE enrollments SET role = ? WHERE student_id = ? AND course_id = ?", [role, studentId, courseId]);
+    }
+    return conn.execute("INSERT INTO enrollments (student_id, course_id, role) VALUES (?, ?, ?)", [studentId, courseId, role]);
+  },
+
+  //退選相關
+  async dropCourse(studentId, courseId, conn = pool) {
+    const [result] = await conn.execute(
+      `UPDATE enrollments SET role = 'dropped' WHERE student_id = ? AND course_id = ?`,
+      [studentId, courseId]
+    );
+    return result;
+  },
+
+  //手動更新學生身分
+  async updateStudentRole(studentId, courseId, conn = pool, role) {
+    const [result] = await conn.execute(
+      `UPDATE enrollments SET role = ? WHERE student_id = ? AND course_id = ?`,
+      [role, studentId, courseId]
+    );
+    return result;
   },
 
   // 取得使用者所有課程
   async getStudentCourses(studentDbId, conn = pool) {
     const [rows] = await conn.execute(
-      `SELECT c.* FROM courses c JOIN enrollments e ON c.id = e.course_id WHERE e.student_id = ?`,
+      `SELECT c.* FROM courses c JOIN enrollments e ON c.id = e.course_id WHERE e.student_id = ? AND e.role != 'dropped'`,
       [studentDbId]
     );
     return rows;

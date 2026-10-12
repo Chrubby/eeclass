@@ -287,7 +287,6 @@ const initDB = async () => {
             FOREIGN KEY (parentId) REFERENCES AIQuizComments(id) ON DELETE CASCADE
         )
     `);
-
     try {
         await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
     } catch (e) { /* 欄位已存在就忽略 */ }
@@ -372,7 +371,10 @@ const initDB = async () => {
         ADD COLUMN aiFeedback TEXT NOT NULL
         `)
     } catch (e) { /* 欄位已存在就忽略 */ }
-
+    try{
+        await pool.execute("ALTER TABLE enrollments ADD COLUMN role VARCHAR(50) DEFAULT 'student'");
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    
     console.log("資料庫檢查與初始化完成");
   } catch (error) {
     console.error("資料庫初始化過程中發生錯誤：", error);
