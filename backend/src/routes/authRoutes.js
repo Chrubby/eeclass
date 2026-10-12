@@ -6,7 +6,6 @@ import { uploadAvatar, uploadSpreadsheet } from "../middlewares/upload.js";
 
 const router = express.Router();
 
-router.post("/register", AuthController.register);
 router.post("/accounts", authMiddleware, requireRole("admin"), AuthController.createAccount);
 router.post(
   "/accounts/import",

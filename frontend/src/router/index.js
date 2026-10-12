@@ -2,7 +2,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
 import Course from '../views/Course.vue'
 import Login from "../views/Login.vue"
-import Register from "../views/Register.vue"
 import ForgotPassword from "../views/ForgotPassword.vue"
 import ResetPassword from "../views/ResetPassword.vue"
 import ChangePassword from "../views/ChangePassword.vue"
@@ -128,7 +127,6 @@ const router = createRouter({
       ]
     },
     { path: "/login", name: 'Login', component: Login },
-    { path: "/register", name: 'Register', component: Register },
     { path: "/forgot-password", name: 'ForgotPassword', component: ForgotPassword },
     { path: "/reset-password", name: 'ResetPassword', component: ResetPassword }
   ]
@@ -136,7 +134,7 @@ const router = createRouter({
 
 const staffRoles = ['teacher', 'ta']
 
-const publicPaths = new Set(['/login', '/register', '/forgot-password', '/reset-password'])
+const publicPaths = new Set(['/login', '/forgot-password', '/reset-password'])
 const mustChangeAllowedPaths = new Set(['/change-password', '/login', '/profile'])
 
 router.beforeEach((to) => {

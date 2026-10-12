@@ -60,9 +60,6 @@
         <router-link to="/forgot-password" class="text-[#337ab7] hover:text-[#285e8e]">
           忘記密碼
         </router-link>
-        <router-link to="/register" class="text-[#337ab7] hover:text-[#285e8e]">
-          註冊
-        </router-link>
       </div>
     </div>
   </div>

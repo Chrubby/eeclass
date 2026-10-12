@@ -1,16 +1,6 @@
 import { AuthService } from "../services/authService.js";
 
 export const AuthController = {
-  async register(req, res) {
-    try {
-      await AuthService.register({ ...req.body, emailRequired: true });
-      res.json({ message: "註冊成功！請登入並變更密碼。" });
-    } catch (error) {
-      console.error("[register]", error);
-      res.status(400).json({ message: error.message || "註冊失敗" });
-    }
-  },
-
   async createAccount(req, res) {
     try {
       const result = await AuthService.createManagedAccount(req.user.role, req.body);

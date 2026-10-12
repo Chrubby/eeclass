@@ -7,9 +7,9 @@ import { parseRosterExcel } from "../utils/rosterExcel.js";
 
 const DEFAULT_RECOVERY_CODE = "20260519";
 
-// admin can only create admin and teacher accounts
+// accounts are only ever created by an admin; there is no self sign-up
 const ROLE_CREATION_MATRIX = {
-  admin: ["admin", "teacher"],
+  admin: ["admin", "teacher", "student"],
 };
 
 function normalizeEmail(raw, { required = false } = {}) {
@@ -94,33 +94,12 @@ function mapDbError(e, context) {
   if (msg.includes("Unknown column")) {
     return new Error("資料庫結構與程式不符，請執行 node scripts/initDB.js 更新資料庫");
   }
-  return new Error(msg || "註冊失敗，請稍後再試");
+  return new Error(msg || "建立帳號失敗，請稍後再試");
 }
 
 export const AuthService = {
-// register screen can only register students
-  async register({ username, password, name, confirmPassword, email, emailRequired = false }) {
-    const trimmedUsername = String(username ?? "").trim();
-    validateAccountInput({
-      username: trimmedUsername,
-      password,
-      confirmPassword,
-      name,
-    });
-    const normalizedEmail = normalizeEmail(email, { required: emailRequired });
-    if (normalizedEmail) await assertEmailAvailable(0, normalizedEmail);
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    try {
-      await AuthModel.createAccount(trimmedUsername, passwordHash, normalizedEmail, "student");
-      await createProfileForRole("student", name, trimmedUsername);
-    } catch (e) {
-      throw mapDbError(e, "register");
-    }
-  },
-
-// creating admin and teacher accounts from a logged in admin
-  async createManagedAccount(creatorRole, { username, password, name, role, confirmPassword }) {
+// creating a single account from a logged in admin
+  async createManagedAccount(creatorRole, { username, password, name, role, confirmPassword, email }) {
     const allowedTargets = ROLE_CREATION_MATRIX[creatorRole] ?? [];
     const targetRole = String(role ?? "").trim();
     if (!allowedTargets.includes(targetRole)) {
@@ -134,10 +113,12 @@ export const AuthService = {
       confirmPassword,
       name,
     });
+    const normalizedEmail = normalizeEmail(email);
+    if (normalizedEmail) await assertEmailAvailable(0, normalizedEmail);
 
     const passwordHash = await bcrypt.hash(password, 10);
     try {
-      await AuthModel.createAccount(trimmedUsername, passwordHash, null, targetRole);
+      await AuthModel.createAccount(trimmedUsername, passwordHash, normalizedEmail, targetRole);
       await createProfileForRole(targetRole, name, trimmedUsername);
     } catch (e) {
       throw mapDbError(e, "createManagedAccount");

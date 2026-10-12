@@ -102,7 +102,7 @@ watch(courseId, (code) => {
 provide('refreshCourseInfo', () => loadCourseStaff(courseId.value))
 
 const isAuthPage = computed(() =>
-  ['MainPage', 'Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
+  ['MainPage', 'Login', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
 )
 
 const showEmailPrompt = computed(() =>
@@ -127,7 +127,6 @@ const loadUser = async() => {
   const isAuthRoute =
     route.path === '/' ||
     route.path === '/login' ||
-    route.path === '/register' ||
     route.path === '/forgot-password' ||
     route.path === '/reset-password' ||
     route.path === '/change-password'

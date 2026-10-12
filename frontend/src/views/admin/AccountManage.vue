@@ -4,7 +4,7 @@
     <h3 class="text-sm font-bold border-b border-dashed pb-2 mb-4">建立帳號</h3>
 
     <p class="text-gray-500 text-[13px] mb-5">
-      管理員可建立教師與其他管理員帳號。學生可自行註冊；整班的學生、助教與授課老師可用下方的 Excel 名單批次建立。
+      系統不開放自行註冊，所有帳號都由管理員建立。這裡一次建立一個帳號；整班的學生、助教與授課老師可用下方的 Excel 名單批次建立。
     </p>
 
     <form @submit.prevent="submit" class="flex flex-col gap-4 max-w-md">
@@ -33,9 +33,16 @@
           身份 <span class="text-red-500">*</span>
         </label>
         <select v-model="role" required :class="inputClass">
+          <option value="student">學生</option>
           <option value="teacher">教師</option>
           <option value="admin">管理員</option>
         </select>
+      </div>
+
+      <div>
+        <label class="block text-gray-800 mb-1.5 text-[15px]">信箱</label>
+        <input v-model="email" type="email" placeholder="name@example.com（選填）" maxlength="100" :class="inputClass" />
+        <p class="text-gray-500 text-xs mt-1">課程通知會寄到這個信箱，對方之後也能在個人資訊自行填寫。</p>
       </div>
 
       <div>
@@ -212,7 +219,8 @@ const inputClass =
 
 const username = ref('')
 const name = ref('')
-const role = ref('teacher')
+const role = ref('student')
+const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 
@@ -233,6 +241,7 @@ const submit = async () => {
       username: username.value.trim(),
       name: name.value.trim(),
       role: role.value,
+      email: email.value.trim(),
       password: password.value,
       confirmPassword: confirmPassword.value,
     })
@@ -240,6 +249,7 @@ const submit = async () => {
     message.value = `${data.message}（帳號：${data.username}）`
     username.value = ''
     name.value = ''
+    email.value = ''
     password.value = ''
     confirmPassword.value = ''
   } catch (error) {
