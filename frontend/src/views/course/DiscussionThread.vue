@@ -90,6 +90,7 @@ const props = defineProps({
   aiAvailable: {
     type: Boolean,
     default: false,
+  },
   username: {
     type: String,
     default: '',
