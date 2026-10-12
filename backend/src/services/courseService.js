@@ -47,7 +47,7 @@ export const CourseService = {
     let userDbId;
     let courses;
 
-    if (role === "student" || role === "ta") {
+    if (role === "student") {
       const student = await AuthModel.getStudentById(userId);
       if (!student) throw new Error(`找不到 ${role}`);
       userDbId = student.id;

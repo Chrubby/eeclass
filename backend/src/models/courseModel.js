@@ -32,9 +32,9 @@ export const CourseModel = {
       `SELECT s.name, a.email, 'ta' AS role
        FROM enrollments e
        JOIN students s ON s.id = e.student_id
-       JOIN accounts a ON a.username = s.student_id
+       LEFT JOIN accounts a ON a.username = s.student_id
        JOIN courses c ON c.id = e.course_id
-       WHERE c.course_code = ? AND a.role = 'ta' AND COALESCE(e.role, 'student') != 'dropped'
+       WHERE c.course_code = ? AND e.role = 'ta'
        ORDER BY s.id`,
       [courseCode],
     );
@@ -54,7 +54,7 @@ export const CourseModel = {
   // 取得該課程的選課名單（含已退選，資料一律保留）
   async getCourseStudents(courseId, conn = pool){
     const [rows] = await conn.execute(
-      `SELECT s.id, s.name, s.student_id, a.email, a.role AS account_role,
+      `SELECT s.id, s.name, s.student_id, a.email,
               COALESCE(e.role, 'student') AS role, e.withdrawn_at
       FROM students s
       JOIN enrollments e ON s.id = e.student_id
@@ -62,6 +62,7 @@ export const CourseModel = {
       WHERE e.course_id = ?
       ORDER BY 
         CASE e.role
+          WHEN 'ta' THEN 0
           WHEN 'student' THEN 1
           WHEN 'external' THEN 2
           WHEN 'auditor' THEN 3
@@ -165,7 +166,8 @@ export const CourseModel = {
   // 取得使用者所有課程（已退選的不顯示）
   async getStudentCourses(studentDbId, conn = pool) {
     const [rows] = await conn.execute(
-      `SELECT c.* FROM courses c JOIN enrollments e ON c.id = e.course_id
+      `SELECT c.*, COALESCE(e.role, 'student') AS my_role
+       FROM courses c JOIN enrollments e ON c.id = e.course_id
        WHERE e.student_id = ? AND COALESCE(e.role, 'student') != 'dropped'`,
       [studentDbId]
     );

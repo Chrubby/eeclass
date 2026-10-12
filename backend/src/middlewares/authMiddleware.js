@@ -13,7 +13,8 @@ export function authMiddleware(req, res, next) {
     const payload = verifyAccessToken(match[1]);
     req.user = {
       username: payload.sub,
-      role: payload.role,
+      // 助教已改為課程層級身分；舊 token 裡的 "ta" 一律視為學生，再由 courseRole 依課程判斷
+      role: payload.role === "ta" ? "student" : payload.role,
     };
     next();
   } catch {

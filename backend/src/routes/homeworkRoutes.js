@@ -2,14 +2,18 @@ import express from "express";
 import { upload } from "../middlewares/upload.js";
 import { authMiddleware } from "../middlewares/authMiddleware.js";
 import { requireRole } from "../middlewares/requireRole.js";
+import { courseRole } from "../middlewares/courseRole.js";
 import { HomeworkController } from "../controllers/homeworkController.js";
 
 const router = express.Router();
 
 router.use(authMiddleware);
+router.param("hwId", courseRole.byHomework);
+router.param("submissionId", courseRole.bySubmission);
 
 const staff = requireRole("teacher", "ta");
-const studentSide = requireRole("student", "ta");
+// 助教在自己帶的課是工作人員，不繳交該課作業
+const studentSide = requireRole("student");
 
 router.get("/homeworks/:hwId", HomeworkController.getHomeworkDetail);
 router.put("/homeworks/:hwId", staff, upload.any(), HomeworkController.updateHomework);

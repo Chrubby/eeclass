@@ -4,7 +4,7 @@
     <h3 class="text-sm font-bold border-b border-dashed pb-2 mb-4">建立帳號</h3>
 
     <p class="text-gray-500 text-[13px] mb-5">
-      系統不開放自行註冊，所有帳號都由管理員建立。這裡一次建立一個帳號；整班的學生、助教與授課老師可用下方的 Excel 名單批次建立。
+      系統不開放自行註冊，所有帳號都由管理員建立。這裡一次建立一個帳號；整班的學生與授課老師可用下方的 Excel 名單批次建立。助教不是另一種帳號，而是由授課老師在課程的「學生名冊」把學生勾選為該課助教。
     </p>
 
     <form @submit.prevent="submit" class="flex flex-col gap-4 max-w-md">
@@ -93,7 +93,7 @@
 
     <p class="text-gray-500 text-[13px] mb-5 leading-relaxed">
       上傳學員名單 .xlsx，需包含「姓名」「帳號」「信箱」欄位。沒有帳號的人會以信箱作為帳號；
-      備註欄寫「助教」會建立助教帳號、寫「授課老師」會建立教師帳號，其餘都是學生。已存在的帳號會直接略過。
+      備註欄寫「授課老師」會建立教師帳號，其餘（包含註記「助教」的人）都是學生帳號。已存在的帳號會直接略過。
       這裡只建立帳號，要把名單加入課程請到該課程的「學生名冊」頁匯入。
     </p>
 
@@ -178,7 +178,7 @@
 import { computed, ref } from 'vue'
 import api from '@/api/client.js'
 
-const ROLE_LABELS = { student: '學生', ta: '助教', teacher: '教師' }
+const ROLE_LABELS = { student: '學生', teacher: '教師' }
 const OUTCOME_CLASSES = { created: 'text-green-700', skipped: 'text-gray-500', failed: 'text-red-600' }
 
 const importFile = ref(null)

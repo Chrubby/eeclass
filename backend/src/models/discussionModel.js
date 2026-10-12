@@ -57,7 +57,13 @@ export const DiscussionModel = {
   async getThreadsByRoomId(roomId) {
     const [rows] = await pool.execute(`
       SELECT t.*, 
-             IFNULL(a.role, 'ai') as role,
+             -- 助教是課程層級身分，要看留言者在這個討論區所屬課程的身分
+             CASE WHEN EXISTS (
+               SELECT 1 FROM enrollments e
+               JOIN students s ON s.id = e.student_id
+               JOIN discussion_rooms dr ON dr.id = t.room_id
+               WHERE s.student_id = a.username AND e.course_id = dr.course_id AND e.role = 'ta'
+             ) THEN 'ta' ELSE IFNULL(a.role, 'ai') END as role,
              a.username as author_username,
              CASE WHEN t.student_id = 'AI' THEN 'AI 助教'
                   WHEN a.role = 'teacher' THEN (SELECT name FROM teachers WHERE teacher_id = a.username LIMIT 1)
@@ -118,7 +124,13 @@ export const DiscussionModel = {
   // 取得單一留言的父層資訊 (供 AI 追溯歷史紀錄使用)
   async getParentThreadInfo(threadId) {
     const [rows] = await pool.execute(`
-      SELECT t.parent_thread_id, t.content, t.student_id, a.role as acc_role
+      SELECT t.parent_thread_id, t.content, t.student_id,
+             CASE WHEN EXISTS (
+               SELECT 1 FROM enrollments e
+               JOIN students s ON s.id = e.student_id
+               JOIN discussion_rooms dr ON dr.id = t.room_id
+               WHERE s.student_id = a.username AND e.course_id = dr.course_id AND e.role = 'ta'
+             ) THEN 'ta' ELSE a.role END as acc_role
       FROM threads t
       LEFT JOIN accounts a ON t.student_id <> 'AI' AND CAST(a.id AS CHAR) = t.student_id
       WHERE t.id = ?`,

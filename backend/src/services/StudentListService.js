@@ -3,10 +3,13 @@ import { CourseModel } from "../models/courseModel.js";
 import { AuthModel } from "../models/authModel.js";
 import { parseRosterExcel } from "../utils/rosterExcel.js";
 
-const ENROLLMENT_ROLES = new Set(["student", "external", "auditor", "dropped"]);
+const ENROLLMENT_ROLES = new Set(["student", "external", "auditor", "ta", "dropped"]);
+const TA_ASSIGNERS = new Set(["admin", "teacher"]);
+const TA_ASSIGN_DENIED = "只有授課老師或管理員可以指定或取消助教";
 
-/** 備註欄寫「校外加選」「旁聽」時才指定修課身分；沒寫就沿用名冊上原本的身分 */
+/** 備註欄寫「助教」「校外加選」「旁聽」時才指定課程身分；沒寫就沿用名冊上原本的身分 */
 function enrollmentRoleFromNote(note) {
+  if (/助教/.test(note)) return "ta";
   if (/校外/.test(note)) return "external";
   if (/旁聽/.test(note)) return "auditor";
   return null;
@@ -31,15 +34,20 @@ export const StudentListService = {
     return CourseModel.getCourseStudents(course.id);
   },
 
-  /** 手動新增學生或修改單一學生的修課身分 */
-  async updateOrAddStudent(studentIdentifier, courseCode, role = "student") {
+  /** 手動新增學生或修改單一學生的課程身分（含指定／取消助教） */
+  async updateOrAddStudent(studentIdentifier, courseCode, role = "student", actorRole) {
     if (!ENROLLMENT_ROLES.has(role)) throw new Error("身分設定不正確");
 
     const course = await requireCourse(courseCode);
     const student = await AuthModel.getStudentById(String(studentIdentifier ?? "").trim());
     if (!student) throw new Error("系統中找不到此學號的學生");
 
-    if (role === "dropped" && !(await CourseModel.getEnrollmentRole(student.id, course.id))) {
+    const currentRole = await CourseModel.getEnrollmentRole(student.id, course.id);
+    // 助教不能自己指定助教，也不能更動其他助教
+    if ((role === "ta" || currentRole === "ta") && !TA_ASSIGNERS.has(actorRole)) {
+      throw new Error(TA_ASSIGN_DENIED);
+    }
+    if (role === "dropped" && !currentRole) {
       throw new Error("該學生不在這門課的名冊中");
     }
     return CourseModel.enrollStudent(student.id, course.id, undefined, role);
@@ -50,7 +58,8 @@ export const StudentListService = {
    * 名冊上有、名單上沒有的學生改為退選，資料一律保留。
    * 這裡不建立帳號；找不到帳號的列會列在 skipped 回報，不會讓整份名單失敗。
    */
-  async syncStudentsFromExcel(courseCode, fileBuffer) {
+  async syncStudentsFromExcel(courseCode, fileBuffer, actorRole) {
+    const canAssignTa = TA_ASSIGNERS.has(actorRole);
     const course = await requireCourse(courseCode);
     const { title, rows, problems } = await parseRosterExcel(fileBuffer);
 
@@ -66,16 +75,22 @@ export const StudentListService = {
         continue;
       }
 
-      if (account.role === "student" || account.role === "ta") {
+      if (account.role === "student") {
         const student = await AuthModel.getStudentById(account.username);
         if (!student) {
           skipped.push({ ...summary, reason: "帳號缺少學生資料" });
           continue;
         }
+        let noteRole = enrollmentRoleFromNote(row.note);
+        if (noteRole === "ta" && !canAssignTa) {
+          // 名單由上傳的人決定內容，所以助教上傳時不採用「助教」註記，仍照一般學生處理
+          skipped.push({ ...summary, reason: `已照一般學生處理：${TA_ASSIGN_DENIED}` });
+          noteRole = null;
+        }
         studentsToEnroll.set(student.id, {
           ...summary,
           username: account.username,
-          noteRole: enrollmentRoleFromNote(row.note),
+          noteRole,
         });
       } else if (account.role === "teacher") {
         const teacher = await AuthModel.getTeacherById(account.username);
@@ -133,6 +148,7 @@ export const StudentListService = {
 
       for (const [studentDbId, existing] of current) {
         if (existing.role === "dropped" || studentsToEnroll.has(studentDbId)) continue;
+        if (existing.role === "ta" && !canAssignTa) continue;
         await CourseModel.dropCourse(studentDbId, course.id, connection);
         withdrawn.push({ username: existing.username, name: existing.name });
       }

@@ -7,7 +7,8 @@ import ResetPassword from "../views/ResetPassword.vue"
 import ChangePassword from "../views/ChangePassword.vue"
 import Profile from "../views/Profile.vue"
 import MainPage from '../views/MainPage.vue'
-import { getRoleFromToken, getAccessToken, getMustChangePassword } from '@/utils/auth.js'
+import { getRoleFromToken, getAccountRole, hasCourseRoles, getAccessToken, getMustChangePassword } from '@/utils/auth.js'
+import { refreshCourseRoles } from '@/utils/courseRoles.js'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -137,8 +138,7 @@ const staffRoles = ['teacher', 'ta']
 const publicPaths = new Set(['/login', '/forgot-password', '/reset-password'])
 const mustChangeAllowedPaths = new Set(['/change-password', '/login', '/profile'])
 
-router.beforeEach((to) => {
-  const userRole = getRoleFromToken()
+router.beforeEach(async (to, from) => {
   const token = getAccessToken()
   const mustChange = getMustChangePassword()
 
@@ -149,6 +149,13 @@ router.beforeEach((to) => {
   if (!token && !publicPaths.has(to.path) && to.path !== '/change-password' && to.path !== '/') {
     return '/login'
   }
+
+  // 助教是課程層級身分：第一次載入、或進到另一門課時，先問後端我在各課的身分
+  const courseCode = to.params.id
+  if (token && courseCode && getAccountRole() === 'student' && (!hasCourseRoles() || from.params.id !== courseCode)) {
+    await refreshCourseRoles()
+  }
+  const userRole = getRoleFromToken(courseCode)
 
   // admins manage courses through the student list only; the other course pages assume a teacher or student
   if (token && userRole === 'admin') {

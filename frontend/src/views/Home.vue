@@ -251,6 +251,7 @@ onMounted(async () => {
             </p>
             <p class="text-gray-500">學年度: {{ course.academic_year || '未提供' }}</p>
             <p class="text-gray-500">代碼: {{ course.course_code }}</p>
+            <p v-if="course.my_role === 'ta'" class="font-bold text-[#337ab7]">我是這門課的助教</p>
           </div>
         </div>
         <div v-if="courses.length === 0" class="text-gray-400 text-sm">尚未選擇任何課程</div>

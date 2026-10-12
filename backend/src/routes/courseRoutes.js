@@ -7,11 +7,16 @@ import { MaterialController } from "../controllers/materialController.js";
 import { StudentListController } from "../controllers/StudentListController.js";
 import { uploadPdf, upload, uploadSpreadsheet } from "../middlewares/upload.js";
 import { requireRole } from "../middlewares/requireRole.js";
+import { courseRole } from "../middlewares/courseRole.js";
 import courseAiRoutes from "./courseAiRoutes.js";
 import aiQuizRoutes from "./AiQuizRoutes.js";
 import groupRoutes from "./groupRoutes.js";
 
 const router = express.Router();
+
+// 兩個參數名稱帶的都是課程代碼；涵蓋底下所有 /:courseCode/... 與巢狀路由
+router.param("courseCode", courseRole.byCode);
+router.param("courseId", courseRole.byCode);
 
 const staff = requireRole("teacher", "ta");
 const studentSide = requireRole("student", "ta");
@@ -23,7 +28,7 @@ router.get("/user", CourseController.getUserCourses);
 router.get("/all", requireRole("admin"), CourseController.getAllCourses);
 router.get("/teachers", requireRole("admin"), CourseController.getAllTeachers);
 router.get("/search", CourseController.search);
-router.post("/", requireRole("admin", "teacher", "ta"), CourseController.createCourse);
+router.post("/", requireRole("admin", "teacher"), CourseController.createCourse);
 
 router.get("/:courseCode/contacts", CourseController.getContacts);
 router.get("/:courseCode/announcements", AnnouncementController.getAnnouncements);

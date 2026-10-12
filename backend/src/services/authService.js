@@ -51,7 +51,7 @@ function validateAccountInput({ username, password, confirmPassword, name }) {
 
 // fill in the corresponding names
 async function createProfileForRole(role, name, username, conn) {
-  if (role === "student" || role === "ta") {
+  if (role === "student") {
     await AuthModel.createStudent(name, username, conn);
   } else if (role === "teacher") {
     await AuthModel.createTeacher(name, username, conn);
@@ -140,7 +140,9 @@ export const AuthService = {
     const failed = [...problems];
 
     for (const row of rows) {
-      const summary = { rowNumber: row.rowNumber, username: row.username, name: row.name, role: row.role };
+      // 名單上註記「助教」的人也是學生帳號；助教身分之後由授課老師在課程的學生名冊指定
+      const accountRole = row.role === "teacher" ? "teacher" : "student";
+      const summary = { rowNumber: row.rowNumber, username: row.username, name: row.name, role: accountRole };
 
       if (await AuthModel.findAccountByUsername(row.username)) {
         skipped.push({ ...summary, reason: "帳號已存在" });
@@ -164,8 +166,8 @@ export const AuthService = {
       const connection = await pool.getConnection();
       try {
         await connection.beginTransaction();
-        await AuthModel.createAccount(row.username, passwordHash, row.email, row.role, connection);
-        await createProfileForRole(row.role, row.name, row.username, connection);
+        await AuthModel.createAccount(row.username, passwordHash, row.email, accountRole, connection);
+        await createProfileForRole(accountRole, row.name, row.username, connection);
         await connection.commit();
         created.push(summary);
       } catch (e) {
@@ -204,7 +206,7 @@ export const AuthService = {
 
     const role = account.role;
     let userData;
-    if (role === "student" || role === "ta") {
+    if (role === "student") {
       userData = await AuthModel.getStudentById(username);
     } else if (role === "admin") {
       userData = await AuthModel.getAdminById(username);
