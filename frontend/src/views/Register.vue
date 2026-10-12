@@ -31,6 +31,20 @@
 
         <div>
           <label class="block text-gray-800 mb-1.5 text-[15px]">
+            信箱 <span class="text-red-500">*</span>
+          </label>
+          <input
+            v-model="mail"
+            type="email"
+            placeholder="name@example.com"
+            required
+            maxlength="100"
+            class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
+          />
+        </div>
+
+        <div>
+          <label class="block text-gray-800 mb-1.5 text-[15px]">
             密碼 <span class="text-red-500">*</span>
           </label>
           <div class="relative">
@@ -81,28 +95,6 @@
             <option value="ta">助教</option>
           </select>
         </div>
-<!--
-        <div class="flex flex-col gap-1 mt-1">
-          <div class="flex items-center gap-2">
-            <div class="h-[38px] w-[110px] bg-gray-200 border border-gray-300 flex items-center justify-center bg-cover bg-center opacity-80" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMTAiIGhlaWdodD0iMzgiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48dGV4dCB4PSI1NSIgeT0iMjYiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmaWxsPSIjMWUzYThhIiBsZXR0ZXItc3BhY2luZz0iMnB4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5iMzNtPC90ZXh0Pjwvc3ZnPg==');">
-            </div> -->
-
-            <!-- <button type="button" class="text-[#337ab7] hover:text-[#285e8e] cursor-pointer p-1">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button> -->
-
-            <!-- <input
-              v-model="captcha"
-              type="text"
-              placeholder="驗證碼"
-              required
-              class="w-28 bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
-            /> -->
-          <!-- </div>
-          <span class="text-gray-500 text-xs mt-0.5">區分大小寫</span> -->
-        <!-- </div> -->
 
         <div class="flex justify-center mt-3">
           <button
@@ -113,6 +105,46 @@
           </button>
         </div>
       </form>
+
+      <!-- Excel 批次建帳：UI 在此；解析與寫入邏輯在 modules/bulk-account-import -->
+      <div class="mt-8 border border-dashed border-gray-300 rounded-lg p-4 bg-slate-50">
+        <h3 class="text-[16px] font-bold text-gray-800 mb-1">Excel 批次建立帳號</h3>
+        <p class="text-xs text-gray-500 mb-3 leading-relaxed">
+          上傳含多筆帳號的 Excel（.xlsx）或 CSV，一鍵自動建立。
+          <button type="button" class="text-[#337ab7] hover:underline" @click="downloadTemplate">
+            下載樣板
+          </button>
+        </p>
+        <div class="flex flex-col gap-2">
+          <label class="text-[13px] text-gray-700">
+            匯入驗證碼（伺服器有設定時必填）
+            <input
+              v-model="importCode"
+              type="password"
+              placeholder="選填 / 依伺服器設定"
+              class="mt-1 w-full bg-white border border-gray-300 rounded px-3 py-2 text-[14px] focus:outline-none focus:border-blue-400"
+            />
+          </label>
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            class="text-[13px]"
+            @change="onBulkFileChange"
+          />
+          <button
+            type="button"
+            class="self-start bg-[#337ab7] text-white px-4 py-2 rounded text-[14px] hover:bg-[#285e8e] disabled:opacity-60"
+            :disabled="bulkLoading"
+            @click="bulkRegister"
+          >
+            {{ bulkLoading ? '建立中…' : '一鍵建立帳號' }}
+          </button>
+          <pre
+            v-if="bulkReport"
+            class="text-[11px] bg-white border border-gray-200 rounded p-2 max-h-48 overflow-auto whitespace-pre-wrap text-gray-700"
+          >{{ bulkReport }}</pre>
+        </div>
+      </div>
 
       <div class="mt-6 text-center text-[15px] text-gray-700">
         已經有帳號？
@@ -131,14 +163,18 @@ import api from "@/api/client.js"
 
 const account = ref("")
 const name = ref("")
+const mail = ref("")
 const password = ref("")
 const confirmPassword = ref("")
 const role = ref("student")
-const agreeTerms = ref(false)
-const captcha = ref("")
 
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
+
+const importCode = ref("")
+const bulkFile = ref(null)
+const bulkLoading = ref(false)
+const bulkReport = ref("")
 
 const router = useRouter()
 
@@ -152,6 +188,7 @@ const register = async () => {
     password: password.value,
     confirmPassword: confirmPassword.value,
     name: name.value.trim(),
+    email: mail.value.trim(),
     role: role.value,
   }
 
@@ -166,6 +203,52 @@ const register = async () => {
     const msg = error.response?.data?.message || "連線失敗"
     alert(`註冊失敗：${msg}`)
     console.error("註冊錯誤:", error.response?.data || error)
+  }
+}
+
+const onBulkFileChange = (e) => {
+  bulkFile.value = e.target.files?.[0] || null
+  bulkReport.value = ""
+}
+
+const downloadTemplate = () => {
+  const base = import.meta.env.VITE_API_BASE_URL || ""
+  window.open(`${base}/api/auth/bulk-register/template`, "_blank")
+}
+
+const bulkRegister = async () => {
+  if (!bulkFile.value) {
+    alert("請先選擇 Excel / CSV 檔案")
+    return
+  }
+
+  const form = new FormData()
+  form.append("file", bulkFile.value)
+  if (importCode.value.trim()) {
+    form.append("importCode", importCode.value.trim())
+  }
+
+  bulkLoading.value = true
+  bulkReport.value = ""
+  try {
+    const { data } = await api.post("/api/auth/bulk-register", form)
+    const fails = (data.results || [])
+      .filter((r) => !r.ok)
+      .slice(0, 40)
+      .map((r) => `列 ${r.rowNumber}${r.username ? ` (${r.username})` : ""}：${r.error}`)
+
+    bulkReport.value = [
+      `成功：${data.summary?.created ?? 0} 筆`,
+      `失敗：${data.summary?.failed ?? 0} 筆`,
+      "",
+      ...fails,
+    ].join("\n")
+
+    alert(data.message || "批次建立完成")
+  } catch (error) {
+    alert(error.response?.data?.message || error.message || "批次建立失敗")
+  } finally {
+    bulkLoading.value = false
   }
 }
 </script>

@@ -4,6 +4,14 @@ import { HomeworkModel } from "../models/homeworkModel.js";
 import { appendSubmissionHistory } from "../utils/dbHistoryLogger.js";
 import { pool } from "../config/db.js";
 
+function sendAiError(res, error, fallback) {
+  const msg = error?.message || "";
+  if (msg.startsWith("找不到")) return res.status(404).json({ message: msg });
+  if (msg.includes("OPENAI_API_KEY")) return res.status(503).json({ message: "尚未設定 OpenAI 金鑰" });
+  console.error("[homework-ai]", msg || error);
+  res.status(500).json({ message: fallback });
+}
+
 export const HomeworkAiController = {
   async getPrompts(req, res) {
     try {
@@ -58,11 +66,11 @@ export const HomeworkAiController = {
         mode: "overall",
         suggested_score: out.suggested_score,
         reason: out.reason,
-        feedback: out.feedback,
+        perQuestion: out.perQuestion || [],
       });
       res.json(out);
-    } catch {
-      res.status(500).json({ message: "AI 評估失敗" });
+    } catch (error) {
+      sendAiError(res, error, "AI 評估失敗");
     }
   },
 
@@ -72,10 +80,7 @@ export const HomeworkAiController = {
       const { homeworkId } = req.body;
       const out = await HomeworkAiService.runAiGradeQuestion(submissionId, homeworkId, questionId);
 
-      await pool.execute(
-        "UPDATE homework_submissions SET ai_estimated_score = ?, ai_estimated_reason = ?, ai_estimated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        [out.suggested_score, out.reason || "", submissionId],
-      );
+      // 單題建議只記在歷程，不覆蓋整份作業的 AI 預估總分
       await appendSubmissionHistory(submissionId, "ai_suggestion", {
         mode: "question",
         questionId,
@@ -84,8 +89,8 @@ export const HomeworkAiController = {
         reason: out.reason,
       });
       res.json(out);
-    } catch {
-      res.status(500).json({ message: "單題 AI 評估失敗" });
+    } catch (error) {
+      sendAiError(res, error, "單題 AI 評估失敗");
     }
   },
 
@@ -156,8 +161,8 @@ export const HomeworkAiController = {
 
       const reply = await HomeworkAiService.chatWithTutor(hwId, questionId, messages);
       res.json({ reply });
-    } catch {
-      res.status(500).json({ message: "AI 對話失敗" });
+    } catch (error) {
+      sendAiError(res, error, "AI 對話失敗");
     }
   },
 };

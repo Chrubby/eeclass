@@ -141,18 +141,20 @@
               @change="handleFileChange(index, $event)"
             />
 
+            <p v-if="files[index]" class="mt-2 text-xs text-blue-700">將上傳：{{ files[index].name }}（只替換這一題，其他題的檔案會保留）</p>
             <div
-              v-if="homeworkData.isSubmitted && homeworkData.submittedFileName"
-              class="mt-2 text-xs font-bold text-green-600 bg-green-50 p-2 rounded border border-green-200 inline-block"
+              v-else-if="savedFileAt(index) && !removedFileIndexes.includes(index)"
+              class="mt-2 text-xs font-bold text-green-700 bg-green-50 p-2 rounded border border-green-200 flex items-center justify-between gap-3"
             >
-              已繳交檔案：{{ homeworkData.submittedFileName }}
-            </div>
-            <div
-              v-else-if="!homeworkData.isSubmitted && homeworkData.submittedFileName"
-              class="mt-2 text-xs text-blue-700 bg-blue-50 p-2 rounded border border-blue-200 inline-block"
-            >
-              上次繳交檔案：{{ homeworkData.submittedFileName }}
-              <span class="text-gray-600 font-normal">（若不重新選擇，再次繳交時將沿用此檔案）</span>
+              <span>目前檔案：{{ savedFileAt(index).file_name || savedFileAt(index).fileName }}</span>
+              <button
+                v-if="!answerInputsDisabled"
+                type="button"
+                class="text-red-600 font-bold"
+                @click="removedFileIndexes.push(index)"
+              >
+                移除此檔
+              </button>
             </div>
           </div>
 
@@ -311,12 +313,6 @@ const isPastDeadline = computed(() => {
   return new Date() > new Date(d)
 })
 
-/**
- * 不可編輯作答區的情境：
- * - 已批改
- * - 已繳交（須先收回才能修改）
- * - 已過繳交期限且尚未繳交
- */
 const answerInputsDisabled = computed(
   () =>
     homeworkData.value.isGraded ||
@@ -340,7 +336,11 @@ const legacyQuestionAttachment = (q) =>
   (q.hasAttachment || q.has_attachment) && (q.filePath || q.file_path)
 
 const answers = ref([]) // 存文字
-const files = ref([])   // 存檔案
+const files = ref([])
+const savedFiles = ref([])
+const removedFileIndexes = ref([])
+
+const savedFileAt = (index) => savedFiles.value[index] || null
 const estimating = ref(false)
 
 const chatOpen = ref(false)
@@ -451,6 +451,17 @@ const loadData = async () => {
     if (hw.questions) {
       answers.value = Array.from({ length: hw.questions.length }, () => '')
       files.value = Array.from({ length: hw.questions.length }, () => null)
+      removedFileIndexes.value = []
+      let parsedFiles = []
+      try {
+        parsedFiles = mySub?.files_json ? JSON.parse(mySub.files_json) : []
+      } catch {
+        parsedFiles = []
+      }
+      if ((!parsedFiles || !parsedFiles.length) && mySub?.file_path) {
+        parsedFiles = [{ file_name: mySub.file_name, file_path: mySub.file_path }]
+      }
+      savedFiles.value = Array.from({ length: hw.questions.length }, (_, i) => parsedFiles[i] || null)
 
       if (mySub && mySub.answer_text) {
         try {
@@ -479,6 +490,9 @@ const handleFileChange = (index, event) => {
     return
   }
   files.value[index] = file || null
+  if (file) {
+    removedFileIndexes.value = removedFileIndexes.value.filter((item) => item !== index)
+  }
 }
 
 const submitHomework = async () => {
@@ -488,7 +502,7 @@ const submitHomework = async () => {
   }
   const hasFile = files.value.some((f) => f != null)
   const hasText = (answers.value || []).some((a) => String(a || '').trim() !== '')
-  const hasPreviousFile = Boolean(homeworkData.value.submittedFileName)
+  const hasPreviousFile = savedFiles.value.some((file, index) => file && !removedFileIndexes.value.includes(index))
   if (!hasFile && !hasText && !hasPreviousFile) {
     alert('不能繳交空內容')
     return
@@ -498,9 +512,11 @@ const submitHomework = async () => {
 
     formData.append('answerText', JSON.stringify(answers.value))
 
-    if (files.value.some(f => f !== null)) {
-      const firstFile = files.value.find(f => f !== null)
-      formData.append('file', firstFile)
+    files.value.forEach((file, index) => {
+      if (file) formData.append(`qfile_${index}`, file)
+    })
+    if (removedFileIndexes.value.length) {
+      formData.append('removeFileIndexes', JSON.stringify(removedFileIndexes.value))
     }
 
     const { data: result } = await api.post(`/api/homeworks/${hwId}/submissions`, formData, {

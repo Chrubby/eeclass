@@ -30,6 +30,25 @@ export const MaterialController = {
     }
   },
 
+  async replaceMaterial(req, res) {
+    try {
+      const { courseId, materialId } = req.params;
+      const material = await MaterialService.replaceMaterial(
+        courseId,
+        materialId,
+        req.user.username,
+        req.file,
+      );
+      res.json({ message: "教材已更新", material });
+    } catch (error) {
+      const msg = error.message || "";
+      if (msg.includes("找不到") || msg.includes("不屬於") || msg.includes("未提供") || msg.includes("不允許") || msg.includes("檔案")) {
+        return res.status(400).json({ message: msg });
+      }
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
+    }
+  },
+
   async deleteMaterial(req, res) {
     try {
       const { courseId, materialId } = req.params;

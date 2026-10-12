@@ -37,7 +37,7 @@ export const AIQuizController = {
             };
 
             const parsedQuestions = JSON.parse(questions);
-            const result = await AIQuizService.createQuiz(quizData, parsedQuestions);
+            const result = await AIQuizService.createQuiz(quizData, parsedQuestions, req.user?.username);
             
             res.status(201).json({ message: '測驗建立成功', data: result });
         } catch (error) {

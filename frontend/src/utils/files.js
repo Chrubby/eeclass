@@ -42,6 +42,19 @@ export function openFileInNewTab(filePath) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+export async function downloadApi(url, fileName) {
+  const res = await api.get(url, { responseType: "blob" });
+  const blob = res.data instanceof Blob ? res.data : new Blob([res.data]);
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileName || "download";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
 function extractFileName(filePath) {
   const segments = String(filePath).split("/");
   return segments[segments.length - 1] || "download";

@@ -2,10 +2,10 @@ import { pool } from "../config/db.js";
 
 export const HomeworkModel = {
   // 建立作業主檔 (需傳入 connection 以支援 Transaction)
-  async createHomework(connection, courseId, title, deadline, description) {
+  async createHomework(connection, courseId, title, deadline, description, isGroupHomework = false) {
     const [result] = await connection.execute(
-      "INSERT INTO homeworks (course_id, title, deadline, description, attachments_json) VALUES (?, ?, ?, ?, ?)",
-      [courseId, title, deadline, description || '', "[]"]
+      "INSERT INTO homeworks (course_id, title, deadline, description, attachments_json, is_group_homework) VALUES (?, ?, ?, ?, ?, ?)",
+      [courseId, title, deadline, description || '', "[]", isGroupHomework ? 1 : 0]
     );
     return result.insertId;
   },
@@ -17,10 +17,17 @@ export const HomeworkModel = {
     );
   },
 
-  async updateHomeworkById(connection, hwId, { title, deadline, description }) {
+  async updateHomeworkById(connection, hwId, { title, deadline, description, resetGradeNotice = false }) {
+    if (resetGradeNotice) {
+      await connection.execute(
+        "UPDATE homeworks SET title = ?, deadline = ?, description = ?, grade_notified_at = NULL WHERE id = ?",
+        [title, deadline, description, hwId]
+      );
+      return;
+    }
     await connection.execute(
-      "UPDATE homeworks SET title = ?, deadline = ?, description = ? WHERE id = ?",
-      [title, deadline, description, hwId]
+      "UPDATE homeworks SET title = ?, deadline = ?, description = ?, is_group_homework = ? WHERE id = ?",
+      [title, deadline, description, isGroupHomework ? 1 : 0, hwId]
     );
   },
 
@@ -41,20 +48,79 @@ export const HomeworkModel = {
     await pool.execute("DELETE FROM homeworks WHERE id = ?", [hwId]);
   },
 
-  // 建立作業子題
-  async createQuestions(connection, hwId, questions) {
+  /**
+   * 編輯作業時就地更新子題：保留原本的子題 id，
+   * 已開著的學生/批改頁面再呼叫 AI 時仍找得到題目，並讀到最新的 prompt
+   */
+  async syncQuestions(connection, hwId, questions) {
+    const [existingRows] = await connection.execute(
+      "SELECT id FROM homework_questions WHERE homework_id = ? ORDER BY question_order",
+      [hwId],
+    );
+    const existingIds = existingRows.map((row) => row.id);
+    const sendsIds = questions.some((q) => q.id);
+    const keptIds = new Set();
+
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
+      // 前端有帶 id 就依 id 對應；舊版前端沒帶 id 時依題號順序對應
+      const targetId = sendsIds
+        ? (existingIds.includes(Number(q.id)) ? Number(q.id) : null)
+        : existingIds[i] ?? null;
+      if (!targetId) {
+        await this.createQuestions(connection, hwId, [q], i);
+        continue;
+      }
+      keptIds.add(targetId);
+      const fileName = q.fileName || q.file_name || null;
+      const filePath = q.filePath || q.file_path || null;
       await connection.execute(
-        `INSERT INTO homework_questions
-        (homework_id, question_order, title, description, answer_format, has_attachment, ai_prompt, discussion_prompt)
-        VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+        `UPDATE homework_questions
+         SET question_order = ?, title = ?, description = ?, answer_format = ?, has_attachment = ?,
+             file_name = ?, file_path = ?, ai_prompt = ?, discussion_prompt = ?
+         WHERE id = ? AND homework_id = ?`,
         [
-          hwId,
           i + 1,
           q.title,
           q.description || "",
           q.answerFormat,
+          filePath ? 1 : 0,
+          fileName,
+          filePath,
+          q.aiPrompt || q.ai_prompt || q.gradingPrompt || "",
+          q.discussionPrompt || q.discussion_prompt || "",
+          targetId,
+          hwId,
+        ],
+      );
+    }
+
+    for (const id of existingIds) {
+      if (!keptIds.has(id)) {
+        await connection.execute("DELETE FROM homework_questions WHERE id = ?", [id]);
+      }
+    }
+  },
+
+  // 建立作業子題
+  async createQuestions(connection, hwId, questions, startIndex = 0) {
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      const fileName = q.fileName || q.file_name || null;
+      const filePath = q.filePath || q.file_path || null;
+      await connection.execute(
+        `INSERT INTO homework_questions
+        (homework_id, question_order, title, description, answer_format, has_attachment, file_name, file_path, ai_prompt, discussion_prompt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          hwId,
+          startIndex + i + 1,
+          q.title,
+          q.description || "",
+          q.answerFormat,
+          filePath ? 1 : 0,
+          fileName,
+          filePath,
           q.aiPrompt || q.ai_prompt || q.gradingPrompt || "",
           q.discussionPrompt || q.discussion_prompt || "",
         ]
@@ -92,6 +158,7 @@ export const HomeworkModel = {
         answer_text,
         file_name,
         file_path,
+        files_json,
         score,
         feedback,
         graded_details,
@@ -144,6 +211,34 @@ export const HomeworkModel = {
     return rows[0]?.id;
   },
 
+  async saveSubmissionPayload(hwId, studentId, answerText, filesJson, legacyFileName, legacyFilePath) {
+    const sql = `
+      INSERT INTO homework_submissions
+        (homework_id, student_id, answer_text, file_name, file_path, files_json, is_submitted)
+      VALUES (?, ?, ?, ?, ?, ?, 1)
+      ON DUPLICATE KEY UPDATE
+        answer_text = VALUES(answer_text),
+        file_name = VALUES(file_name),
+        file_path = VALUES(file_path),
+        files_json = VALUES(files_json),
+        is_submitted = 1,
+        submitted_at = CURRENT_TIMESTAMP
+    `;
+    await pool.execute(sql, [
+      hwId,
+      studentId,
+      answerText || null,
+      legacyFileName,
+      legacyFilePath,
+      filesJson,
+    ]);
+    const [rows] = await pool.execute(
+      "SELECT id FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
+      [hwId, studentId]
+    );
+    return rows[0]?.id;
+  },
+
   /** 學生收回作業：保留作答內容與檔案，僅標記為未繳交 */
   async markSubmissionUnsubmitted(hwId, studentId) {
     await pool.execute(
@@ -169,13 +264,19 @@ export const HomeworkModel = {
     const [rows] = await pool.execute(
       `
       SELECT
-        id,
-        student_id as studentId,
-        submitted_at as submittedAt,
-        score,
-        feedback
-      FROM homework_submissions
-      WHERE homework_id = ? AND is_submitted = 1
+        hs.id,
+        hs.student_id as studentId,
+        s.name as studentName,
+        hs.submitted_at as submittedAt,
+        hs.score,
+        hs.feedback,
+        hs.answer_text as answerText,
+        hs.file_name as fileName,
+        hs.file_path as filePath,
+        hs.files_json as filesJson
+      FROM homework_submissions hs
+      LEFT JOIN students s ON s.student_id = hs.student_id
+      WHERE hs.homework_id = ? AND hs.is_submitted = 1
       `,
       [hwId]
     );
@@ -185,10 +286,11 @@ export const HomeworkModel = {
   // 老師端：取得單一繳交的詳細內容
   async getSubmissionDetail(submissionId) {
     const [rows] = await pool.execute(
-      `SELECT hs.*, hs.student_id as studentId, hs.submitted_at as submittedAt, hs.answer_text as answerText,
-              h.title as homeworkTitle
+      `SELECT hs.*, hs.student_id as studentId, s.name as studentName, hs.submitted_at as submittedAt, hs.answer_text as answerText,
+              h.title as homeworkTitle, h.course_id as courseCode
        FROM homework_submissions hs
        JOIN homeworks h ON h.id = hs.homework_id
+       LEFT JOIN students s ON s.student_id = hs.student_id
        WHERE hs.id = ?`,
       [submissionId]
     );

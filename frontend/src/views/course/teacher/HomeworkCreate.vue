@@ -39,6 +39,14 @@
           ></textarea>
         </div>
 
+        <label class="flex items-start gap-2 text-sm text-gray-700">
+          <input v-model="form.isGroupHomework" type="checkbox" class="mt-0.5" />
+          <span>
+            設為小組作業
+            <span class="block text-xs text-gray-500">此作業會顯示在課程「小組專區」，繳交與成績狀態依小組成員彙整。</span>
+          </span>
+        </label>
+
         <div>
           <label class="block text-[15px] font-bold text-gray-700 mb-1.5">
             統一附件 <span class="text-gray-500 font-normal text-sm">（選填，供全班學生下載，可複選）</span>
@@ -232,6 +240,7 @@ const form = ref({
   title: '',
   deadline: '',
   description: '',
+  isGroupHomework: false,
   questions: [
     {
       title: '',
@@ -308,6 +317,7 @@ const submitAssignment = async () => {
   formData.append('deadline', formattedDeadline)
 
   formData.append('description', form.value.description || '')
+  formData.append('isGroupHomework', String(form.value.isGroupHomework))
 
   const questionsData = form.value.questions.map(q => ({
     title: q.title,

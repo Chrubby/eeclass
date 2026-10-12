@@ -36,14 +36,20 @@
     <div class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="flex bg-gray-100 text-sm font-bold text-gray-700 p-3 border-b">
         <div class="flex-1">檔名</div>
+        <div class="w-28 text-center">上傳者</div>
         <div class="w-36 text-center">上傳時間</div>
-        <div class="w-32 text-center">操作</div>
+        <div class="w-40 text-center">操作</div>
       </div>
       <ul class="divide-y divide-gray-200">
         <li v-for="m in materials" :key="m.id" class="flex p-3 items-center text-[15px]">
           <div class="flex-1 truncate pr-4 text-gray-800">{{ m.fileName }}</div>
+          <div class="w-28 text-center text-gray-600 text-sm truncate">{{ m.uploaderName || m.uploaderId || '未知' }}</div>
           <div class="w-36 text-center text-gray-500 text-sm">{{ formatDate(m.createdAt) }}</div>
-          <div class="w-32 text-center flex items-center justify-center gap-2">
+          <div class="w-40 text-center flex items-center justify-center gap-2">
+            <label v-if="canManageMaterials" class="text-blue-600 hover:underline text-sm font-bold cursor-pointer">
+              {{ replacingId === m.id ? '更換中' : '更換' }}
+              <input type="file" class="hidden" :disabled="replacingId === m.id" @change="replaceMaterial(m.id, $event)" />
+            </label>
             <button
               type="button"
               class="text-blue-600 hover:underline text-sm font-bold disabled:opacity-50"
@@ -81,6 +87,7 @@ const courseId = route.params.id
 
 const canManageMaterials = computed(() => ['teacher', 'ta'].includes(getRoleFromToken()))
 const deletingId = ref(null)
+const replacingId = ref(null)
 const downloadingId = ref(null)
 
 const onDownload = async (m) => {
@@ -135,6 +142,23 @@ const uploadMaterial = async () => {
     alert(e.response?.data?.message || '上傳失敗')
   } finally {
     uploading.value = false
+  }
+}
+
+const replaceMaterial = async (materialId, event) => {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  replacingId.value = materialId
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    await api.put(`/api/courses/${courseId}/materials/${materialId}`, fd)
+    await loadMaterials()
+  } catch (e) {
+    alert(e.response?.data?.message || '更換失敗')
+  } finally {
+    replacingId.value = null
   }
 }
 
