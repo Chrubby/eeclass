@@ -7,12 +7,14 @@ import ForgotPassword from "../views/ForgotPassword.vue"
 import ResetPassword from "../views/ResetPassword.vue"
 import ChangePassword from "../views/ChangePassword.vue"
 import Profile from "../views/Profile.vue"
+import MainPage from '../views/MainPage.vue'
 import { getRoleFromToken, getAccessToken, getMustChangePassword } from '@/utils/auth.js'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/login" },
+    // { path: "/", redirect: "/login" },
+    { path: '/', name: 'MainPage', component: MainPage},
     { path: '/dashboard', name: 'Home', component: Home },
     { path: '/profile', name: 'Profile', component: Profile },
     { path: '/change-password', name: 'ChangePassword', component: ChangePassword },
@@ -22,6 +24,11 @@ const router = createRouter({
           path: '',
           name: 'CourseAnnouncement',
           component: () => import('../views/course/Announcement.vue')
+        },
+        {
+          path: 'studentlist',
+          name: 'StudentList',
+          component: () => import('../views/course/StudentList.vue')
         },
         {
           path: 'material',
@@ -133,7 +140,7 @@ router.beforeEach((to) => {
     return '/change-password'
   }
 
-  if (!token && !publicPaths.has(to.path) && to.path !== '/change-password') {
+  if (!token && !publicPaths.has(to.path) && to.path !== '/change-password' && to.path !== '/') {
     return '/login'
   }
 })

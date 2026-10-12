@@ -18,6 +18,8 @@ const user = ref({
   profileLoaded: false,
 })
 
+const canManage = computed(() => ['teacher', 'ta'].includes(user.value.role))
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 const avatarUrl = computed(() => {
@@ -28,16 +30,52 @@ const avatarUrl = computed(() => {
 })
 
 // 課程列表（
-const courses = ref([
-  { id: 'CE5061', name: 'class 1', teacher: 'teacher 1', assistant: 'assistant 1', grade: '博士班' },
-  { id: 'CE3071', name: 'class 2', teacher: 'teacher 2', assistant: 'assistant 2', grade: '學士班' }
-])
+// const courses = ref([
+//   { id: 'CE5061', name: 'class 1', teacher: 'teacher 1', assistant: 'assistant 1', grade: '博士班' },
+//   { id: 'CE3071', name: 'class 2', teacher: 'teacher 2', assistant: 'assistant 2', grade: '學士班' }
+// ])
 
 const isCoursePage = computed(() => route.path.startsWith('/course/'))
 const courseId = computed(() => route.params.id)
-const currentCourse = computed(() =>
-  courses.value.find((c) => c.id === courseId.value)
-)
+
+const currentCourse = ref({
+  name: '',
+  id: '',
+  teacher: '',
+  assistant: ''
+})
+
+const getcurrentCourse = async (courseCode) => {
+  try {
+    const res = await api.get(`/api/courses/search`,{
+      params: { code: courseCode }
+    })
+    const courseData = res.data
+    const courseName = courseData.name || courseData.course_name || '未命名課程'
+    let teacherName = '—'
+    if (courseData.teachers) {
+      if (Array.isArray(courseData.teachers) && courseData.teachers.length > 0) {
+        teacherName = courseData.teachers.map(t => t.name || t.teacher_name).join(', ')
+      } else {
+        teacherName = courseData.teachers.name || '—'
+      }
+    }
+
+    // 指定給畫面上綁定的變數
+    currentCourse.value = {
+      name: courseName,
+      id: courseCode,
+      teacher: teacherName,
+      assistant: '—' // 助教欄位晚點再補
+    }
+  } catch (err) {
+    console.error("取得課程資訊失敗", err)
+  }
+}
+
+// const currentCourse = computed(() =>
+//   courses.value.find((c) => c.id === courseId.value)
+// )
 const courseStaff = ref({ teachers: [], tas: [] })
 
 const loadCourseStaff = async (code) => {
@@ -61,7 +99,7 @@ watch(courseId, (code) => {
 }, { immediate: true })
 
 const isAuthPage = computed(() =>
-  ['Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
+  ['MainPage', 'Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
 )
 
 const showEmailPrompt = computed(() =>
@@ -76,13 +114,15 @@ const goToProfile = () => {
 const logout = () => {
   isMenuOpen.value = false
   localStorage.clear()
-  window.location.href = '/login'
+  // window.location.href = '/login'
+  window.location.href = '/'
 }
 
 const loadUser = async() => {
   const stored = localStorage.getItem("user")
   const token = localStorage.getItem("accessToken")
   const isAuthRoute =
+    route.path === '/' ||
     route.path === '/login' ||
     route.path === '/register' ||
     route.path === '/forgot-password' ||
@@ -116,9 +156,19 @@ const loadUser = async() => {
   }
 }
 
-watch(() => route.path, () => {
+watch(() => route.path, (newPath) => {
   loadUser()
-}, { immediate: true })
+
+  const match = newPath.match(/\/course?\/([^/]+)/)
+
+  if (match && match[1]) {
+    const courseId = match[1]
+    getcurrentCourse(courseId)
+  }
+  else {
+    currentCourse.value = { teacher: '', assistant: '' }
+  }
+}, { immediate: true }, { immediate: true })
 
 const onProfileUpdated = () => {
   loadUser()
@@ -136,15 +186,15 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="min-h-screen bg-gray-50 text-gray-800 font-sans">
-    <header v-if="!isAuthPage" class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm">
-      <div class="font-bold text-base">國立中央大學「新 ee-class 系統」</div>
+    <header v-if="!isAuthPage" class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm h-12">
+      <router-link to ="/" class="font-bold text-base p-1 border-2 border-transparent focus:border-black rounded ">國立中央大學「LMS 計畫」</router-link>
       <div class="flex space-x-6 items-center text-gray-600">
         <router-link to="/dashboard" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
         <NotificationBell v-if="user.role === 'student' || user.role === 'ta' || user.role === 'teacher'" />
         <div class="relative">
 
           <span class="cursor-pointer hover:text-blue-600" @click="isMenuOpen = !isMenuOpen">
-            {{ user.user_id || '使用者' }} ▾
+            {{ user.name || '使用者' }} ▾
           </span>
 
           <div v-if="isMenuOpen" class="absolute right-0 mt-4 w-36 bg-white border border-gray-200 shadow-lg z-50">
@@ -172,17 +222,18 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="!isAuthPage && !isCoursePage" class="h-32 bg-gray-300 relative flex items-center px-10">
-      <h1 class="text-3xl text-white font-bold z-10">ee-class 易課平台</h1>
+      <h1 class="text-3xl text-white font-bold">ee-class 易課平台</h1>
     </div>
 
     <div v-else-if="!isAuthPage && isCoursePage" class="h-28 bg-[#a39481] flex items-center px-10">
-      <h1 class="text-2xl text-white font-bold">課程代碼：{{ courseId }}</h1>
+      <h1 class="text-2xl text-white font-bold">課程代碼：{{ currentCourse?.id }}</h1>
     </div>
 
-    <div class="max-w-7xl mx-auto flex gap-6 mt-6 px-4 pb-10">
+    <!--div class="max-w-7xl mx-auto flex gap-6 mt-6 px-4 pb-10"-->
+    <div class="max-w-7xl mx-auto flex gap-6 pb-10">
       <!-- sidebar -->
 
-      <aside v-if="!isAuthPage" class="w-[260px] flex-shrink-0">
+      <aside v-if="!isAuthPage" class="w-[260px] mt-6 px-4 flex-shrink-0">
         <!-- 首頁-->
         <div v-if="!isCoursePage" class="bg-white border mb-4">
           <div class="bg-gray-100 px-4 py-2 font-bold text-center border-b text-sm">我的首頁</div>
@@ -208,7 +259,7 @@ onBeforeUnmount(() => {
         </div>
         <!-- 課程頁 -->
         <div v-else class="bg-white border mb-4">
-          <div class="bg-gray-100 px-4 py-2 font-bold text-center border-b text-sm">{{ currentCourse?.name || '—' }}</div>
+          <div class="bg-gray-100 px-4 py-2 font-bold text-center border-b text-sm">{{ currentCourse?.name || '未命名課程' }}</div>
           <div class="p-4 flex flex-col">
             <div class="w-20 h-20 bg-gray-200 rounded-full mb-3 mx-auto"></div>
 
@@ -260,6 +311,12 @@ onBeforeUnmount(() => {
           <router-link :to="`/course/${courseId}`" custom v-slot="{ navigate, isExactActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isExactActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
               公告
+            </li>
+          </router-link>
+
+          <router-link :to="`/course/${courseId}/studentlist`" custom v-slot="{ navigate, isActive }">
+            <li v-if="canManage" @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
+              學生名冊
             </li>
           </router-link>
 
