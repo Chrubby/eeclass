@@ -117,7 +117,7 @@ const router = createRouter({
 const staffRoles = ['teacher', 'ta']
 
 const publicPaths = new Set(['/login', '/register', '/forgot-password', '/reset-password'])
-const mustChangeAllowedPaths = new Set(['/change-password', '/login'])
+const mustChangeAllowedPaths = new Set(['/change-password', '/login', '/profile'])
 
 router.beforeEach((to) => {
   const userRole = getRoleFromToken()

@@ -19,13 +19,62 @@ export const DiscussionController = {
       const { course_code, title, content, ai_prompt } = req.body;
       if (!course_code || !title) return res.status(400).json({ message: "缺少必要參數" });
 
-      await DiscussionService.createDiscussion(course_code, title, content, ai_prompt, req.file);
+      await DiscussionService.createDiscussion(course_code, title, content, ai_prompt, req.file, req.user?.username);
       res.json({ message: "討論區建立成功" });
     } catch (error) {
       const msg = error.message || "";
       if (msg.includes("只允許") || msg.includes("不允許") || msg.includes("PDF")) {
         return res.status(400).json({ message: msg });
       }
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
+    }
+  },
+
+  async updateRoom(req, res) {
+    try {
+      const { title, content, ai_prompt, clearFile } = req.body;
+      await DiscussionService.updateDiscussion(req.params.id, {
+        title,
+        content,
+        aiPrompt: ai_prompt,
+        file: req.file,
+        clearFile,
+      });
+      res.json({ message: "討論主題已更新" });
+    } catch (error) {
+      const msg = error.message || "";
+      if (msg.includes("找不到")) return res.status(404).json({ message: msg });
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
+    }
+  },
+
+  async updateThread(req, res) {
+    try {
+      await DiscussionService.updateThread(
+        req.params.threadId,
+        req.user.username,
+        req.user.role,
+        req.body?.content,
+      );
+      res.json({ message: "留言已更新" });
+    } catch (error) {
+      const msg = error.message || "";
+      if (msg === "權限不足") return res.status(403).json({ message: msg });
+      if (msg.includes("找不到") || msg.includes("不能為空") || msg.includes("無法修改")) {
+        return res.status(400).json({ message: msg });
+      }
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
+    }
+  },
+
+  async deleteThread(req, res) {
+    try {
+      await DiscussionService.deleteThread(req.params.threadId, req.user.username, req.user.role);
+      res.json({ message: "留言已刪除" });
+    } catch (error) {
+      const msg = error.message || "";
+      if (msg === "權限不足") return res.status(403).json({ message: msg });
+      if (msg.includes("找不到")) return res.status(404).json({ message: msg });
       res.status(500).json({ message: "系統發生異常，請稍後再試" });
     }
   },

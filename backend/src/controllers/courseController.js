@@ -1,4 +1,5 @@
 import { CourseService } from "../services/courseService.js";
+import { CourseModel } from "../models/courseModel.js";
 
 export const CourseController = {
   async search(req, res) {
@@ -30,6 +31,15 @@ export const CourseController = {
       if (msg.includes("已經選過")) return res.status(400).json({ message: msg });
       if (msg.includes("找不到")) return res.status(404).json({ message: msg });
       res.status(500).json({ message: "系統發生異常，請稍後再試" });
+    }
+  },
+
+  async getContacts(req, res) {
+    try {
+      const contacts = await CourseModel.listContactsByCourseCode(req.params.courseCode);
+      res.json(contacts);
+    } catch {
+      res.status(500).json({ message: "讀取聯絡資訊失敗" });
     }
   },
 

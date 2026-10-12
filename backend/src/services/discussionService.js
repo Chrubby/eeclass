@@ -2,6 +2,7 @@ import { DiscussionModel } from "../models/discussionModel.js";
 import { CourseModel } from "../models/courseModel.js";
 import { AuthModel } from "../models/authModel.js";
 import { PdfHelper } from "../utils/pdfHelper.js";
+import { NotificationService, previewText } from "./notificationService.js";
 
 export const DiscussionService = {
   async getCourseDiscussions(courseCode) {
@@ -10,12 +11,62 @@ export const DiscussionService = {
     return DiscussionModel.getRoomsByCourseId(course.id);
   },
 
-  async createDiscussion(courseCode, title, content, aiPrompt, file) {
+  async createDiscussion(courseCode, title, content, aiPrompt, file, actorUsername = null) {
     const course = await CourseModel.findCourseByCode(courseCode);
     if (!course) throw new Error("找不到課程");
 
     const filePath = file ? `uploads/${file.filename}` : null;
-    await DiscussionModel.createRoom(course.id, title, content, aiPrompt, filePath);
+    const roomId = await DiscussionModel.createRoom(course.id, title, content, aiPrompt, filePath, actorUsername);
+
+    try {
+      await NotificationService.notifyByCourseCode({
+        courseCode,
+        type: "discussion",
+        refId: roomId,
+        headline: `新討論：${title}`,
+        message: previewText(content),
+        excludeUsername: actorUsername,
+        linkPath: `/course/${courseCode}/discussion/${roomId}`,
+      });
+    } catch (notifyError) {
+      console.error("[notify] 討論主題通知失敗", notifyError?.message || notifyError);
+    }
+  },
+
+  async updateDiscussion(roomId, { title, content, aiPrompt, file, clearFile }) {
+    const room = await DiscussionModel.getRoomById(roomId);
+    if (!room) throw new Error("找不到討論區");
+    const filePath = file ? `uploads/${file.filename}` : null;
+    await DiscussionModel.updateRoom(roomId, {
+      title,
+      content,
+      aiPrompt,
+      filePath,
+      clearFile: clearFile === true || clearFile === "1" || clearFile === "true",
+    });
+  },
+
+  async updateThread(threadId, username, role, content) {
+    const thread = await DiscussionModel.getThreadById(threadId);
+    if (!thread) throw new Error("找不到留言");
+    if (thread.student_id === "AI") throw new Error("無法修改 AI 留言");
+    const isStaff = role === "teacher" || role === "ta";
+    const isOwner = Boolean(thread.author_username) && thread.author_username === username;
+    if (!isStaff && !isOwner) throw new Error("權限不足");
+    if (!String(content || "").trim()) throw new Error("內容不能為空");
+    await DiscussionModel.updateThreadContent(threadId, content);
+  },
+
+  async deleteThread(threadId, username, role) {
+    const thread = await DiscussionModel.getThreadById(threadId);
+    if (!thread) throw new Error("找不到留言");
+    if (thread.student_id === "AI" && role !== "teacher" && role !== "ta") {
+      throw new Error("權限不足");
+    }
+    const isStaff = role === "teacher" || role === "ta";
+    const isOwner = Boolean(thread.author_username) && thread.author_username === username;
+    if (!isStaff && !isOwner) throw new Error("權限不足");
+    await DiscussionModel.deleteThread(threadId);
   },
 
   async deleteDiscussion(roomId) {
@@ -38,6 +89,22 @@ export const DiscussionService = {
 
     const roomInfo = await DiscussionModel.getRoomById(roomId);
     if (!requestAi || !roomInfo?.ai_prompt?.trim()) return;
+    if (roomInfo?.course_code) {
+      try {
+        await NotificationService.notifyByCourseCode({
+          courseCode: roomInfo.course_code,
+          type: "discussion_post",
+          refId: roomId,
+          headline: `討論區新留言：${roomInfo.title}`,
+          message: previewText(content),
+          excludeUsername: userId,
+          linkPath: `/course/${roomInfo.course_code}/discussion/${roomId}`,
+        });
+      } catch (notifyError) {
+        console.error("[notify] 討論留言通知失敗", notifyError?.message || notifyError);
+      }
+    }
+    if (!roomInfo?.ai_prompt) return; // 沒有設定 AI，結束處理
 
     // 2. 處理 AI 邏輯
     let currentUserRoleStr = user.role === "teacher" ? "老師" : user.role === "ta" ? "助教" : "學生";
@@ -46,7 +113,7 @@ export const DiscussionService = {
     // 3. 追溯對話歷史
     let threadChain = [{ role: currentUserRoleStr, content }];
     let currentParentId = parentThreadId;
-    
+
     while (currentParentId) {
       const pRow = await DiscussionModel.getParentThreadInfo(currentParentId);
       if (!pRow) break;

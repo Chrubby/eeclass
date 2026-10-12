@@ -3,7 +3,7 @@
 
     <div class="bg-blue-50 border border-blue-200 rounded p-5 flex justify-between items-center shadow-sm">
       <div>
-        <h2 class="text-xl font-bold text-[#337ab7] mb-1">正在批改：學號 {{ studentData.id }}</h2>
+        <h2 class="text-xl font-bold text-[#337ab7] mb-1">正在批改：{{ studentData.name || '未命名' }}（{{ studentData.id }}）</h2>
         <p class="text-sm text-gray-600">繳交時間：{{ studentData.uploadedAt }}</p>
       </div>
       <div v-if="gradingForm.score" class="text-right">
@@ -71,6 +71,29 @@
                   ></textarea>
                 </div>
 
+                <div class="bg-indigo-50 border border-indigo-200 rounded p-3 text-sm">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="font-bold text-indigo-800">AI 建議評分（僅老師可見）</span>
+                    <button
+                      type="button"
+                      class="px-3 py-1 rounded bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-60"
+                      :disabled="aiLoadingId === ans.questionId || aiLoadingAll"
+                      @click="aiGradeQuestion(ans)"
+                    >
+                      {{ aiLoadingId === ans.questionId ? 'AI 評分中...' : (ans.ai ? '重新評分' : 'AI 建議評分') }}
+                    </button>
+                  </div>
+                  <p v-if="ans.aiError" class="mt-2 text-red-600">{{ ans.aiError }}</p>
+                  <div v-else-if="ans.ai" class="mt-2 space-y-1 text-gray-700">
+                    <p>建議分數：<span class="font-black text-indigo-700">{{ ans.ai.suggested_score }}</span> / {{ ans.maxScore }}</p>
+                    <p v-if="ans.ai.reason" class="whitespace-pre-line"><span class="font-bold">評分理由：</span>{{ ans.ai.reason }}</p>
+                    <p v-if="ans.ai.feedback" class="whitespace-pre-line"><span class="font-bold">建議評語：</span>{{ ans.ai.feedback }}</p>
+                    <button type="button" class="mt-1 text-xs font-bold text-indigo-700 hover:underline" @click="applyAi(ans)">
+                      套用建議分數與評語
+                    </button>
+                  </div>
+                </div>
+
               </div>
 
             </div>
@@ -116,6 +139,33 @@
           </form>
         </div>
 
+        <div class="bg-white border rounded shadow-sm p-4 flex flex-col gap-3 text-sm">
+          <div class="font-bold text-indigo-800">AI 評分助手</div>
+          <p class="text-xs text-gray-500">依各題老師設定的評分 Prompt 產生建議，僅供參考，不會自動儲存。</p>
+          <button
+            type="button"
+            class="w-full bg-indigo-600 text-white font-bold py-2 rounded hover:bg-indigo-700 disabled:opacity-60"
+            :disabled="aiLoadingAll || Boolean(aiLoadingId)"
+            @click="aiGradeAll"
+          >
+            {{ aiLoadingAll ? 'AI 評分中...' : '全部題目 AI 建議評分' }}
+          </button>
+          <div v-if="aiTotal !== null" class="text-gray-700">
+            AI 建議總分：<span class="font-black text-indigo-700 text-lg">{{ aiTotal }}</span>
+            <button type="button" class="block mt-1 text-xs font-bold text-indigo-700 hover:underline" @click="applyAllAi">
+              全部套用
+            </button>
+          </div>
+          <button
+            type="button"
+            class="w-full border border-[#337ab7] text-[#337ab7] font-bold py-2 rounded hover:bg-blue-50 disabled:opacity-60"
+            :disabled="pdfDownloading"
+            @click="downloadMergedPdf"
+          >
+            {{ pdfDownloading ? '產生中...' : '下載此份合併 PDF' }}
+          </button>
+        </div>
+
       </div>
 
     </div>
@@ -123,10 +173,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/client.js'
-import { downloadFile } from '@/utils/files.js'
+import { downloadFile, downloadApi } from '@/utils/files.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -152,6 +202,73 @@ const studentData = ref({
   id: '',
   uploadedAt: ''
 })
+
+const aiLoadingId = ref(null)
+const aiLoadingAll = ref(false)
+const pdfDownloading = ref(false)
+
+const aiTotal = computed(() => {
+  const graded = studentAnswers.value.filter((ans) => ans.ai)
+  if (!graded.length) return null
+  return graded.reduce((sum, ans) => sum + (Number(ans.ai.suggested_score) || 0), 0)
+})
+
+const aiGradeQuestion = async (ans) => {
+  aiLoadingId.value = ans.questionId
+  ans.aiError = ''
+  try {
+    const { data } = await api.post(
+      `/api/submissions/${submissionId}/questions/${ans.questionId}/ai-grade`,
+      { homeworkId: hwId },
+    )
+    ans.ai = data
+  } catch (e) {
+    ans.aiError = e.response?.data?.message || 'AI 評分失敗'
+  } finally {
+    aiLoadingId.value = null
+  }
+}
+
+const aiGradeAll = async () => {
+  aiLoadingAll.value = true
+  try {
+    const { data } = await api.post(`/api/submissions/${submissionId}/ai-grade`, { homeworkId: hwId })
+    for (const item of data.perQuestion || []) {
+      const ans = studentAnswers.value.find((a) => a.questionId === item.questionId)
+      if (!ans) continue
+      if (item.error) {
+        ans.ai = null
+        ans.aiError = item.error
+      } else {
+        ans.ai = item
+        ans.aiError = ''
+      }
+    }
+  } catch (e) {
+    alert(e.response?.data?.message || 'AI 評分失敗')
+  } finally {
+    aiLoadingAll.value = false
+  }
+}
+
+const applyAi = (ans) => {
+  if (!ans.ai) return
+  ans.score = String(ans.ai.suggested_score)
+  if (ans.ai.feedback) ans.feedback = ans.ai.feedback
+}
+
+const applyAllAi = () => studentAnswers.value.forEach(applyAi)
+
+const downloadMergedPdf = async () => {
+  pdfDownloading.value = true
+  try {
+    await downloadApi(`/api/submissions/${submissionId}/pdf`, `${studentData.value.id || 'submission'}-合併作答.pdf`)
+  } catch (e) {
+    alert(e.response?.data?.message || '下載失敗')
+  } finally {
+    pdfDownloading.value = false
+  }
+}
 
 function perQuestionMaxScores(n) {
   if (!n || n < 1) return [100]
@@ -192,6 +309,7 @@ const loadData = async () => {
 
     studentData.value = {
       id: subData.studentId,
+      name: subData.studentName || '',
       uploadedAt: subData.submittedAt ? new Date(subData.submittedAt).toLocaleString() : '-'
     }
 
@@ -214,10 +332,20 @@ const loadData = async () => {
       console.error("解析每題評分失敗", e)
     }
 
+    let storedFiles = []
+    try {
+      storedFiles = subData.files_json ? JSON.parse(subData.files_json) : []
+    } catch {
+      storedFiles = []
+    }
     const qs = hwData.questions || []
     const maxScores = perQuestionMaxScores(qs.length)
     studentAnswers.value = qs.map((q, index) => {
       const detail = gradedDetails[index] || {}
+      const isFile = (q.answerFormat || q.answer_format) === 'file'
+      const stored = storedFiles[index]
+      const legacy = index === 0 ? { file_name: subData.file_name, file_path: subData.file_path } : null
+      const file = stored?.file_path ? stored : legacy
       return {
         id: q.id || index,
         questionId: q.id,
@@ -225,11 +353,13 @@ const loadData = async () => {
         questionDescription: q.description,
         format: q.answerFormat || q.answer_format,
         textAnswer: parsedAnswers[index] || '',
-        fileName: (q.answerFormat || q.answer_format) === 'file' ? subData.file_name : null,
-        filePath: (q.answerFormat || q.answer_format) === 'file' ? subData.file_path : null,
+        fileName: isFile ? file?.file_name || null : null,
+        filePath: isFile ? file?.file_path || null : null,
         score: detail.score || '',
         feedback: detail.feedback || '',
         maxScore: maxScores[index] ?? 100,
+        ai: null,
+        aiError: '',
       }
     })
 

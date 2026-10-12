@@ -22,8 +22,11 @@ export const AuthModel = {
 
   async findAccountByUsernameOrEmail(identifier) {
     const [rows] = await pool.execute(
-      "SELECT * FROM accounts WHERE username = ? OR email = ?",
-      [identifier, identifier],
+      `SELECT * FROM accounts
+       WHERE username = ? OR email = ?
+       ORDER BY (username = ?) DESC, id ASC
+       LIMIT 1`,
+      [identifier, identifier, identifier],
     );
     return rows[0];
   },
@@ -94,6 +97,20 @@ export const AuthModel = {
     } catch (err) {
       if (!isMissingColumnError(err)) throw err;
     }
+  },
+
+  async findOtherAccountByEmail(accountId, email) {
+    const [rows] = await pool.execute(
+      `SELECT id, username, email FROM accounts
+       WHERE id <> ? AND (LOWER(email) = LOWER(?) OR username = ?)
+       LIMIT 1`,
+      [accountId, email, email],
+    );
+    return rows[0] || null;
+  },
+
+  async updateEmail(accountId, email) {
+    await pool.execute("UPDATE accounts SET email = ? WHERE id = ?", [email, accountId]);
   },
 
   async updateAvatarUrl(accountId, avatarUrl) {

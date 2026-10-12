@@ -30,7 +30,7 @@
           <div class="flex-1 text-[#337ab7] hover:underline truncate pr-4">
             {{ item.title }}
           </div>
-          <div class="w-32 text-center text-gray-600 text-sm">{{ item.author || '教授' }}</div>
+          <div class="w-32 text-center text-gray-600 text-sm">{{ item.author || '未知' }}</div>
           <div class="w-32 text-center text-gray-500 text-sm">{{ formatDate(item.date) }}</div>
 
           <button

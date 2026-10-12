@@ -10,11 +10,13 @@ import authRoutes from "./src/routes/authRoutes.js";
 import courseRoutes from "./src/routes/courseRoutes.js";
 import announcementRoutes from "./src/routes/announcementRoutes.js";
 import discussionRoutes from "./src/routes/discussionRoutes.js";
+import notificationRoutes from "./src/routes/notificationRoutes.js";
 import homeworkRoutes from "./src/routes/homeworkRoutes.js";
 import homeworkAiRoutes from "./src/routes/homeworkAiRoutes.js";
 import { authMiddleware } from "./src/middlewares/authMiddleware.js";
 import { errorHandler } from "./src/middlewares/errorHandler.js";
 import { ensureSchema } from "./src/utils/ensureSchema.js";
+import { startHomeworkDeadlineNotifier } from "./src/services/homeworkDeadlineService.js";
 
 dotenv.config();
 
@@ -37,6 +39,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/courses", authMiddleware, courseRoutes);
 app.use("/api/announcements", authMiddleware, announcementRoutes);
 app.use("/api/discussions", authMiddleware, discussionRoutes);
+app.use("/api/notifications", authMiddleware, notificationRoutes);
 app.use("/api", authMiddleware, homeworkRoutes);
 app.use("/api", authMiddleware, homeworkAiRoutes);
 
@@ -46,5 +49,8 @@ const port = process.env.PORT || 5000;
 ensureSchema()
   .catch((e) => console.warn("[ensureSchema] 初始化檢查發生例外：", e?.message || e))
   .finally(() => {
-    app.listen(port, () => console.log(`Server running at http://127.0.0.1:${port}`));
+    app.listen(port, () => {
+      console.log(`Server running at http://127.0.0.1:${port}`);
+      startHomeworkDeadlineNotifier();
+    });
   });

@@ -17,6 +17,30 @@ export const CourseModel = {
     return rows[0];
   },
   // 取得該課程的老師名單
+  async listContactsByCourseCode(courseCode, conn = pool) {
+    const [teachers] = await conn.execute(
+      `SELECT t.name, a.email, 'teacher' AS role
+       FROM teacher_courses tc
+       JOIN teachers t ON t.id = tc.teacher_id
+       JOIN courses c ON c.id = tc.course_id
+       LEFT JOIN accounts a ON a.username = t.teacher_id
+       WHERE c.course_code = ?
+       ORDER BY t.id`,
+      [courseCode],
+    );
+    const [tas] = await conn.execute(
+      `SELECT s.name, a.email, 'ta' AS role
+       FROM enrollments e
+       JOIN students s ON s.id = e.student_id
+       JOIN accounts a ON a.username = s.student_id
+       JOIN courses c ON c.id = e.course_id
+       WHERE c.course_code = ? AND a.role = 'ta'
+       ORDER BY s.id`,
+      [courseCode],
+    );
+    return { teachers, tas };
+  },
+
   async getCourseTeachers(courseId, conn = pool) {
     const [rows] = await conn.execute(
       `SELECT t.id, t.name, t.teacher_id FROM teachers t

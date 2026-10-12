@@ -5,6 +5,27 @@ import { signAccessToken } from "../utils/jwt.js";
 
 const DEFAULT_RECOVERY_CODE = "20260519";
 
+function normalizeEmail(raw, { required = false } = {}) {
+  const email = String(raw ?? "").trim();
+  if (!email) {
+    if (required) throw new Error("請填寫信箱");
+    return null;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 100) {
+    throw new Error("請輸入有效的信箱");
+  }
+  return email;
+}
+
+async function assertEmailAvailable(accountId, email) {
+  const taken = await AuthModel.findOtherAccountByEmail(accountId ?? 0, email);
+  if (!taken) return;
+  if (String(taken.email || "").toLowerCase() === email.toLowerCase()) {
+    throw new Error("此信箱已被使用");
+  }
+  throw new Error("此信箱與其他帳號相同，請改用別的信箱");
+}
+
 function validateRegisterInput({ username, password, confirmPassword, name, role }) {
   const u = String(username ?? "").trim();
   if (!u) throw new Error("帳號不可為空");
@@ -62,7 +83,7 @@ function mapDbError(e, context) {
 }
 
 export const AuthService = {
-  async register({ username, password, name, role, confirmPassword }) {
+  async register({ username, password, name, role, confirmPassword, email, emailRequired = false }) {
     const trimmedUsername = String(username ?? "").trim();
     validateRegisterInput({
       username: trimmedUsername,
@@ -71,10 +92,12 @@ export const AuthService = {
       name,
       role,
     });
+    const normalizedEmail = normalizeEmail(email, { required: emailRequired });
+    if (normalizedEmail) await assertEmailAvailable(0, normalizedEmail);
 
     const passwordHash = await bcrypt.hash(password, 10);
     try {
-      await AuthModel.createAccount(trimmedUsername, passwordHash, null, role);
+      await AuthModel.createAccount(trimmedUsername, passwordHash, normalizedEmail, role);
 
       if (role === "student" || role === "ta") {
         await AuthModel.createStudent(name, trimmedUsername);
@@ -87,8 +110,11 @@ export const AuthService = {
   },
 
   async login(username, password) {
-    const account = await AuthModel.findAccountByUsernameOrEmail(username);
-    if (!account) throw new Error("帳號錯誤");
+    const identifier = String(username ?? "").trim();
+    if (!identifier || !password) throw new Error("請輸入帳號與密碼");
+
+    const account = await AuthModel.findAccountByUsernameOrEmail(identifier);
+    if (!account) throw new Error("帳號或信箱錯誤");
 
     const isMatch = await bcrypt.compare(password, account.password_hash);
     if (!isMatch) throw new Error("密碼錯誤");
@@ -117,10 +143,22 @@ export const AuthService = {
     return {
       role,
       username: account.username,
+      email: account.email || null,
       avatar_url: account.avatar_url || null,
       must_change_password: Boolean(account.must_change_password),
       user: userData || null,
     };
+  },
+
+  async updateEmail(username, rawEmail) {
+    const email = normalizeEmail(rawEmail, { required: true });
+
+    const account = await AuthModel.findAccountByUsername(username);
+    if (!account) throw new Error("找不到使用者");
+
+    await assertEmailAvailable(account.id, email);
+    await AuthModel.updateEmail(account.id, email);
+    return { message: "信箱已更新", email };
   },
 
   /** 忘記密碼：帳號 + 教師提供之重設代碼 */
