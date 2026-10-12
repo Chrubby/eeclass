@@ -100,6 +100,7 @@ watch(courseId, (code) => {
 
 // a roster import can change the teachers and TAs shown in the sidebar
 provide('refreshCourseInfo', () => loadCourseStaff(courseId.value))
+provide('currentCourse', currentCourse)
 
 const isAuthPage = computed(() =>
   ['MainPage', 'Login', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
@@ -232,7 +233,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else-if="!isAuthPage && isCoursePage" class="h-28 bg-[#a39481] flex items-center px-10">
-      <h1 class="text-2xl text-white font-bold">課程代碼：{{ currentCourse?.id }}</h1>
+      <h1 class="text-2xl text-white font-bold">{{ currentCourse?.name }}</h1>
     </div>
 
     <!--div class="max-w-7xl mx-auto flex gap-6 mt-6 px-4 pb-10"-->
