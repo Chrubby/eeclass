@@ -73,12 +73,8 @@ const MIGRATIONS = [
   // an earlier revision tracked withdrawals in enrollments.status; fold it into role, then drop it
   "UPDATE enrollments SET role = 'dropped' WHERE status = 'withdrawn'",
   "ALTER TABLE enrollments DROP COLUMN status",
-  // 助教從帳號身分改為課程身分：原本的助教帳號在已加入的課程裡成為該課助教，帳號本身變回學生
-  `UPDATE enrollments e
-     JOIN students s ON s.id = e.student_id
-     JOIN accounts a ON a.username = s.student_id
-   SET e.role = 'ta'
-   WHERE a.role = 'ta' AND COALESCE(e.role, 'student') <> 'dropped'`,
+  // 助教從帳號身分改為課程身分：原本的助教帳號變回學生帳號，選課紀錄不動；
+  // 要當哪一門課的助教，由授課老師或管理員在該課的學生名冊勾選
   "UPDATE accounts SET role = 'student' WHERE role = 'ta'",
   "ALTER TABLE accounts ADD COLUMN email VARCHAR(100) NULL",
   // notifications：站內通知（公告、作業、測驗、討論）
