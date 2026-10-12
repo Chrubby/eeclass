@@ -15,6 +15,8 @@ const user = ref({
   avatar_url: '',
 })
 
+const canManage = computed(() => ['teacher', 'ta'].includes(user.value.role))
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 const avatarUrl = computed(() => {
@@ -25,16 +27,52 @@ const avatarUrl = computed(() => {
 })
 
 // 課程列表（
-const courses = ref([
-  { id: 'CE5061', name: 'class 1', teacher: 'teacher 1', assistant: 'assistant 1', grade: '博士班' },
-  { id: 'CE3071', name: 'class 2', teacher: 'teacher 2', assistant: 'assistant 2', grade: '學士班' }
-])
+// const courses = ref([
+//   { id: 'CE5061', name: 'class 1', teacher: 'teacher 1', assistant: 'assistant 1', grade: '博士班' },
+//   { id: 'CE3071', name: 'class 2', teacher: 'teacher 2', assistant: 'assistant 2', grade: '學士班' }
+// ])
 
 const isCoursePage = computed(() => route.path.startsWith('/course/'))
 const courseId = computed(() => route.params.id)
-const currentCourse = computed(() =>
-  courses.value.find((c) => c.id === courseId.value)
-)
+
+const currentCourse = ref({
+  name: '',
+  id: '',
+  teacher: '',
+  assistant: ''
+})
+
+const getcurrentCourse = async (courseCode) => {
+  try {
+    const res = await api.get(`/api/courses/search`,{
+      params: { code: courseCode }
+    })  
+    const courseData = res.data
+    const courseName = courseData.name || courseData.course_name || '未命名課程'
+    let teacherName = '—'
+    if (courseData.teachers) {
+      if (Array.isArray(courseData.teachers) && courseData.teachers.length > 0) {
+        teacherName = courseData.teachers.map(t => t.name || t.teacher_name).join(', ')
+      } else {
+        teacherName = courseData.teachers.name || '—'
+      }
+    }
+
+    // 指定給畫面上綁定的變數
+    currentCourse.value = {
+      name: courseName,
+      id: courseCode,
+      teacher: teacherName,
+      assistant: '—' // 助教欄位晚點再補
+    }
+  } catch (err) {
+    console.error("取得課程資訊失敗", err)
+  }
+}
+
+// const currentCourse = computed(() =>
+//   courses.value.find((c) => c.id === courseId.value)
+// )
 
 const isAuthPage = computed(() =>
   ['MainPage', 'Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
@@ -89,16 +127,26 @@ const loadUser = async() => {
   }
 }
 
-watch(() => route.path, () => {
+watch(() => route.path, (newPath) => {
   loadUser()
-})
+
+  const match = newPath.match(/\/course?\/([^/]+)/)
+  
+  if (match && match[1]) {
+    const courseId = match[1]
+    getcurrentCourse(courseId)
+  } 
+  else {
+    currentCourse.value = { teacher: '', assistant: '' }
+  }
+}, { immediate: true })
 
 </script>
 
 <template>
   <div class="min-h-screen bg-gray-50 text-gray-800 font-sans">
     <header v-if="!isAuthPage" class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm h-12">
-      <router-link to ="/" class="font-bold text-base p-1 border-2 border-transparent focus:border-black rounded ">國立中央大學「新 ee-class 系統」</router-link>
+      <router-link to ="/" class="font-bold text-base p-1 border-2 border-transparent focus:border-black rounded ">國立中央大學「LMS 計畫」</router-link>
       <div class="flex space-x-6 items-center text-gray-600">
         <router-link to="/dashboard" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
         <div class="relative">
@@ -127,7 +175,7 @@ watch(() => route.path, () => {
     </div>
 
     <div v-else-if="!isAuthPage && isCoursePage" class="h-28 bg-[#a39481] flex items-center px-10">
-      <h1 class="text-2xl text-white font-bold">課程代碼：{{ courseId }}</h1>
+      <h1 class="text-2xl text-white font-bold">課程代碼：{{ currentCourse?.id }}</h1>
     </div>
 
     <!--div class="max-w-7xl mx-auto flex gap-6 mt-6 px-4 pb-10"-->
@@ -160,7 +208,7 @@ watch(() => route.path, () => {
         </div>
         <!-- 課程頁 -->
         <div v-else class="bg-white border mb-4">
-          <div class="bg-gray-100 px-4 py-2 font-bold text-center border-b text-sm">{{ currentCourse?.name || '—' }}</div>
+          <div class="bg-gray-100 px-4 py-2 font-bold text-center border-b text-sm">{{ currentCourse?.name || '未命名課程' }}</div>
           <div class="p-4 flex flex-col">
             <div class="w-20 h-20 bg-gray-200 rounded-full mb-3 mx-auto"></div>
 
@@ -198,6 +246,12 @@ watch(() => route.path, () => {
           <router-link :to="`/course/${courseId}`" custom v-slot="{ navigate, isExactActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isExactActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
               公告
+            </li>
+          </router-link>
+
+          <router-link :to="`/course/${courseId}/studentlist`" custom v-slot="{ navigate, isActive }">
+            <li v-if="canManage" @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
+              學生名冊
             </li>
           </router-link>
 
