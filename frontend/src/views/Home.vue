@@ -241,7 +241,13 @@ onMounted(async () => {
             <span class="text-green-500 text-sm">✔ Course</span>
           </div>
           <div class="w-2/3 p-3 text-[11px] flex flex-col justify-center">
-            <h4 class="text-blue-600 font-bold mb-1 truncate">{{ course.course_name }}</h4>
+            <div class="flex items-center gap-1.5 mb-1 min-w-0">
+              <h4 class="text-blue-600 font-bold truncate">{{ course.course_name }}</h4>
+              <span
+                v-if="course.my_role === 'ta'"
+                class="flex-shrink-0 text-[10px] leading-4 font-bold text-[#337ab7] border border-[#337ab7] rounded px-1"
+              >助教</span>
+            </div>
             <p class="text-gray-500">
               老師:
               <span v-if="course.teachers && course.teachers.length">
@@ -251,7 +257,6 @@ onMounted(async () => {
             </p>
             <p class="text-gray-500">學年度: {{ course.academic_year || '未提供' }}</p>
             <p class="text-gray-500">代碼: {{ course.course_code }}</p>
-            <p v-if="course.my_role === 'ta'" class="font-bold text-[#337ab7]">我是這門課的助教</p>
           </div>
         </div>
         <div v-if="courses.length === 0" class="text-gray-400 text-sm">尚未選擇任何課程</div>
