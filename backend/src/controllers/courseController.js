@@ -27,7 +27,7 @@ export const CourseController = {
       res.json({ message: "選課成功！" });
     } catch (error) {
       const msg = error.message || "";
-      if (msg.includes("已經選過")) return res.status(400).json({ message: msg });
+      if (msg.includes("已經選過") || msg.includes("退選")) return res.status(400).json({ message: msg });
       if (msg.includes("找不到")) return res.status(404).json({ message: msg });
       res.status(500).json({ message: "系統發生異常，請稍後再試" });
     }
@@ -44,6 +44,48 @@ export const CourseController = {
     }
   },
 
+  async getAllCourses(_req, res) {
+    try {
+      res.json(await CourseService.getAllCourses());
+    } catch (error) {
+      console.error("[getAllCourses]", error);
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
+    }
+  },
+
+  async getAllTeachers(_req, res) {
+    try {
+      res.json(await CourseService.getAllTeachers());
+    } catch (error) {
+      console.error("[getAllTeachers]", error);
+      res.status(500).json({ message: "系統發生異常，請稍後再試" });
+    }
+  },
+
+  async getRoster(req, res) {
+    try {
+      res.json(await CourseService.getRoster(req.params.courseCode));
+    } catch (error) {
+      const msg = error.message || "";
+      if (msg.includes("找不到")) return res.status(404).json({ message: msg });
+      console.error("[getRoster]", error);
+      res.status(500).json({ message: "讀取修課名單失敗" });
+    }
+  },
+
+  async importRoster(req, res) {
+    try {
+      if (!req.file) return res.status(400).json({ message: "請選擇要匯入的 Excel 檔案" });
+      const result = await CourseService.importRoster(req.params.courseCode, req.file.buffer);
+      res.json(result);
+    } catch (error) {
+      const msg = error.message || "";
+      if (msg.includes("找不到課程")) return res.status(404).json({ message: msg });
+      console.error("[importRoster]", error);
+      res.status(400).json({ message: msg || "匯入失敗" });
+    }
+  },
+
   async createCourse(req, res) {
     try {
       const { course_name, course_code, description, academic_year } = req.body;
@@ -51,12 +93,16 @@ export const CourseController = {
         return res.status(400).json({ message: "缺少必要欄位" });
       }
 
-      const body = {
-        ...req.body,
-        teacher_id: req.user.username,
-      };
+      // teachers own the course they create; an admin may assign a teacher now or leave it to the roster import
+      const teacherId = req.user.role === "admin" ? req.body.teacher_username || null : req.user.username;
 
-      const courseId = await CourseService.createCourse(body);
+      const courseId = await CourseService.createCourse({
+        course_name,
+        course_code,
+        description,
+        academic_year,
+        teacher_id: teacherId,
+      });
       res.json({ message: "課程建立成功", course_id: courseId });
     } catch (error) {
       res.status(400).json({ message: error.message || "課程建立失敗" });

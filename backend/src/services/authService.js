@@ -1,7 +1,9 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
+import { pool } from "../config/db.js";
 import { AuthModel } from "../models/authModel.js";
 import { signAccessToken } from "../utils/jwt.js";
+import { parseRosterExcel } from "../utils/rosterExcel.js";
 
 const DEFAULT_RECOVERY_CODE = "20260519";
 
@@ -27,13 +29,13 @@ function validateAccountInput({ username, password, confirmPassword, name }) {
 }
 
 // fill in the corresponding names
-async function createProfileForRole(role, name, username) {
+async function createProfileForRole(role, name, username, conn) {
   if (role === "student" || role === "ta") {
-    await AuthModel.createStudent(name, username);
+    await AuthModel.createStudent(name, username, conn);
   } else if (role === "teacher") {
-    await AuthModel.createTeacher(name, username);
+    await AuthModel.createTeacher(name, username, conn);
   } else if (role === "admin") {
-    await AuthModel.createAdmin(name, username);
+    await AuthModel.createAdmin(name, username, conn);
   }
 }
 
@@ -119,6 +121,52 @@ export const AuthService = {
     }
 
     return { username: trimmedUsername, role: targetRole };
+  },
+
+  /** admin batch-creates accounts from a roster Excel; existing accounts are left untouched */
+  async importAccounts(fileBuffer, initialPassword) {
+    validateNewPassword(initialPassword);
+    const { title, rows, problems } = await parseRosterExcel(fileBuffer);
+
+    // every imported account starts with the same password, so one hash is enough
+    const passwordHash = await bcrypt.hash(initialPassword, 10);
+
+    const created = [];
+    const skipped = [];
+    const failed = [...problems];
+
+    for (const row of rows) {
+      const summary = { rowNumber: row.rowNumber, username: row.username, name: row.name, role: row.role };
+
+      if (await AuthModel.findAccountByUsername(row.username)) {
+        skipped.push({ ...summary, reason: "帳號已存在" });
+        continue;
+      }
+      if (row.email) {
+        const emailOwner = await AuthModel.findAccountByUsernameOrEmail(row.email);
+        if (emailOwner) {
+          failed.push({ ...summary, reason: `信箱已被帳號 ${emailOwner.username} 使用` });
+          continue;
+        }
+      }
+
+      // account and profile row go in together so a failure never leaves a half-created account
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        await AuthModel.createAccount(row.username, passwordHash, row.email, row.role, connection);
+        await createProfileForRole(row.role, row.name, row.username, connection);
+        await connection.commit();
+        created.push(summary);
+      } catch (e) {
+        await connection.rollback();
+        failed.push({ ...summary, reason: mapDbError(e, "importAccounts").message });
+      } finally {
+        connection.release();
+      }
+    }
+
+    return { title, created, skipped, failed };
   },
 
   async login(username, password) {

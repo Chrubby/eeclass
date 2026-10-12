@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch} from 'vue'
+import { ref, computed, watch, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/api/client.js'
 import { setMustChangePassword } from '@/utils/auth.js'
@@ -24,17 +24,33 @@ const avatarUrl = computed(() => {
   return `${API_BASE}${url}`
 })
 
-// 課程列表（
-const courses = ref([
-  { id: 'CE5061', name: 'class 1', teacher: 'teacher 1', assistant: 'assistant 1', grade: '博士班' },
-  { id: 'CE3071', name: 'class 2', teacher: 'teacher 2', assistant: 'assistant 2', grade: '學士班' }
-])
-
 const isCoursePage = computed(() => route.path.startsWith('/course/'))
 const courseId = computed(() => route.params.id)
-const currentCourse = computed(() =>
-  courses.value.find((c) => c.id === courseId.value)
+const currentCourse = ref(null)
+
+const joinNames = (people) => people?.map((p) => p.name).join('、') || '—'
+
+const loadCourseInfo = async (code) => {
+  if (!code) return
+  try {
+    const { data } = await api.get('/api/courses', { params: { code } })
+    if (courseId.value === code) currentCourse.value = data
+  } catch {
+    currentCourse.value = null
+  }
+}
+
+watch(
+  courseId,
+  (code) => {
+    currentCourse.value = null
+    loadCourseInfo(code)
+  },
+  { immediate: true },
 )
+
+// a roster import can change the teachers and TAs shown in the sidebar
+provide('refreshCourseInfo', () => loadCourseInfo(courseId.value))
 
 const isAuthPage = computed(() =>
   ['Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
@@ -98,11 +114,10 @@ watch(() => route.path, () => {
     <header v-if="!isAuthPage" class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm">
       <div class="font-bold text-base">國立中央大學「新 ee-class 系統」</div>
       <div class="flex space-x-6 items-center text-gray-600">
-        <router-link
-          v-if="user.role === 'admin'"
-          to="/admin/accounts"
-          class="cursor-pointer hover:text-blue-600"
-        >【帳號管理】</router-link>
+        <template v-if="user.role === 'admin'">
+          <router-link to="/admin/accounts" class="cursor-pointer hover:text-blue-600">【帳號管理】</router-link>
+          <router-link to="/admin/courses" class="cursor-pointer hover:text-blue-600">【所有課程】</router-link>
+        </template>
         <router-link v-else to="/dashboard" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
         <div class="relative">
 
@@ -162,13 +177,13 @@ watch(() => route.path, () => {
         </div>
         <!-- 課程頁 -->
         <div v-else class="bg-white border mb-4">
-          <div class="bg-gray-100 px-4 py-2 font-bold text-center border-b text-sm">{{ currentCourse?.name || '—' }}</div>
+          <div class="bg-gray-100 px-4 py-2 font-bold text-center border-b text-sm">{{ currentCourse?.course_name || '—' }}</div>
           <div class="p-4 flex flex-col">
             <div class="w-20 h-20 bg-gray-200 rounded-full mb-3 mx-auto"></div>
 
             <div class="font-bold text-sm mb-1 ">
-              教授：{{ currentCourse?.teacher || '—' }}<br>
-              助教：{{ currentCourse?.assistant || '—' }}
+              教授：{{ joinNames(currentCourse?.teachers) }}<br>
+              助教：{{ joinNames(currentCourse?.tas) }}
             </div>
 
             <a class="text-xs text-gray-500 hover:text-blue-600">
@@ -197,6 +212,7 @@ watch(() => route.path, () => {
 
         <ul v-if="isCoursePage" class="bg-white text-[15px] text-gray-700 py-2">
 
+          <template v-if="user.role !== 'admin'">
           <router-link :to="`/course/${courseId}`" custom v-slot="{ navigate, isExactActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isExactActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
               公告
@@ -240,6 +256,18 @@ watch(() => route.path, () => {
           <router-link :to="`/course/${courseId}/grade`" custom v-slot="{ navigate, isActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
               成績
+            </li>
+          </router-link>
+          </template>
+
+          <router-link
+            v-if="['admin', 'teacher', 'ta'].includes(user.role)"
+            :to="`/course/${courseId}/roster`"
+            custom
+            v-slot="{ navigate, isActive }"
+          >
+            <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
+              修課名單
             </li>
           </router-link>
 

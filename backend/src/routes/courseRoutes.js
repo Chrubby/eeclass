@@ -4,7 +4,7 @@ import { AnnouncementController } from "../controllers/announcementController.js
 import { DiscussionController } from "../controllers/discussionController.js";
 import { HomeworkController } from "../controllers/homeworkController.js";
 import { MaterialController } from "../controllers/materialController.js";
-import { uploadPdf, upload} from "../middlewares/upload.js";
+import { uploadPdf, upload, uploadSpreadsheet } from "../middlewares/upload.js";
 import { requireRole } from "../middlewares/requireRole.js";
 import courseAiRoutes from "./courseAiRoutes.js";
 import aiQuizRoutes from "./AiQuizRoutes.js";
@@ -13,11 +13,22 @@ const router = express.Router();
 
 const staff = requireRole("teacher", "ta");
 const studentSide = requireRole("student", "ta");
+const rosterManagers = requireRole("admin", "teacher", "ta");
 
 router.get("/", CourseController.search);
 router.post("/enroll", studentSide, CourseController.enroll);
 router.get("/user", CourseController.getUserCourses);
-router.post("/", staff, CourseController.createCourse);
+router.get("/all", requireRole("admin"), CourseController.getAllCourses);
+router.get("/teachers", requireRole("admin"), CourseController.getAllTeachers);
+router.post("/", requireRole("admin", "teacher", "ta"), CourseController.createCourse);
+
+router.get("/:courseCode/roster", rosterManagers, CourseController.getRoster);
+router.post(
+  "/:courseCode/roster/import",
+  rosterManagers,
+  uploadSpreadsheet.single("file"),
+  CourseController.importRoster,
+);
 
 router.get("/:courseCode/announcements", AnnouncementController.getAnnouncements);
 router.post("/:courseCode/announcements", staff, AnnouncementController.create);

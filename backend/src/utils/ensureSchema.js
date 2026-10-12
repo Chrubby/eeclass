@@ -18,6 +18,12 @@ const MIGRATIONS = [
      admin_id VARCHAR(50) UNIQUE NOT NULL,
      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
    )`,
+  // roster rows without a student number use the email as the username, which can exceed 20 chars
+  "ALTER TABLE students MODIFY COLUMN student_id VARCHAR(100)",
+  "ALTER TABLE teachers MODIFY COLUMN teacher_id VARCHAR(100)",
+  // roster imports withdraw students missing from the file instead of deleting their enrollment
+  "ALTER TABLE enrollments ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'",
+  "ALTER TABLE enrollments ADD COLUMN withdrawn_at DATETIME NULL",
 ];
 
 const IGNORABLE_CODES = new Set([

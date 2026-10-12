@@ -25,7 +25,7 @@ cursor.execute("""
 CREATE TABLE IF NOT EXISTS students (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    student_id VARCHAR(20) UNIQUE,
+    student_id VARCHAR(100) UNIQUE,
     department VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
@@ -36,7 +36,7 @@ cursor.execute("""
 CREATE TABLE IF NOT EXISTS teachers (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    teacher_id VARCHAR(20) UNIQUE,
+    teacher_id VARCHAR(100) UNIQUE,
     department VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS enrollments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT,
     course_id INT,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    withdrawn_at DATETIME NULL,
     enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE ON UPDATE CASCADE

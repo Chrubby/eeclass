@@ -20,6 +20,12 @@ const router = createRouter({
       component: () => import('../views/admin/AccountManage.vue'),
       meta: { requiresAdmin: true }
     },
+    {
+      path: '/admin/courses',
+      name: 'AdminCourses',
+      component: () => import('../views/admin/CourseList.vue'),
+      meta: { requiresAdmin: true }
+    },
     { path: '/profile', name: 'Profile', component: Profile },
     { path: '/change-password', name: 'ChangePassword', component: ChangePassword },
     { path: '/course/:id', name: 'Course', component: Course,
@@ -105,6 +111,12 @@ const router = createRouter({
           path: 'grade',
           name: 'CourseGrade',
           component: () => import('../views/course/Grade.vue')
+        },
+        {
+          path: 'roster',
+          name: 'CourseRoster',
+          component: () => import('../views/course/Roster.vue'),
+          meta: { allowRoles: ['admin', 'teacher', 'ta'] }
         }
       ]
     },
@@ -125,6 +137,22 @@ router.beforeEach((to) => {
   const token = getAccessToken()
   const mustChange = getMustChangePassword()
 
+  if (token && mustChange && !mustChangeAllowedPaths.has(to.path)) {
+    return '/change-password'
+  }
+
+  if (!token && !publicPaths.has(to.path) && to.path !== '/change-password') {
+    return '/login'
+  }
+
+  // admins manage courses through the roster page only; the other course pages assume a teacher or student
+  if (token && userRole === 'admin') {
+    if (to.path === '/dashboard') return '/admin/accounts'
+    if (to.path.startsWith('/course/') && to.name !== 'CourseRoster') {
+      return { name: 'CourseRoster', params: { id: to.params.id } }
+    }
+  }
+
   if (to.meta.requiresTeacher && !staffRoles.includes(userRole)) {
     alert('無法訪問此頁面。')
     return false
@@ -135,18 +163,9 @@ router.beforeEach((to) => {
     return false
   }
 
-  if (token && mustChange && !mustChangeAllowedPaths.has(to.path)) {
-    return '/change-password'
-  }
-
-  if (!token && !publicPaths.has(to.path) && to.path !== '/change-password') {
-    return '/login'
-  }
-
-  // admin doesnt participate in courses, redirect to creation (for now)
-  // TODO: let admin be able manage every course present
-  if (token && userRole === 'admin' && (to.path === '/dashboard' || to.path.startsWith('/course/'))) {
-    return '/admin/accounts'
+  if (to.meta.allowRoles && !to.meta.allowRoles.includes(userRole)) {
+    alert('無法訪問此頁面。')
+    return false
   }
 })
 

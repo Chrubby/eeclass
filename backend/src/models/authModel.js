@@ -5,15 +5,15 @@ function isMissingColumnError(err) {
 }
 
 export const AuthModel = {
-  async createAccount(username, passwordHash, email, role) {
+  async createAccount(username, passwordHash, email, role, conn = pool) {
     try {
-      return await pool.execute(
+      return await conn.execute(
         "INSERT INTO accounts (username, password_hash, email, role, must_change_password) VALUES (?, ?, ?, ?, 1)",
         [username, passwordHash, email ?? null, role],
       );
     } catch (err) {
       if (!isMissingColumnError(err)) throw err;
-      return pool.execute(
+      return conn.execute(
         "INSERT INTO accounts (username, password_hash, email, role) VALUES (?, ?, ?, ?)",
         [username, passwordHash, email ?? null, role],
       );
@@ -38,16 +38,16 @@ export const AuthModel = {
     return rows[0]?.role;
   },
 
-  async createStudent(name, studentId) {
-    return pool.execute("INSERT INTO students (name, student_id) VALUES (?, ?)", [name, studentId]);
+  async createStudent(name, studentId, conn = pool) {
+    return conn.execute("INSERT INTO students (name, student_id) VALUES (?, ?)", [name, studentId]);
   },
 
-  async createTeacher(name, teacherId) {
-    return pool.execute("INSERT INTO teachers (name, teacher_id) VALUES (?, ?)", [name, teacherId]);
+  async createTeacher(name, teacherId, conn = pool) {
+    return conn.execute("INSERT INTO teachers (name, teacher_id) VALUES (?, ?)", [name, teacherId]);
   },
 
-  async createAdmin(name, adminId) {
-    return pool.execute("INSERT INTO admins (name, admin_id) VALUES (?, ?)", [name, adminId]);
+  async createAdmin(name, adminId, conn = pool) {
+    return conn.execute("INSERT INTO admins (name, admin_id) VALUES (?, ?)", [name, adminId]);
   },
 
   async countAdmins() {

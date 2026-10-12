@@ -49,7 +49,7 @@ const initDB = async () => {
         CREATE TABLE IF NOT EXISTS students (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(50) NOT NULL,
-        student_id VARCHAR(50) UNIQUE NOT NULL
+        student_id VARCHAR(100) UNIQUE NOT NULL
         )
     `);
 
@@ -58,7 +58,7 @@ const initDB = async () => {
         CREATE TABLE IF NOT EXISTS teachers (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(50) NOT NULL,
-        teacher_id VARCHAR(50) UNIQUE NOT NULL
+        teacher_id VARCHAR(100) UNIQUE NOT NULL
         )
     `);
 
@@ -98,7 +98,9 @@ const initDB = async () => {
         CREATE TABLE IF NOT EXISTS enrollments (
         id INT AUTO_INCREMENT PRIMARY KEY,
         student_id INT NOT NULL,
-        course_id INT NOT NULL
+        course_id INT NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        withdrawn_at DATETIME NULL
         )
     `);
 

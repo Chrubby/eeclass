@@ -21,6 +21,17 @@ export const AuthController = {
     }
   },
 
+  async importAccounts(req, res) {
+    try {
+      if (!req.file) return res.status(400).json({ message: "請選擇要匯入的 Excel 檔案" });
+      const result = await AuthService.importAccounts(req.file.buffer, req.body.initialPassword);
+      res.json(result);
+    } catch (error) {
+      console.error("[importAccounts]", error);
+      res.status(400).json({ message: error.message || "匯入失敗" });
+    }
+  },
+
   async login(req, res) {
     try {
       const { username, password } = req.body;

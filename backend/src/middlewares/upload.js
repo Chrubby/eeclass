@@ -82,6 +82,19 @@ export const uploadAvatar = multer({
   },
 });
 
+// roster imports are parsed straight from memory and never written to disk
+export const uploadSpreadsheet = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    if (ext !== ".xlsx") {
+      return cb(new Error("只允許上傳 .xlsx 檔案（舊版 .xls 請先另存為 .xlsx）"));
+    }
+    cb(null, true);
+  },
+});
+
 // 討論區：維持僅 PDF、較小上限
 export const uploadPdf = multer({
   storage,
