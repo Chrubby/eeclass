@@ -87,7 +87,7 @@
     <p class="text-gray-500 text-[13px] mb-5 leading-relaxed">
       上傳學員名單 .xlsx，需包含「姓名」「帳號」「信箱」欄位。沒有帳號的人會以信箱作為帳號；
       備註欄寫「助教」會建立助教帳號、寫「授課老師」會建立教師帳號，其餘都是學生。已存在的帳號會直接略過。
-      這裡只建立帳號，要把名單加入課程請到該課程的「修課名單」頁匯入。
+      這裡只建立帳號，要把名單加入課程請到該課程的「學生名冊」頁匯入。
     </p>
 
     <form @submit.prevent="importAccounts" class="flex flex-col gap-4 max-w-md">

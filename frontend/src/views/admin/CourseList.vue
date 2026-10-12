@@ -19,7 +19,7 @@
       <div>
         <label class="block text-gray-800 mb-1.5 text-[15px]">授課老師</label>
         <select v-model="form.teacher_username" :class="inputClass">
-          <option value="">稍後由修課名單匯入指定</option>
+          <option value="">稍後由學生名冊匯入指定</option>
           <option v-for="teacher in teachers" :key="teacher.username" :value="teacher.username">
             {{ teacher.name }}（{{ teacher.username }}）
           </option>
@@ -76,9 +76,9 @@
             <td class="px-3 py-2.5 text-right text-gray-500">{{ course.withdrawn_count }}</td>
             <td class="px-3 py-2.5 text-right">
               <router-link
-                :to="`/course/${course.course_code}/roster`"
+                :to="`/course/${course.course_code}/studentlist`"
                 class="text-[#337ab7] hover:underline font-bold whitespace-nowrap"
-              >修課名單</router-link>
+              >學生名冊</router-link>
             </td>
           </tr>
         </tbody>

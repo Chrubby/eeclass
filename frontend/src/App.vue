@@ -374,15 +374,9 @@ onBeforeUnmount(() => {
             </li>
           </router-link>
           </template>
-
-          <router-link
-            v-if="['admin', 'teacher', 'ta'].includes(user.role)"
-            :to="`/course/${courseId}/roster`"
-            custom
-            v-slot="{ navigate, isActive }"
-          >
+          <router-link v-else :to="`/course/${courseId}/studentlist`" custom v-slot="{ navigate, isActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
-              修課名單
+              學生名冊
             </li>
           </router-link>
 

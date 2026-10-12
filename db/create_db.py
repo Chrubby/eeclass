@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS enrollments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT,
     course_id INT,
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    role VARCHAR(50) DEFAULT 'student',
     withdrawn_at DATETIME NULL,
     enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE ON UPDATE CASCADE,

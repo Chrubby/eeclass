@@ -72,30 +72,6 @@ export const CourseController = {
     }
   },
 
-  async getRoster(req, res) {
-    try {
-      res.json(await CourseService.getRoster(req.params.courseCode));
-    } catch (error) {
-      const msg = error.message || "";
-      if (msg.includes("找不到")) return res.status(404).json({ message: msg });
-      console.error("[getRoster]", error);
-      res.status(500).json({ message: "讀取修課名單失敗" });
-    }
-  },
-
-  async importRoster(req, res) {
-    try {
-      if (!req.file) return res.status(400).json({ message: "請選擇要匯入的 Excel 檔案" });
-      const result = await CourseService.importRoster(req.params.courseCode, req.file.buffer);
-      res.json(result);
-    } catch (error) {
-      const msg = error.message || "";
-      if (msg.includes("找不到課程")) return res.status(404).json({ message: msg });
-      console.error("[importRoster]", error);
-      res.status(400).json({ message: msg || "匯入失敗" });
-    }
-  },
-
   async createCourse(req, res) {
     try {
       const { course_name, course_code, description, academic_year } = req.body;

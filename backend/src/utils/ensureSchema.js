@@ -66,11 +66,13 @@ const MIGRATIONS = [
   // roster rows without a student number use the email as the username, which can exceed 20 chars
   "ALTER TABLE students MODIFY COLUMN student_id VARCHAR(100)",
   "ALTER TABLE teachers MODIFY COLUMN teacher_id VARCHAR(100)",
-  // roster imports withdraw students missing from the file instead of deleting their enrollment
-  "ALTER TABLE enrollments ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'",
-  "ALTER TABLE enrollments ADD COLUMN withdrawn_at DATETIME NULL",
   // 修課身分（student / external / auditor / dropped）；initDB 也會加，這裡確保沒跑 initDB 的資料庫也有
   "ALTER TABLE enrollments ADD COLUMN role VARCHAR(50) DEFAULT 'student'",
+  // 退選時間：退選只改身分、不刪資料，重新加入時清空
+  "ALTER TABLE enrollments ADD COLUMN withdrawn_at DATETIME NULL",
+  // an earlier revision tracked withdrawals in enrollments.status; fold it into role, then drop it
+  "UPDATE enrollments SET role = 'dropped' WHERE status = 'withdrawn'",
+  "ALTER TABLE enrollments DROP COLUMN status",
   "ALTER TABLE accounts ADD COLUMN email VARCHAR(100) NULL",
   // notifications：站內通知（公告、作業、測驗、討論）
   `CREATE TABLE IF NOT EXISTS notifications (

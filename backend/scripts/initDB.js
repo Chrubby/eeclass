@@ -100,7 +100,7 @@ const initDB = async () => {
         id INT AUTO_INCREMENT PRIMARY KEY,
         student_id INT NOT NULL,
         course_id INT NOT NULL,
-        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        role VARCHAR(50) DEFAULT 'student',
         withdrawn_at DATETIME NULL
         )
     `);

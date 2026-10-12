@@ -25,14 +25,6 @@ router.get("/teachers", requireRole("admin"), CourseController.getAllTeachers);
 router.get("/search", CourseController.search);
 router.post("/", requireRole("admin", "teacher", "ta"), CourseController.createCourse);
 
-router.get("/:courseCode/roster", rosterManagers, CourseController.getRoster);
-router.post(
-  "/:courseCode/roster/import",
-  rosterManagers,
-  uploadSpreadsheet.single("file"),
-  CourseController.importRoster,
-);
-
 router.get("/:courseCode/contacts", CourseController.getContacts);
 router.get("/:courseCode/announcements", AnnouncementController.getAnnouncements);
 router.post("/:courseCode/announcements", staff, AnnouncementController.create);
@@ -52,9 +44,9 @@ router.post("/:courseId/materials", staff, upload.single("file"), MaterialContro
 router.put("/:courseId/materials/:materialId", staff, upload.single("file"), MaterialController.replaceMaterial);
 router.delete("/:courseId/materials/:materialId", staff, MaterialController.deleteMaterial);
 
-router.get("/:courseId/studentlist", staff, StudentListController.getCourseStudents);
-router.post("/:courseId/studentlist", staff, upload.single("file"), StudentListController.syncStudents);
-router.post("/:courseId/studentlist/update", staff, StudentListController.updateStudentRole);
+router.get("/:courseId/studentlist", rosterManagers, StudentListController.getCourseStudents);
+router.post("/:courseId/studentlist", rosterManagers, uploadSpreadsheet.single("file"), StudentListController.syncStudents);
+router.post("/:courseId/studentlist/update", rosterManagers, StudentListController.updateStudentRole);
 
 //AIQuiz
 router.use("/:courseId/aiquizzes", aiQuizRoutes);

@@ -40,7 +40,8 @@ const router = createRouter({
         {
           path: 'studentlist',
           name: 'StudentList',
-          component: () => import('../views/course/StudentList.vue')
+          component: () => import('../views/course/StudentList.vue'),
+          meta: { allowRoles: ['admin', 'teacher', 'ta'] }
         },
         {
           path: 'material',
@@ -123,12 +124,6 @@ const router = createRouter({
           path: 'grade',
           name: 'CourseGrade',
           component: () => import('../views/course/Grade.vue')
-        },
-        {
-          path: 'roster',
-          name: 'CourseRoster',
-          component: () => import('../views/course/Roster.vue'),
-          meta: { allowRoles: ['admin', 'teacher', 'ta'] }
         }
       ]
     },
@@ -157,11 +152,11 @@ router.beforeEach((to) => {
     return '/login'
   }
 
-  // admins manage courses through the roster page only; the other course pages assume a teacher or student
+  // admins manage courses through the student list only; the other course pages assume a teacher or student
   if (token && userRole === 'admin') {
     if (to.path === '/dashboard') return '/admin/accounts'
-    if (to.path.startsWith('/course/') && to.name !== 'CourseRoster') {
-      return { name: 'CourseRoster', params: { id: to.params.id } }
+    if (to.path.startsWith('/course/') && to.name !== 'StudentList') {
+      return { name: 'StudentList', params: { id: to.params.id } }
     }
   }
 
