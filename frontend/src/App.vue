@@ -38,6 +38,27 @@ const courseId = computed(() => route.params.id)
 const currentCourse = computed(() =>
   courses.value.find((c) => c.id === courseId.value)
 )
+const courseStaff = ref({ teachers: [], tas: [] })
+
+const loadCourseStaff = async (code) => {
+  if (!code) {
+    courseStaff.value = { teachers: [], tas: [] }
+    return
+  }
+  try {
+    const { data } = await api.get(`/api/courses/${code}/contacts`)
+    courseStaff.value = {
+      teachers: data.teachers || [],
+      tas: data.tas || [],
+    }
+  } catch {
+    courseStaff.value = { teachers: [], tas: [] }
+  }
+}
+
+watch(courseId, (code) => {
+  if (isCoursePage.value) loadCourseStaff(code)
+}, { immediate: true })
 
 const isAuthPage = computed(() =>
   ['Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
@@ -191,9 +212,23 @@ onBeforeUnmount(() => {
           <div class="p-4 flex flex-col">
             <div class="w-20 h-20 bg-gray-200 rounded-full mb-3 mx-auto"></div>
 
-            <div class="font-bold text-sm mb-1 ">
-              教授：{{ currentCourse?.teacher || '—' }}<br>
-              助教：{{ currentCourse?.assistant || '—' }}
+            <div class="font-bold text-sm mb-1 space-y-2">
+              <div>
+                <div>教授</div>
+                <p v-if="!courseStaff.teachers.length" class="font-normal text-gray-500">尚無資料</p>
+                <p v-for="(person, i) in courseStaff.teachers" :key="'t' + i" class="font-normal text-gray-700">
+                  {{ person.name || '未命名' }}
+                  <a v-if="person.email" :href="`mailto:${person.email}`" class="block text-xs text-blue-600 hover:underline">{{ person.email }}</a>
+                </p>
+              </div>
+              <div>
+                <div>助教</div>
+                <p v-if="!courseStaff.tas.length" class="font-normal text-gray-500">尚無資料</p>
+                <p v-for="(person, i) in courseStaff.tas" :key="'a' + i" class="font-normal text-gray-700">
+                  {{ person.name || '未命名' }}
+                  <a v-if="person.email" :href="`mailto:${person.email}`" class="block text-xs text-blue-600 hover:underline">{{ person.email }}</a>
+                </p>
+              </div>
             </div>
 
             <a class="text-xs text-gray-500 hover:text-blue-600">

@@ -109,6 +109,27 @@ const markAsRead = async (announcementId) => {
   }
 }
 
+const startEdit = (item) => {
+  newAnnouncement.value = {
+    id: item.id,
+    title: item.title || '',
+    content: item.content || '',
+    is_pinned: Boolean(item.is_pinned),
+  }
+  showAddAnnouncementModal.value = true
+}
+
+const deleteAnnouncement = async (item) => {
+  if (!confirm('確定刪除此公告？')) return
+  try {
+    await api.delete(`/api/courses/${courseCode.value}/announcements/${item.id}`)
+    if (selectedAnnouncement.value?.id === item.id) closeModal()
+    await fetchAnnouncements()
+  } catch (err) {
+    alert(err.response?.data?.message || '刪除公告失敗')
+  }
+}
+
 const createAnnouncement = async () => {
   if (!newAnnouncement.value.title || !newAnnouncement.value.content) {
     alert('請填寫標題和內容')
@@ -116,14 +137,17 @@ const createAnnouncement = async () => {
   }
 
   try {
-    await api.post(`/api/courses/${courseCode.value}/announcements`, {
-      course_code: courseCode.value,
+    const payload = {
       title: newAnnouncement.value.title,
       content: newAnnouncement.value.content,
-      is_pinned: newAnnouncement.value.is_pinned
-    })
+      is_pinned: newAnnouncement.value.is_pinned,
+    }
+    if (newAnnouncement.value.id) {
+      await api.put(`/api/courses/${courseCode.value}/announcements/${newAnnouncement.value.id}`, payload)
+    } else {
+      await api.post(`/api/courses/${courseCode.value}/announcements`, payload)
+    }
 
-    alert('公告新增成功')
     showAddAnnouncementModal.value = false
     newAnnouncement.value = { title: '', content: '', is_pinned: false }
     fetchAnnouncements()
@@ -209,6 +233,10 @@ watch(
           <div class="w-32 text-center text-gray-500 text-sm">
             {{ formatDate(item.created_at) }}
           </div>
+          <div v-if="user.role === 'teacher' || user.role === 'ta'" class="flex gap-2 ml-2" @click.stop>
+            <button type="button" class="text-sm text-blue-600 font-bold" @click="startEdit(item)">修改</button>
+            <button type="button" class="text-sm text-red-600 font-bold" @click="deleteAnnouncement(item)">刪除</button>
+          </div>
         </li>
       </ul>
 
@@ -257,7 +285,7 @@ watch(
   <div v-if="showAddAnnouncementModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
     <div class="bg-white p-6 rounded shadow-lg w-96 text-sm">
 
-      <h3 class="font-bold mb-3">新增公告</h3>
+      <h3 class="font-bold mb-3">{{ newAnnouncement.id ? '修改公告' : '新增公告' }}</h3>
 
       <!-- 公告標題 -->
       <input
@@ -282,12 +310,12 @@ watch(
 
       <!-- 按鈕 -->
       <div class="flex justify-end gap-2 mt-4">
-        <button @click="showAddAnnouncementModal = false" class="px-3 py-1 border rounded">
+        <button @click="showAddAnnouncementModal = false; newAnnouncement = { title: '', content: '', is_pinned: false }" class="px-3 py-1 border rounded">
           取消
         </button>
 
         <button @click="createAnnouncement" class="px-3 py-1 bg-green-500 text-white rounded">
-          新增公告
+          {{ newAnnouncement.id ? '儲存' : '新增公告' }}
         </button>
       </div>
     </div>

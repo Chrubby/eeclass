@@ -69,6 +69,24 @@
     <div class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700 flex justify-between items-center flex-wrap gap-2">
         <span>學生繳交清單</span>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class="px-3 py-1 rounded text-sm font-bold bg-[#337ab7] text-white hover:bg-[#285e8e] disabled:opacity-60"
+            :disabled="Boolean(exporting)"
+            @click="downloadAll('zip')"
+          >
+            {{ exporting === 'zip' ? '打包中...' : '下載全部作業' }}
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1 rounded text-sm font-bold border border-[#337ab7] text-[#337ab7] hover:bg-blue-50 disabled:opacity-60"
+            :disabled="Boolean(exporting)"
+            @click="downloadAll('merged')"
+          >
+            {{ exporting === 'merged' ? '產生中...' : '下載合併 PDF' }}
+          </button>
+        </div>
       </div>
 
       <table class="w-full text-left text-[15px]">
@@ -82,7 +100,10 @@
         </thead>
         <tbody class="divide-y divide-gray-200">
           <tr v-for="sub in submissions" :key="sub.id" class="hover:bg-blue-50 transition-colors">
-            <td class="p-3 pl-5 font-bold text-gray-800">{{ sub.studentId }}</td>
+            <td class="p-3 pl-5 font-bold text-gray-800">
+              {{ sub.studentName || '未命名' }}
+              <span class="block text-xs font-normal text-gray-500">{{ sub.studentId }}</span>
+            </td>
             <td class="p-3 text-gray-500 text-sm">{{ sub.uploadedAt }}</td>
             <td class="p-3">
               <span v-if="sub.score" class="font-bold text-green-600 text-lg">{{ sub.score }}</span>
@@ -135,10 +156,17 @@
     </div>
 
     <div class="text-[13px]">
-      <div v-if="item.eventType === 'submit'" class="space-y-1">
-        <p v-if="item.payload.hasFile" class="text-green-700">📎 繳交檔案：{{ item.payload.fileName }}</p>
-        <p class="text-gray-700 font-medium">文字內容：</p>
-        <div class="bg-white p-2 border rounded text-gray-600 italic">{{ item.payload.answerText }}</div>
+      <div v-if="item.eventType === 'submit'" class="space-y-2">
+        <p class="text-gray-700 font-medium">學生提交內容：</p>
+        <div
+          v-for="(block, bi) in submissionBlocks(item.payload)"
+          :key="bi"
+          class="bg-white p-2 border rounded text-gray-700"
+        >
+          <p class="font-bold text-gray-800">第 {{ bi + 1 }} 題</p>
+          <p class="whitespace-pre-line">{{ block.text || '（無文字）' }}</p>
+          <p v-if="block.fileName" class="text-green-700">附件：{{ block.fileName }}</p>
+        </div>
       </div>
 
       <div v-else-if="['ai_suggestion', 'student_self_estimate'].includes(item.eventType)" class="space-y-2">
@@ -182,7 +210,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/client.js'
-import { downloadFile } from '@/utils/files.js'
+import { downloadFile, downloadApi } from '@/utils/files.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -198,6 +226,7 @@ const historyModalOpen = ref(false)
 const historyLoading = ref(false)
 const currentHistory = ref(null)
 const deletingHomework = ref(false)
+const exporting = ref('')
 const attachmentDownloading = ref({})
 const questionDownloadingId = ref(null)
 
@@ -229,6 +258,37 @@ const progressText = computed(() => {
   const graded = submissions.value.filter((s) => s.score).length
   return `批改進度：${graded} / ${total} 份`
 })
+
+const submissionBlocks = (payload = {}) => {
+  let answers = Array.isArray(payload.answers) ? payload.answers : null
+  if (!answers && payload.answerText) {
+    try {
+      const parsed = JSON.parse(payload.answerText)
+      answers = Array.isArray(parsed) ? parsed : [payload.answerText]
+    } catch {
+      answers = [payload.answerText]
+    }
+  }
+  answers = answers || []
+  const files = Array.isArray(payload.files) ? payload.files : []
+  const count = Math.max(answers.length, files.length, 1)
+  return Array.from({ length: count }, (_, i) => ({
+    text: answers[i] || '',
+    fileName: files[i]?.file_name || (i === 0 ? payload.fileName : ''),
+  }))
+}
+
+const downloadAll = async (mode) => {
+  exporting.value = mode
+  try {
+    const name = mode === 'merged' ? `${homeworkTitle.value || '作業'}-全班合併作答.pdf` : `${homeworkTitle.value || '作業'}-全部繳交.zip`
+    await downloadApi(`/api/homeworks/${hwId}/export?mode=${mode}`, name)
+  } catch (e) {
+    alert(e.response?.data?.message || '下載失敗')
+  } finally {
+    exporting.value = ''
+  }
+}
 
 const eventTypeLabel = (t) => ({
   submit: '學生送出',

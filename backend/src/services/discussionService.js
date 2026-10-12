@@ -16,7 +16,7 @@ export const DiscussionService = {
     if (!course) throw new Error("找不到課程");
 
     const filePath = file ? `uploads/${file.filename}` : null;
-    const roomId = await DiscussionModel.createRoom(course.id, title, content, aiPrompt, filePath);
+    const roomId = await DiscussionModel.createRoom(course.id, title, content, aiPrompt, filePath, actorUsername);
 
     try {
       await NotificationService.notifyByCourseCode({
@@ -31,6 +31,42 @@ export const DiscussionService = {
     } catch (notifyError) {
       console.error("[notify] 討論主題通知失敗", notifyError?.message || notifyError);
     }
+  },
+
+  async updateDiscussion(roomId, { title, content, aiPrompt, file, clearFile }) {
+    const room = await DiscussionModel.getRoomById(roomId);
+    if (!room) throw new Error("找不到討論區");
+    const filePath = file ? `uploads/${file.filename}` : null;
+    await DiscussionModel.updateRoom(roomId, {
+      title,
+      content,
+      aiPrompt,
+      filePath,
+      clearFile: clearFile === true || clearFile === "1" || clearFile === "true",
+    });
+  },
+
+  async updateThread(threadId, username, role, content) {
+    const thread = await DiscussionModel.getThreadById(threadId);
+    if (!thread) throw new Error("找不到留言");
+    if (thread.student_id === "AI") throw new Error("無法修改 AI 留言");
+    const isStaff = role === "teacher" || role === "ta";
+    const isOwner = Boolean(thread.author_username) && thread.author_username === username;
+    if (!isStaff && !isOwner) throw new Error("權限不足");
+    if (!String(content || "").trim()) throw new Error("內容不能為空");
+    await DiscussionModel.updateThreadContent(threadId, content);
+  },
+
+  async deleteThread(threadId, username, role) {
+    const thread = await DiscussionModel.getThreadById(threadId);
+    if (!thread) throw new Error("找不到留言");
+    if (thread.student_id === "AI" && role !== "teacher" && role !== "ta") {
+      throw new Error("權限不足");
+    }
+    const isStaff = role === "teacher" || role === "ta";
+    const isOwner = Boolean(thread.author_username) && thread.author_username === username;
+    if (!isStaff && !isOwner) throw new Error("權限不足");
+    await DiscussionModel.deleteThread(threadId);
   },
 
   async deleteDiscussion(roomId) {

@@ -67,7 +67,15 @@ export const AnnouncementService = {
         }
       }
 
-      const [result] = await AnnouncementModel.create(course.id, finalTeacherId, title, content, isPinned, connection);
+      const [result] = await AnnouncementModel.create(
+        course.id,
+        finalTeacherId,
+        title,
+        content,
+        isPinned,
+        teacherIdentifier,
+        connection,
+      );
 
       // 站內通知寫入同一筆交易；信箱在提交成功後才寄
       emailPayload = await NotificationService.notifyByCourseCode({
@@ -90,5 +98,20 @@ export const AnnouncementService = {
     }
 
     NotificationService.sendEmailPayload(emailPayload);
-  }
+  },
+
+  async updateAnnouncement(courseCode, announcementId, title, content, isPinned) {
+    const course = await CourseModel.findCourseByCode(courseCode);
+    if (!course) throw new Error("找不到課程");
+    if (!title) throw new Error("缺少標題");
+    const affected = await AnnouncementModel.update(announcementId, course.id, title, content, isPinned);
+    if (!affected) throw new Error("找不到公告");
+  },
+
+  async deleteAnnouncement(courseCode, announcementId) {
+    const course = await CourseModel.findCourseByCode(courseCode);
+    if (!course) throw new Error("找不到課程");
+    const affected = await AnnouncementModel.remove(announcementId, course.id);
+    if (!affected) throw new Error("找不到公告");
+  },
 };

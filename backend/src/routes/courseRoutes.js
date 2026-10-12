@@ -19,8 +19,11 @@ router.post("/enroll", studentSide, CourseController.enroll);
 router.get("/user", CourseController.getUserCourses);
 router.post("/", staff, CourseController.createCourse);
 
+router.get("/:courseCode/contacts", CourseController.getContacts);
 router.get("/:courseCode/announcements", AnnouncementController.getAnnouncements);
 router.post("/:courseCode/announcements", staff, AnnouncementController.create);
+router.put("/:courseCode/announcements/:announcementId", staff, AnnouncementController.update);
+router.delete("/:courseCode/announcements/:announcementId", staff, AnnouncementController.remove);
 
 router.get("/:courseCode/discussions", DiscussionController.getCourseDiscussions);
 router.post("/:courseCode/discussions", staff, uploadPdf.single("file"), DiscussionController.createRoom);
@@ -31,6 +34,7 @@ router.use("/:courseCode", courseAiRoutes);
 
 router.get("/:courseId/materials", MaterialController.getMaterials);
 router.post("/:courseId/materials", staff, upload.single("file"), MaterialController.uploadMaterial);
+router.put("/:courseId/materials/:materialId", staff, upload.single("file"), MaterialController.replaceMaterial);
 router.delete("/:courseId/materials/:materialId", staff, MaterialController.deleteMaterial);
 
 //AIQuiz

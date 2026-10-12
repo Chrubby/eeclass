@@ -33,6 +33,12 @@ const MIGRATIONS = [
   "ALTER TABLE notifications ADD INDEX idx_notif_teacher (teacher_id, is_read, created_at)",
   // 作業截止後只通知老師一次；NULL 代表尚未通知
   "ALTER TABLE homeworks ADD COLUMN grade_notified_at DATETIME NULL",
+  // 學生每題各自的檔案，避免新上傳蓋掉其他題
+  "ALTER TABLE homework_submissions ADD COLUMN files_json LONGTEXT NULL",
+  // 討論主題記錄建立者，舊資料維持 NULL
+  "ALTER TABLE discussion_rooms ADD COLUMN created_by VARCHAR(64) NULL",
+  // 公告實際發布者；舊公告維持 NULL，畫面仍顯示授課老師
+  "ALTER TABLE announcements ADD COLUMN author_username VARCHAR(64) NULL",
 ];
 
 const IGNORABLE_CODES = new Set([

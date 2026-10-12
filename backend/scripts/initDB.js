@@ -175,6 +175,7 @@ const initDB = async () => {
         score VARCHAR(10),
         feedback TEXT,
         is_submitted TINYINT(1) NOT NULL DEFAULT 1,
+        files_json LONGTEXT NULL,
         submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         graded_at DATETIME NULL,
         UNIQUE KEY uniq_hw_student (homework_id, student_id)
@@ -188,6 +189,7 @@ const initDB = async () => {
         course_id INT NOT NULL,
         room_name VARCHAR(100),
         title VARCHAR(200),
+        created_by VARCHAR(64) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
         )
@@ -323,6 +325,12 @@ const initDB = async () => {
     } catch (e) { /* 索引已存在就忽略 */ }
     try {
         await pool.execute("ALTER TABLE homeworks ADD COLUMN grade_notified_at DATETIME NULL");
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    try {
+        await pool.execute("ALTER TABLE homework_submissions ADD COLUMN files_json LONGTEXT NULL");
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    try {
+        await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN created_by VARCHAR(64) NULL");
     } catch (e) { /* 欄位已存在就忽略 */ }
 
     try {

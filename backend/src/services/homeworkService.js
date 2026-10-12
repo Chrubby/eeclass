@@ -9,6 +9,30 @@ function deadlineIsInFuture(value) {
   return !Number.isNaN(date.getTime()) && date.getTime() > Date.now();
 }
 
+function decodeUploadName(file) {
+  return Buffer.from(file.originalname, "latin1").toString("utf8");
+}
+
+function parseJsonArray(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function storedFilesFromSubmission(existing, questionCount) {
+  const parsed = parseJsonArray(existing?.files_json);
+  const files = parsed.map((item) => (item && item.file_path ? item : null));
+  if (!files.some(Boolean) && existing?.file_path) {
+    files[0] = { file_name: existing.file_name || "附件", file_path: existing.file_path };
+  }
+  while (files.length < questionCount) files.push(null);
+  return files.slice(0, Math.max(questionCount, files.length));
+}
+
 export const HomeworkService = {
   // 老師發布作業
   async publishHomework(courseId, bodyData, files, actorUsername = null) {
@@ -111,7 +135,7 @@ export const HomeworkService = {
   },
 
   // 學生繳交作業
-  async submitHomework(hwId, studentId, answerText, file) {
+  async submitHomework(hwId, studentId, answerText, files = [], removeFileIndexes = []) {
     const homework = await HomeworkModel.getHomeworkById(hwId);
     if (homework && homework.deadline) {
       if (new Date() > new Date(homework.deadline)) {
@@ -119,37 +143,58 @@ export const HomeworkService = {
       }
     }
 
-    const correctFileName = file ? Buffer.from(file.originalname, "latin1").toString("utf8") : null;
-    const filePath = file ? `/uploads/${file.filename}` : null;
-
-    // 判斷是否有任何內容可繳交（包含先前已暫存的檔案或答案）
+    const questions = await HomeworkModel.getQuestionsByHomework(hwId);
     const existing = await HomeworkModel.getStudentSubmission(hwId, studentId);
+    const storedFiles = storedFilesFromSubmission(existing, questions.length);
+    const removeSet = new Set(
+      (Array.isArray(removeFileIndexes) ? removeFileIndexes : [])
+        .map((n) => Number(n))
+        .filter((n) => Number.isInteger(n) && n >= 0),
+    );
+    for (const index of removeSet) {
+      if (index < storedFiles.length) storedFiles[index] = null;
+    }
+
+    for (const file of files || []) {
+      const match = /^qfile_(\d+)$/.exec(file.fieldname || "");
+      const index = match ? Number(match[1]) : storedFiles.findIndex((item) => !item);
+      const target = index >= 0 ? index : storedFiles.length;
+      storedFiles[target] = {
+        file_name: decodeUploadName(file),
+        file_path: `/uploads/${file.filename}`,
+      };
+    }
+
     const trimmedAnswerText = typeof answerText === "string" ? answerText.trim() : "";
     let hasNonEmptyText = false;
     if (trimmedAnswerText) {
-      try {
-        const parsed = JSON.parse(trimmedAnswerText);
-        if (Array.isArray(parsed)) {
-          hasNonEmptyText = parsed.some((item) => String(item ?? "").trim() !== "");
-        } else {
-          hasNonEmptyText = String(parsed ?? "").trim() !== "";
-        }
-      } catch {
-        hasNonEmptyText = true;
-      }
+      const parsed = parseJsonArray(trimmedAnswerText);
+      hasNonEmptyText = parsed.length
+        ? parsed.some((item) => String(item ?? "").trim() !== "")
+        : trimmedAnswerText.length > 0;
     }
-    const hasExistingFile = Boolean(existing?.file_path);
-    if (!file && !hasNonEmptyText && !hasExistingFile) {
+    const hasFile = storedFiles.some(Boolean);
+    if (!hasNonEmptyText && !hasFile) {
       throw new Error("不能繳交空內容");
     }
 
-    const subId = await HomeworkModel.upsertSubmission(hwId, studentId, answerText, correctFileName, filePath);
+    const firstFile = storedFiles.find(Boolean) || null;
+    const subId = await HomeworkModel.saveSubmissionPayload(
+      hwId,
+      studentId,
+      answerText,
+      JSON.stringify(storedFiles),
+      firstFile?.file_name || null,
+      firstFile?.file_path || null,
+    );
 
     await appendSubmissionHistory(subId, "submit", {
       studentId,
-      hasFile: Boolean(file) || hasExistingFile,
-      fileName: correctFileName || existing?.file_name || null,
+      hasFile,
+      fileName: firstFile?.file_name || null,
       answerText: answerText || "",
+      answers: parseJsonArray(answerText),
+      files: storedFiles,
     });
 
     return subId;
@@ -175,18 +220,24 @@ export const HomeworkService = {
       });
 
       const mainFiles = (files || []).filter((f) => f.fieldname === "homework_files" || f.fieldname === "homework_file");
-      if (mainFiles.length > 0) {
-        const attachments = mainFiles.map((file) => ({
-          file_name: Buffer.from(file.originalname, "latin1").toString("utf8"),
+      const previous = parseJsonArray(existing.attachments_json);
+      const keepRaw = bodyData.keepAttachments;
+      let kept = previous;
+      if (keepRaw != null && keepRaw !== "") {
+        const keepPaths = new Set(parseJsonArray(keepRaw).map((item) => String(item)));
+        kept = previous.filter((item) => keepPaths.has(String(item?.file_path || "")));
+      }
+      if (mainFiles.length > 0 || (keepRaw != null && keepRaw !== "")) {
+        const added = mainFiles.map((file) => ({
+          file_name: decodeUploadName(file),
           file_path: `/uploads/${file.filename}`,
         }));
-        await HomeworkModel.updateHomeworkAttachments(connection, hwId, JSON.stringify(attachments));
+        await HomeworkModel.updateHomeworkAttachments(connection, hwId, JSON.stringify([...kept, ...added]));
       }
 
       if (questions) {
         const parsedQuestions = JSON.parse(questions);
-        await HomeworkModel.deleteQuestionsByHomeworkId(connection, hwId);
-        await HomeworkModel.createQuestions(connection, hwId, parsedQuestions);
+        await HomeworkModel.syncQuestions(connection, hwId, parsedQuestions);
       }
 
       await connection.commit();

@@ -15,6 +15,49 @@ export const HomeworkAiService = {
     }
   },
 
+  async promptsForCourse(courseCode) {
+    const byCode = await CourseAiModel.getPromptsByCourseCode(courseCode);
+    if (byCode) {
+      return {
+        discussion_prompt: (byCode.discussion_prompt || byCode.chat_prompt || "").trim(),
+        grading_prompt: (byCode.grading_prompt || byCode.chat_prompt || "").trim(),
+      };
+    }
+    return CourseAiModel.getPromptsByCourseId(courseCode);
+  },
+
+  // 每次呼叫都從資料庫重新讀題目與 prompt，老師修改後立即生效
+  async loadQuestionContext(homeworkId, questionId) {
+    const hw = await HomeworkModel.getHomeworkById(homeworkId);
+    if (!hw) throw new Error("找不到作業");
+    const questions = await HomeworkModel.getQuestionsByHomework(homeworkId);
+    const idx = questions.findIndex((q) => q.id === Number(questionId));
+    if (idx < 0) throw new Error("找不到子題，作業可能已被修改，請重新整理頁面");
+    return { hw, questions, idx, q: questions[idx] };
+  },
+
+  homeworkInfo(hw) {
+    return [`作業名稱：${hw.title || ""}`, hw.description ? `作業說明：${hw.description}` : ""]
+      .filter(Boolean)
+      .join("\n");
+  },
+
+  questionFile(submission, index) {
+    let files = [];
+    try {
+      const raw = submission?.files_json || submission?.filesJson;
+      const parsed = raw ? JSON.parse(raw) : [];
+      files = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      files = [];
+    }
+    if (files[index]?.file_path) return files[index];
+    if (index === 0 && submission?.file_path) {
+      return { file_name: submission.file_name, file_path: submission.file_path };
+    }
+    return null;
+  },
+
   isPdfFile(fileNameOrPath = "") {
     return /\.pdf$/i.test(fileNameOrPath);
   },
@@ -62,28 +105,25 @@ export const HomeworkAiService = {
   },
 
   async runAiGradeQuestion(submissionId, homeworkId, questionId) {
-    const questions = await HomeworkModel.getQuestionsByHomework(homeworkId);
-    const idx = questions.findIndex(q => q.id === Number(questionId));
-    if (idx < 0) throw new Error("找不到子題");
-
-    const q = questions[idx];
-    const hw = await HomeworkModel.getHomeworkById(homeworkId);
-    const prompts = await CourseAiModel.getPromptsByCourseId(hw.course_id);
+    const { hw, questions, idx, q } = await this.loadQuestionContext(homeworkId, questionId);
+    const prompts = await this.promptsForCourse(hw.course_id);
     const attachmentContext = await this.buildHomeworkAttachmentContext(hw);
     const maxScores = this.perQuestionMaxScores(questions.length);
     const maxForThis = maxScores[idx];
 
     const sub = await HomeworkModel.getSubmissionDetail(submissionId);
+    if (!sub) throw new Error("找不到繳交紀錄");
     let parsedAnswers = [];
     try { if (sub.answer_text) parsedAnswers = JSON.parse(sub.answer_text); } catch { }
 
     let studentBlock = `[文字作答] ${parsedAnswers[idx] || "（未作答）"}`;
     if (q.answer_format === "file") {
-      const fileName = sub.file_name || "無";
+      const questionFile = this.questionFile(sub, idx);
+      const fileName = questionFile?.file_name || "無";
       studentBlock = `[檔案繳交] 檔名：${fileName}`;
-      if (this.isPdfSubmission(sub)) {
+      if (questionFile && (this.isPdfFile(questionFile.file_name) || this.isPdfFile(questionFile.file_path))) {
         try {
-          const pdfText = await PdfHelper.extractText(sub.file_path);
+          const pdfText = await PdfHelper.extractText(questionFile.file_path);
           if (pdfText?.trim()) {
             studentBlock += `\n[PDF 內容摘錄]\n${pdfText}`;
           } else {
@@ -100,9 +140,11 @@ export const HomeworkAiService = {
     }
 
     const system = `你是協助大學教師預評分的助手。輸出必須為單一 JSON。此題滿分為 ${maxForThis} 分。\n` +
-      `JSON 鍵名：suggested_score, reason。\n課程評分提示：${prompts.grading_prompt}`;
+      `JSON 鍵名：suggested_score（數字）, reason（給老師看的評分理由）, feedback（可直接給學生的評語）。\n` +
+      `請嚴格依照「教師準則」評分。\n課程評分提示：${prompts.grading_prompt}`;
 
     const userContent = [
+      this.homeworkInfo(hw),
       `題目：${q.title}`,
       `說明：${q.description}`,
       `教師準則：${q.ai_prompt}`,
@@ -131,8 +173,10 @@ export const HomeworkAiService = {
         const parsed = tryParseJsonObject(raw);
         return {
           suggested_score: Math.min(maxForThis, Math.max(0, Number(parsed.suggested_score) || 0)),
-          reason: parsed.reason,
-          question_order: q.questionOrder,
+          reason: parsed.reason || "",
+          feedback: parsed.feedback || "",
+          max_score: maxForThis,
+          question_order: q.question_order,
         };
       } catch (e) {
         lastError = e;
@@ -163,16 +207,18 @@ export const HomeworkAiService = {
   },
 
   async chatWithTutor(hwId, questionId, messages) {
-    const questions = await HomeworkModel.getQuestionsByHomework(hwId);
-    const q = questions.find(item => item.id === Number(questionId));
-    const hw = await HomeworkModel.getHomeworkById(hwId);
-    const prompts = await CourseAiModel.getPromptsByCourseId(hw.course_id);
+    const { hw, q } = await this.loadQuestionContext(hwId, questionId);
+    const prompts = await this.promptsForCourse(hw.course_id);
     const attachmentContext = await this.buildHomeworkAttachmentContext(hw);
+    const history = (Array.isArray(messages) ? messages : [])
+      .filter((m) => ["user", "assistant"].includes(m?.role) && typeof m.content === "string");
 
-    const systemSafety = "你是大學 AI 助教。禁止透露評分標準。使用蘇格拉底式提問引導。";
+    const systemSafety = "你是大學 AI 助教。禁止透露評分標準。使用蘇格拉底式提問引導。請依照下方老師最新的指示回覆學生。";
     const systemContext = [
+      this.homeworkInfo(hw),
+      `目前討論的子題：${q.title}`,
       `題目說明：${q.description}`,
-      `教師內部準則：${q.discussion_prompt || q.ai_prompt}`,
+      `教師指示：${q.discussion_prompt || q.ai_prompt}`,
       `課程討論提示：${prompts.discussion_prompt}`,
       attachmentContext
     ].filter(Boolean).join("\n");
@@ -183,7 +229,7 @@ export const HomeworkAiService = {
     return await OpenAiHelper.chat([
       { role: "system", content: systemSafety },
       { role: "system", content: systemContext },
-      ...messages.slice(-16)
+      ...history.slice(-16)
     ]);
   }
 };
