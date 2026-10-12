@@ -38,10 +38,24 @@
             ></textarea>
           </div>
 
+          <label class="flex items-start gap-2 text-sm text-gray-700">
+            <input v-model="form.isGroupHomework" type="checkbox" class="mt-0.5" />
+            <span>
+              設為小組作業
+              <span class="block text-xs text-gray-500">此作業會顯示在課程「小組專區」，繳交與成績狀態依小組成員彙整。</span>
+            </span>
+          </label>
+
           <div>
             <label class="block text-[15px] font-bold text-gray-700 mb-1.5">
-              統一附件 <span class="text-gray-500 font-normal text-sm">（選填，上傳新檔會取代舊附件）</span>
+              統一附件 <span class="text-gray-500 font-normal text-sm">（新檔會加在原附件後面，不會覆蓋）</span>
             </label>
+            <ul v-if="existingAttachments.length" class="mb-2 space-y-1">
+              <li v-for="(att, i) in existingAttachments" :key="att.file_path || i" class="flex items-center justify-between text-sm bg-gray-50 border rounded px-2 py-1">
+                <span class="truncate">{{ att.file_name || att.fileName || '附件' }}</span>
+                <button type="button" class="text-red-600 text-xs font-bold ml-2" @click="existingAttachments.splice(i, 1)">移除</button>
+              </li>
+            </ul>
             <input
               type="file"
               multiple
@@ -157,11 +171,13 @@ const hwId = route.params.hwId
 
 const loading = ref(true)
 const homeworkFiles = ref([])
+const existingAttachments = ref([])
 
 const form = ref({
   title: '',
   deadline: '',
   description: '',
+  isGroupHomework: false,
   questions: [
     { title: '', description: '', answerFormat: 'file', gradingPrompt: '', discussionPrompt: '' },
   ],
@@ -177,11 +193,14 @@ function deadlineToInputValue(raw) {
 
 function mapQuestionFromApi(q) {
   return {
+    id: q.id || null,
     title: q.title || '',
     description: q.description || '',
     answerFormat: q.answerFormat || q.answer_format || 'file',
     gradingPrompt: q.gradingPrompt || q.ai_prompt || q.aiPrompt || '',
     discussionPrompt: q.discussionPrompt || q.discussion_prompt || '',
+    filePath: q.filePath || q.file_path || '',
+    fileName: q.fileName || q.file_name || '',
   }
 }
 
@@ -198,8 +217,10 @@ const loadHomework = async () => {
       title: data.title || '',
       deadline: deadlineToInputValue(data.deadline),
       description: data.description || '',
+      isGroupHomework: Boolean(data.is_group_homework),
       questions: qs,
     }
+    existingAttachments.value = Array.isArray(data.attachments) ? [...data.attachments] : []
   } catch (e) {
     alert(e.response?.data?.message || e.message)
     goBack()
@@ -248,15 +269,23 @@ const saveHomework = async () => {
   const formattedDeadline = form.value.deadline.replace('T', ' ') + ':00'
   formData.append('deadline', formattedDeadline)
   formData.append('description', form.value.description || '')
+  formData.append('isGroupHomework', String(form.value.isGroupHomework))
 
   const questionsData = form.value.questions.map((q) => ({
+    id: q.id || null,
     title: q.title,
     description: q.description,
     answerFormat: q.answerFormat,
     aiPrompt: q.gradingPrompt || '',
     gradingPrompt: q.gradingPrompt || '',
     discussionPrompt: q.discussionPrompt || '',
+    filePath: q.filePath || '',
+    fileName: q.fileName || '',
   }))
+  formData.append(
+    'keepAttachments',
+    JSON.stringify(existingAttachments.value.map((att) => att.file_path || att.filePath).filter(Boolean)),
+  )
   formData.append('questions', JSON.stringify(questionsData))
   homeworkFiles.value.forEach((file) => {
     formData.append('homework_files', file)

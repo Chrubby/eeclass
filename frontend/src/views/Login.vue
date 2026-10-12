@@ -6,7 +6,7 @@
         <div>
           <input
             v-model="email"
-            type="text" placeholder="帳號" required
+            type="text" placeholder="帳號或信箱" required
             class="w-full bg-[#eef3fe] border-b-[3px] border-gray-300 px-4 py-3 text-lg text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#e4ebf9] transition-colors"
           />
         </div>
@@ -46,6 +46,8 @@
           </label>
         </div>
 
+        <p v-if="errorMessage" class="text-red-600 text-sm text-center -mt-2">{{ errorMessage }}</p>
+
         <button
           type="submit"
           class="w-full bg-[#337ab7] text-white py-2.5 rounded text-lg tracking-widest hover:bg-[#285e8e] transition-colors mt-2"
@@ -75,15 +77,15 @@ const email = ref("")
 const password = ref("")
 const showPassword = ref(false)
 const rememberMe = ref(false)
+const errorMessage = ref("")
 
 const login = async () => {
+  errorMessage.value = ""
   try {
     const { data } = await api.post("/api/auth/login", {
-      username: email.value,
+      username: email.value.trim(),
       password: password.value,
     })
-
-    alert(data.message)
 
     setAccessToken(data.token)
     localStorage.setItem("user", data.username)
@@ -95,8 +97,7 @@ const login = async () => {
       window.location.href = data.role === 'admin' ? '/admin/accounts' : '/dashboard'
     }
   } catch (error) {
-    const msg = error.response?.data?.message || "連線失敗"
-    alert(msg)
+    errorMessage.value = error.response?.data?.message || "連線失敗"
     console.error("錯誤詳細資訊:", error)
   }
 }

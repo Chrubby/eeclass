@@ -34,6 +34,32 @@
       </div>
     </dl>
 
+    <h2 class="text-sm font-bold text-gray-700 mb-2">通知信箱</h2>
+    <p class="text-xs text-gray-500 mb-3 leading-relaxed">
+      課程公告、作業、測驗與討論有新內容時，會同時寄到這個信箱。請填寫可收信的地址。
+    </p>
+    <form @submit.prevent="saveEmail" class="flex flex-col gap-3 mb-8 border-b pb-6">
+      <input
+        v-model="email"
+        name="email"
+        type="text"
+        inputmode="email"
+        autocomplete="email"
+        placeholder="name@example.com"
+        maxlength="100"
+        class="w-full border border-gray-300 rounded px-3 py-2 text-[15px] focus:outline-none focus:border-blue-400"
+      />
+      <p v-if="emailError" class="text-sm text-red-600">{{ emailError }}</p>
+      <p v-else-if="emailSaved" class="text-sm text-green-700">信箱已更新</p>
+      <button
+        type="submit"
+        class="bg-[#337ab7] text-white px-4 py-2 rounded text-sm font-bold hover:bg-[#285e8e] self-start"
+        :disabled="emailLoading"
+      >
+        {{ emailLoading ? '儲存中…' : '儲存信箱' }}
+      </button>
+    </form>
+
     <h2 class="text-sm font-bold text-gray-700 mb-3">變更密碼</h2>
     <form @submit.prevent="changePassword" class="flex flex-col gap-3">
       <input
@@ -81,9 +107,15 @@ const profile = ref({
   username: '',
   name: '',
   role: '',
+  email: '',
   avatar_url: null,
   must_change_password: false,
 })
+
+const email = ref('')
+const emailLoading = ref(false)
+const emailError = ref('')
+const emailSaved = ref(false)
 
 const currentPassword = ref('')
 const newPassword = ref('')
@@ -106,14 +138,52 @@ const avatarDisplayUrl = computed(() => {
   return `${API_BASE}${url}`
 })
 
+let profileLoadSeq = 0
+
 const loadProfile = async () => {
+  const seq = ++profileLoadSeq
   const res = await api.get('/api/auth/me')
+  if (seq !== profileLoadSeq) return
+  const nextEmail = res.data.email || ''
+  const typed = email.value.trim()
   profile.value = {
     username: res.data.username || '',
     name: res.data.user?.name || '',
     role: res.data.role || '',
+    email: nextEmail,
     avatar_url: res.data.avatar_url || null,
     must_change_password: Boolean(res.data.must_change_password),
+  }
+  if (!typed || typed === nextEmail) email.value = nextEmail
+}
+
+const saveEmail = async (event) => {
+  profileLoadSeq += 1
+  const raw = String(new FormData(event.target).get('email') ?? email.value).trim()
+  email.value = raw
+  emailError.value = ''
+  emailSaved.value = false
+
+  if (!raw) {
+    emailError.value = '請填寫信箱'
+    return
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) || raw.length > 100) {
+    emailError.value = '請輸入有效的信箱'
+    return
+  }
+
+  emailLoading.value = true
+  try {
+    const { data } = await api.post('/api/auth/email', { email: raw })
+    profile.value.email = data.email || raw
+    email.value = profile.value.email
+    emailSaved.value = true
+    window.dispatchEvent(new CustomEvent('eeclass-profile-updated'))
+  } catch (e) {
+    emailError.value = e.response?.data?.message || '更新信箱失敗'
+  } finally {
+    emailLoading.value = false
   }
 }
 

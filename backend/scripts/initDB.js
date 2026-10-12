@@ -21,6 +21,7 @@ const initDB = async () => {
     const accountColumnMigrations = [
       "ALTER TABLE accounts ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0",
       "ALTER TABLE accounts ADD COLUMN avatar_url VARCHAR(500) NULL",
+      "ALTER TABLE accounts ADD COLUMN email VARCHAR(100) NULL",
     ];
     for (const sql of accountColumnMigrations) {
       try {
@@ -127,6 +128,25 @@ const initDB = async () => {
         )
     `);
 
+    // 8-1. 站內通知表（目前用於課程公告發布通知）
+    await pool.execute(`
+        CREATE TABLE IF NOT EXISTS notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        student_id INT NULL,
+        teacher_id INT NULL,
+        course_id INT NOT NULL,
+        type VARCHAR(30) NOT NULL,
+        ref_id VARCHAR(64) NULL,
+        title VARCHAR(255) NOT NULL,
+        message TEXT,
+        is_read BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_notif_student (student_id, is_read, created_at),
+        INDEX idx_notif_teacher (teacher_id, is_read, created_at),
+        INDEX idx_notif_ref (type, ref_id)
+        )
+    `);
+
     // 9. 作業主表
     await pool.execute(`
         CREATE TABLE IF NOT EXISTS homeworks (
@@ -134,7 +154,8 @@ const initDB = async () => {
         course_id VARCHAR(50),
         title VARCHAR(255),
         description TEXT,
-        deadline DATETIME
+        deadline DATETIME,
+        grade_notified_at DATETIME NULL
         )
     `);
 
@@ -166,6 +187,7 @@ const initDB = async () => {
         score VARCHAR(10),
         feedback TEXT,
         is_submitted TINYINT(1) NOT NULL DEFAULT 1,
+        files_json LONGTEXT NULL,
         submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         graded_at DATETIME NULL,
         UNIQUE KEY uniq_hw_student (homework_id, student_id)
@@ -179,6 +201,7 @@ const initDB = async () => {
         course_id INT NOT NULL,
         room_name VARCHAR(100),
         title VARCHAR(200),
+        created_by VARCHAR(64) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
         )
@@ -299,6 +322,27 @@ const initDB = async () => {
             FOREIGN KEY (parentId) REFERENCES AIQuizComments(id) ON DELETE CASCADE
         )
     `);
+    try {
+        await pool.execute("ALTER TABLE notifications MODIFY COLUMN ref_id VARCHAR(64) NULL");
+    } catch (e) { /* 表尚未建立或欄位已是字串就忽略 */ }
+    try {
+        await pool.execute("ALTER TABLE notifications MODIFY COLUMN student_id INT NULL");
+    } catch (e) { /* 已可為 NULL 就忽略 */ }
+    try {
+        await pool.execute("ALTER TABLE notifications ADD COLUMN teacher_id INT NULL");
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    try {
+        await pool.execute("ALTER TABLE notifications ADD INDEX idx_notif_teacher (teacher_id, is_read, created_at)");
+    } catch (e) { /* 索引已存在就忽略 */ }
+    try {
+        await pool.execute("ALTER TABLE homeworks ADD COLUMN grade_notified_at DATETIME NULL");
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    try {
+        await pool.execute("ALTER TABLE homework_submissions ADD COLUMN files_json LONGTEXT NULL");
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    try {
+        await pool.execute("ALTER TABLE discussion_rooms ADD COLUMN created_by VARCHAR(64) NULL");
+    } catch (e) { /* 欄位已存在就忽略 */ }
 
     try {
         await pool.execute("ALTER TABLE courses ADD COLUMN description TEXT");
@@ -384,7 +428,10 @@ const initDB = async () => {
         ADD COLUMN aiFeedback TEXT NOT NULL
         `)
     } catch (e) { /* 欄位已存在就忽略 */ }
-
+    try{
+        await pool.execute("ALTER TABLE enrollments ADD COLUMN role VARCHAR(50) DEFAULT 'student'");
+    } catch (e) { /* 欄位已存在就忽略 */ }
+    
     console.log("資料庫檢查與初始化完成");
   } catch (error) {
     console.error("資料庫初始化過程中發生錯誤：", error);

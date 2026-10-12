@@ -3,7 +3,7 @@ import { AuthService } from "../services/authService.js";
 export const AuthController = {
   async register(req, res) {
     try {
-      await AuthService.register(req.body);
+      await AuthService.register({ ...req.body, emailRequired: true });
       res.json({ message: "註冊成功！請登入並變更密碼。" });
     } catch (error) {
       console.error("[register]", error);
@@ -72,6 +72,15 @@ export const AuthController = {
       res.json(result);
     } catch (error) {
       res.status(400).json({ message: error.message });
+    }
+  },
+
+  async updateEmail(req, res) {
+    try {
+      const result = await AuthService.updateEmail(req.user.username, req.body?.email);
+      res.json(result);
+    } catch (error) {
+      res.status(400).json({ message: error.message || "更新信箱失敗" });
     }
   },
 

@@ -1,11 +1,18 @@
 import { HomeworkService } from "../services/homeworkService.js";
 import { HomeworkModel } from "../models/homeworkModel.js";
+import { HomeworkExportService } from "../services/homeworkExportService.js";
+
+function sendPdf(res, buffer, fileName) {
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+  res.send(buffer);
+}
 
 export const HomeworkController = {
   async publishHomework(req, res) {
     try {
       const { courseId } = req.params;
-      await HomeworkService.publishHomework(courseId, req.body, req.files);
+      await HomeworkService.publishHomework(courseId, req.body, req.files, req.user?.username);
       res.json({ message: "作業發布成功！" });
     } catch (error) {
       const msg = error.message || "";
@@ -67,9 +74,16 @@ export const HomeworkController = {
   async submitHomework(req, res) {
     try {
       const { hwId } = req.params;
-      const { answerText } = req.body;
+      const { answerText, removeFileIndexes } = req.body;
       const studentId = req.user.username;
-      await HomeworkService.submitHomework(hwId, studentId, answerText, req.file);
+      let removeIndexes = [];
+      try {
+        removeIndexes = removeFileIndexes ? JSON.parse(removeFileIndexes) : [];
+      } catch {
+        removeIndexes = [];
+      }
+      const files = req.files || (req.file ? [req.file] : []);
+      await HomeworkService.submitHomework(hwId, studentId, answerText, files, removeIndexes);
       res.json({ message: "作業繳交成功！" });
     } catch (error) {
       const msg = error.message || "";
@@ -104,6 +118,35 @@ export const HomeworkController = {
         return res.status(400).json({ message: msg });
       }
       res.status(500).json({ message: "收回失敗" });
+    }
+  },
+
+  async exportSubmissions(req, res) {
+    try {
+      const pack = await HomeworkExportService.build(req.params.hwId);
+      if (!pack) return res.status(404).json({ message: "找不到作業" });
+      const title = pack.homework.title || "作業";
+      if (req.query.mode === "merged") {
+        if (!pack.allPdf) return res.status(404).json({ message: "目前沒有學生繳交" });
+        sendPdf(res, pack.allPdf, `${title}-全班合併作答.pdf`);
+        return;
+      }
+      HomeworkExportService.streamZip(res, pack, `${title}-全部繳交.zip`);
+    } catch (error) {
+      console.error("[homework-export]", error?.message || error);
+      if (!res.headersSent) res.status(500).json({ message: "下載失敗" });
+    }
+  },
+
+  async exportSubmissionPdf(req, res) {
+    try {
+      const pack = await HomeworkExportService.buildForSubmission(req.params.submissionId);
+      if (!pack) return res.status(404).json({ message: "找不到繳交紀錄" });
+      const title = pack.homework?.title || "作業";
+      sendPdf(res, pack.pdf, `${title}-${pack.student.studentId}-合併作答.pdf`);
+    } catch (error) {
+      console.error("[homework-export]", error?.message || error);
+      if (!res.headersSent) res.status(500).json({ message: "產生 PDF 失敗" });
     }
   },
 

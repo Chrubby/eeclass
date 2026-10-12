@@ -2,6 +2,7 @@ import { AIQuizModel } from '../models/AiQuizModel.js';
 import { OpenAiHelper } from '../utils/openaiHelper.js';
 import { PdfHelper } from '../utils/pdfHelper.js';
 import { v4 as uuidv4 } from 'uuid';
+import { NotificationService, previewText } from './notificationService.js';
 
 export const AIQuizService = {
     /**
@@ -46,8 +47,22 @@ export const AIQuizService = {
     /**
      * 建立新測驗
      */
-    async createQuiz(quizData, questions) {
-        return await AIQuizModel.createQuizWithQuestions(quizData, questions);
+    async createQuiz(quizData, questions, actorUsername = null) {
+        const result = await AIQuizModel.createQuizWithQuestions(quizData, questions);
+        try {
+            await NotificationService.notifyByCourseCode({
+                courseCode: quizData.courseId,
+                type: 'quiz',
+                refId: result.quizId,
+                headline: `新測驗：${quizData.title}`,
+                message: '',
+                excludeUsername: actorUsername,
+                linkPath: `/course/${quizData.courseId}/aiquiz/${result.quizId}`,
+            });
+        } catch (notifyError) {
+            console.error('[notify] 測驗通知失敗', notifyError?.message || notifyError);
+        }
+        return result;
     },
 
     /**
@@ -180,6 +195,23 @@ export const AIQuizService = {
             id: uuidv4(),
             ...commentData
         };
-        return await AIQuizModel.saveComment(data);
+        const commentId = await AIQuizModel.saveComment(data);
+        try {
+            const ctx = await AIQuizModel.getCourseContextByAnswerId(data.answerId);
+            if (ctx?.courseCode) {
+                await NotificationService.notifyByCourseCode({
+                    courseCode: ctx.courseCode,
+                    type: 'quiz_comment',
+                    refId: ctx.quizId,
+                    headline: `測驗新留言：${ctx.quizTitle}`,
+                    message: previewText(data.content),
+                    excludeUsername: data.userId,
+                    linkPath: `/course/${ctx.courseCode}/aiquiz/${ctx.quizId}`,
+                });
+            }
+        } catch (notifyError) {
+            console.error('[notify] 測驗留言通知失敗', notifyError?.message || notifyError);
+        }
+        return commentId;
     }
 };

@@ -1,0 +1,15 @@
+{
+  "name": "@eeclass/bulk-account-import",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "可獨立抽離的 Excel/CSV 批次帳號建立核心。不依賴任何業務系統 DB，僅透過 createAccount adapter 寫入。",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./client/bulkImportUi.js"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  }
+}

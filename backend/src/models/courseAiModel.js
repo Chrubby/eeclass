@@ -36,12 +36,7 @@ export const CourseAiModel = {
       [courseId]
     );
 
-    if (!courseRows.length) {
-      return res.status(400).json({
-        message: "找不到課程",
-        errorStep: "course_not_found"
-      });
-    }
+    if (!courseRows.length) throw new Error("找不到課程");
 
     const [rows] = await connection.execute(
       "SELECT id FROM course_ai_prompts WHERE course_id = ?", [courseRows[0].id]
@@ -54,9 +49,9 @@ export const CourseAiModel = {
       );
     } else {
       await connection.execute(
-        `INSERT INTO course_ai_prompts (course_id, chat_prompt, discussion_prompt, grading_prompt, 
-         send_announcements, send_assignments, send_student_info) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [courseId, data.chat_prompt, data.discussion, data.grading, data.send_announcements, data.send_assignments, data.send_student_info]
+        `INSERT INTO course_ai_prompts (course_id, chat_prompt, discussion_prompt, grading_prompt,
+         send_announcements, send_assignments, send_student_info, send_grades) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [courseRows[0].id, data.chat_prompt || "", data.discussion, data.grading, data.send_announcements, data.send_assignments, data.send_student_info, data.send_grades]
       );
     }
   },

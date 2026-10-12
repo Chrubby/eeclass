@@ -167,9 +167,19 @@ export const AIQuizModel = {
         return id;
     },
 
-    /**
-     * 取得特定作答的所有留言
-     */
+    async getCourseContextByAnswerId(answerId) {
+        const sql = `
+            SELECT q.id AS quizId, q.title AS quizTitle, q.courseId AS courseCode
+            FROM StudentAnswers sa
+            JOIN AIQuestions aq ON aq.id = sa.questionId
+            JOIN AIQuizzes q ON q.id = aq.quizId
+            WHERE sa.id = ?
+            LIMIT 1
+        `;
+        const [rows] = await pool.execute(sql, [answerId]);
+        return rows[0] || null;
+    },
+
     async getCommentsByAnswer(answerId) {
         const sql = `
             SELECT * FROM AIQuizComments 

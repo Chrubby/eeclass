@@ -17,11 +17,55 @@ export const CourseModel = {
     return rows[0];
   },
   // 取得該課程的老師名單
+  async listContactsByCourseCode(courseCode, conn = pool) {
+    const [teachers] = await conn.execute(
+      `SELECT t.name, a.email, 'teacher' AS role
+       FROM teacher_courses tc
+       JOIN teachers t ON t.id = tc.teacher_id
+       JOIN courses c ON c.id = tc.course_id
+       LEFT JOIN accounts a ON a.username = t.teacher_id
+       WHERE c.course_code = ?
+       ORDER BY t.id`,
+      [courseCode],
+    );
+    const [tas] = await conn.execute(
+      `SELECT s.name, a.email, 'ta' AS role
+       FROM enrollments e
+       JOIN students s ON s.id = e.student_id
+       JOIN accounts a ON a.username = s.student_id
+       JOIN courses c ON c.id = e.course_id
+       WHERE c.course_code = ? AND a.role = 'ta'
+       ORDER BY s.id`,
+      [courseCode],
+    );
+    return { teachers, tas };
+  },
+
   async getCourseTeachers(courseId, conn = pool) {
     const [rows] = await conn.execute(
       `SELECT t.id, t.name, t.teacher_id FROM teachers t
        JOIN teacher_courses tc ON t.id = tc.teacher_id
        WHERE tc.course_id = ?`,
+      [courseId]
+    );
+    return rows;
+  },
+  
+  // 取得該課程的選課名單
+  async getCourseStudents(courseId, conn = pool){
+    const [rows] = await conn.execute(
+      `SELECT s.id, s.name, s.student_id , e.role FROM students s
+      JOIN enrollments e ON s.id = e.student_id
+      WHERE e.course_id = ?
+      ORDER BY 
+        CASE e.role
+          WHEN 'student' THEN 1
+          WHEN 'external' THEN 2
+          WHEN 'auditor' THEN 3
+          WHEN 'dropped' THEN 4
+          ELSE 5
+        END ASC,
+       s.student_id ASC`,
       [courseId]
     );
     return rows;
@@ -50,8 +94,34 @@ export const CourseModel = {
     );
     return rows[0]?.status ?? null;
   },
-  async enrollStudent(studentId, courseId, conn = pool) {
-    return conn.execute("INSERT INTO enrollments (student_id, course_id) VALUES (?, ?)", [studentId, courseId]);
+
+  async enrollStudent(studentId, courseId, conn = pool, role = 'student') {
+    const [existing] = await conn.execute(
+      "SELECT id, role FROM enrollments WHERE student_id = ? AND course_id = ?",
+      [studentId, courseId]
+    );
+    if (existing.length > 0) {
+      return conn.execute("UPDATE enrollments SET role = ? WHERE student_id = ? AND course_id = ?", [role, studentId, courseId]);
+    }
+    return conn.execute("INSERT INTO enrollments (student_id, course_id, role) VALUES (?, ?, ?)", [studentId, courseId, role]);
+  },
+
+  //退選相關
+  async dropCourse(studentId, courseId, conn = pool) {
+    const [result] = await conn.execute(
+      `UPDATE enrollments SET role = 'dropped' WHERE student_id = ? AND course_id = ?`,
+      [studentId, courseId]
+    );
+    return result;
+  },
+
+  //手動更新學生身分
+  async updateStudentRole(studentId, courseId, conn = pool, role) {
+    const [result] = await conn.execute(
+      `UPDATE enrollments SET role = ? WHERE student_id = ? AND course_id = ?`,
+      [role, studentId, courseId]
+    );
+    return result;
   },
   async setEnrollmentStatus(studentId, courseId, status, conn = pool) {
     return conn.execute(
@@ -131,7 +201,7 @@ export const CourseModel = {
   async getStudentCourses(studentDbId, conn = pool) {
     const [rows] = await conn.execute(
       `SELECT c.* FROM courses c JOIN enrollments e ON c.id = e.course_id
-       WHERE e.student_id = ? AND e.status = 'active'`,
+       WHERE e.student_id = ? AND e.status = 'active' AND e.role != 'dropped'`,
       [studentDbId]
     );
     return rows;

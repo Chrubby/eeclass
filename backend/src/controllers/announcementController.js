@@ -53,4 +53,31 @@ export const AnnouncementController = {
       res.status(400).json({ message: error.message || "公告新增失敗" });
     }
   },
+
+  async update(req, res) {
+    try {
+      const { title, content, is_pinned } = req.body;
+      await AnnouncementService.updateAnnouncement(
+        req.params.courseCode,
+        req.params.announcementId,
+        title,
+        content,
+        is_pinned,
+      );
+      res.json({ message: "公告已更新" });
+    } catch (error) {
+      const msg = error.message || "公告更新失敗";
+      res.status(msg.includes("找不到") ? 404 : 400).json({ message: msg });
+    }
+  },
+
+  async remove(req, res) {
+    try {
+      await AnnouncementService.deleteAnnouncement(req.params.courseCode, req.params.announcementId);
+      res.json({ message: "公告已刪除" });
+    } catch (error) {
+      const msg = error.message || "公告刪除失敗";
+      res.status(msg.includes("找不到") ? 404 : 400).json({ message: msg });
+    }
+  },
 };

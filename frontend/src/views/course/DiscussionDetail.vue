@@ -1,8 +1,37 @@
 <template>
   <div class="max-w-4xl mx-auto p-4">
     <div class="bg-white p-6 rounded shadow-sm border mb-6">
-      <h1 class="text-2xl font-bold text-gray-800 mb-2">{{ room.title }}</h1>
-      <p class="text-gray-600 whitespace-pre-line">{{ room.content }}</p>
+      <div class="flex items-start justify-between gap-3">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">{{ room.title }}</h1>
+        <button
+          v-if="isStaff && !editingRoom"
+          type="button"
+          class="text-sm font-bold text-[#337ab7] shrink-0"
+          @click="startEditRoom"
+        >
+          修改主題
+        </button>
+      </div>
+      <form v-if="editingRoom" class="space-y-3" @submit.prevent="saveRoom">
+        <input v-model="roomDraft.title" class="w-full border rounded px-3 py-2" placeholder="主題名稱" />
+        <textarea v-model="roomDraft.content" rows="4" class="w-full border rounded px-3 py-2" placeholder="內容" />
+        <textarea v-model="roomDraft.ai_prompt" rows="3" class="w-full border rounded px-3 py-2" placeholder="AI Prompt" />
+        <label class="block text-sm text-gray-600">
+          更換 PDF（留空則保留原附件）
+          <input type="file" accept=".pdf" class="mt-1 block w-full text-sm" @change="onRoomFile" />
+        </label>
+        <label v-if="room.file_path" class="flex items-center gap-2 text-sm text-red-600">
+          <input v-model="roomDraft.clearFile" type="checkbox" />
+          移除現有附件
+        </label>
+        <div class="flex gap-2">
+          <button type="submit" class="px-4 py-2 bg-[#337ab7] text-white rounded font-bold" :disabled="savingRoom">
+            {{ savingRoom ? '儲存中...' : '儲存' }}
+          </button>
+          <button type="button" class="px-4 py-2 border rounded" @click="editingRoom = false">取消</button>
+        </div>
+      </form>
+      <p v-else class="text-gray-600 whitespace-pre-line">{{ room.content }}</p>
 
       <div v-if="room.file_path" class="mt-5 pt-4 border-t border-gray-100">
         <span class="text-sm font-bold text-gray-700 mr-3">附件：</span>
@@ -28,17 +57,31 @@
         placeholder="發表你的看法..."
         :disabled="isSubmitting"
       ></textarea>
-      <button
-        @click="submitThread(null, newPost)"
-        :disabled="isSubmitting"
-        class="mt-2 text-white px-6 py-2 rounded font-bold transition-colors"
-        :class="{
-          'bg-gray-400 cursor-not-allowed opacity-70': isSubmitting,
-          'bg-[#337ab7] hover:bg-[#285e8e]': !isSubmitting,
-        }"
-      >
-        {{ isSubmitting ? '發表中，請稍候...' : '發表留言' }}
-      </button>
+      <div class="mt-2 flex items-center gap-4">
+        <label
+          v-if="aiAvailable"
+          class="flex items-center gap-2 text-sm text-gray-700 select-none"
+        >
+          <input
+            v-model="requestAi"
+            type="checkbox"
+            class="rounded border-gray-300 text-[#337ab7] focus:ring-[#337ab7]"
+            :disabled="isSubmitting"
+          />
+          請 AI 回覆
+        </label>
+        <button
+          @click="submitThread(null, newPost, requestAi)"
+          :disabled="isSubmitting"
+          class="text-white px-6 py-2 rounded font-bold transition-colors"
+          :class="{
+            'bg-gray-400 cursor-not-allowed opacity-70': isSubmitting,
+            'bg-[#337ab7] hover:bg-[#285e8e]': !isSubmitting,
+          }"
+        >
+          {{ isSubmitting ? '發表中，請稍候...' : '發表留言' }}
+        </button>
+      </div>
     </div>
 
     <div class="relative">
@@ -51,7 +94,11 @@
           <ThreadItem
             :node="rootThread"
             :is-submitting="isSubmitting"
+            :ai-available="aiAvailable"
+            :username="currentUser"
+            :role="currentRole"
             @submit-reply="submitThread"
+            @changed="fetchData"
           />
         </div>
 
@@ -81,6 +128,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/api/client.js'
 import { openFileInNewTab } from '@/utils/files.js'
+import { getRoleFromToken } from '@/utils/auth.js'
 import ThreadItem from './DiscussionThread.vue'
 
 const route = useRoute()
@@ -89,8 +137,62 @@ const roomId = route.params.discussionId
 const room = ref({})
 const allThreads = ref([])
 const newPost = ref('')
+const requestAi = ref(false)
 const isSubmitting = ref(false)
 const attachmentLoading = ref(false)
+const currentUser = ref(localStorage.getItem('user') || '')
+const currentRole = ref(getRoleFromToken() || '')
+const isStaff = computed(() => ['teacher', 'ta'].includes(currentRole.value))
+const editingRoom = ref(false)
+const savingRoom = ref(false)
+const roomDraft = ref({ title: '', content: '', ai_prompt: '', file: null, clearFile: false })
+
+const startEditRoom = () => {
+  roomDraft.value = {
+    title: room.value.title || '',
+    content: room.value.content || '',
+    ai_prompt: room.value.ai_prompt || '',
+    file: null,
+    clearFile: false,
+  }
+  editingRoom.value = true
+}
+
+const onRoomFile = (event) => {
+  const file = event.target.files?.[0] || null
+  if (file && file.type !== 'application/pdf') {
+    alert('請上傳 PDF')
+    event.target.value = ''
+    roomDraft.value.file = null
+    return
+  }
+  roomDraft.value.file = file
+}
+
+const saveRoom = async () => {
+  if (!roomDraft.value.title.trim()) {
+    alert('請填寫標題')
+    return
+  }
+  savingRoom.value = true
+  try {
+    const formData = new FormData()
+    formData.append('title', roomDraft.value.title.trim())
+    formData.append('content', roomDraft.value.content || '')
+    formData.append('ai_prompt', roomDraft.value.ai_prompt || '')
+    if (roomDraft.value.clearFile) formData.append('clearFile', 'true')
+    if (roomDraft.value.file) formData.append('file', roomDraft.value.file)
+    await api.put(`/api/discussions/${roomId}`, formData)
+    editingRoom.value = false
+    await fetchData()
+  } catch (error) {
+    alert(error.response?.data?.message || '修改失敗')
+  } finally {
+    savingRoom.value = false
+  }
+}
+
+const aiAvailable = computed(() => Boolean(room.value?.ai_prompt?.trim()))
 
 const onViewAttachment = () => {
   if (!room.value.file_path) return
@@ -140,21 +242,23 @@ const fetchData = async () => {
 }
 
 // 統一處理發送 API 的邏輯 (不論是主留言還是幾層下的子留言，都透過這個 function)
-const submitThread = async (parentId, contentText) => {
+const submitThread = async (parentId, contentText, wantAi = false) => {
   if (!contentText || !contentText.trim()) return
   isSubmitting.value = true
 
   try {
     await api.post(`/api/discussions/${roomId}/threads`, {
       content: contentText.trim(),
-      parent_thread_id: parentId // 後端原本就支援吃這個參數
+      parent_thread_id: parentId,
+      request_ai: Boolean(wantAi) && aiAvailable.value,
     })
 
     // 如果是全新的主留言，清空主輸入框 (子留言框會在 ThreadItem 內自行清空)
     if (!parentId) {
       newPost.value = ''
+      requestAi.value = false
     }
-    
+
     await fetchData()
   } catch (error) {
     console.error('發表留言失敗', error)

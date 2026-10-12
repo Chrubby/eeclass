@@ -15,11 +15,15 @@ export const PdfHelper = {
   resolveFilePath(filePath) {
     if (!filePath) return null;
 
+    const cleanPath = filePath.replace(/^[/\\]+/, "");
+    // 資料庫存的是 "/uploads/xxx"；Windows 上 path.isAbsolute 會把它當成 C:\uploads，需先排除
+    if (/^uploads[/\\]/.test(cleanPath)) {
+      return path.join(projectRoot, cleanPath);
+    }
+
     if (path.isAbsolute(filePath)) {
       return filePath;
     }
-
-    const cleanPath = filePath.replace(/^[/\\]/, "");
 
     return path.join(projectRoot, cleanPath);
   },
@@ -50,7 +54,7 @@ export const PdfHelper = {
       }
     } catch (err) {
 
-      console.error("[pdfHelper] 底層解析 PDF 發生錯誤：", error);
+      console.error("[pdfHelper] 底層解析 PDF 發生錯誤：", err);
       console.error("失敗的檔案路徑是：", filePath);
 
       return "";}

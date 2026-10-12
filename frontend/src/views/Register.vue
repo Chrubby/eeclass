@@ -31,6 +31,20 @@
 
         <div>
           <label class="block text-gray-800 mb-1.5 text-[15px]">
+            信箱 <span class="text-red-500">*</span>
+          </label>
+          <input
+            v-model="mail"
+            type="email"
+            placeholder="name@example.com"
+            required
+            maxlength="100"
+            class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
+          />
+        </div>
+
+        <div>
+          <label class="block text-gray-800 mb-1.5 text-[15px]">
             密碼 <span class="text-red-500">*</span>
           </label>
           <div class="relative">
@@ -70,28 +84,6 @@
         <p class="text-gray-500 text-[13px] -mt-1">
           此頁僅供學生註冊；教師與管理員帳號請由系統管理員建立。
         </p>
-<!--
-        <div class="flex flex-col gap-1 mt-1">
-          <div class="flex items-center gap-2">
-            <div class="h-[38px] w-[110px] bg-gray-200 border border-gray-300 flex items-center justify-center bg-cover bg-center opacity-80" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMTAiIGhlaWdodD0iMzgiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48dGV4dCB4PSI1NSIgeT0iMjYiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmaWxsPSIjMWUzYThhIiBsZXR0ZXItc3BhY2luZz0iMnB4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5iMzNtPC90ZXh0Pjwvc3ZnPg==');">
-            </div> -->
-
-            <!-- <button type="button" class="text-[#337ab7] hover:text-[#285e8e] cursor-pointer p-1">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button> -->
-
-            <!-- <input
-              v-model="captcha"
-              type="text"
-              placeholder="驗證碼"
-              required
-              class="w-28 bg-white border border-gray-300 rounded px-3 py-2 text-[15px] text-gray-800 focus:outline-none focus:border-blue-400 focus:bg-[#eef3fe] transition-colors"
-            /> -->
-          <!-- </div>
-          <span class="text-gray-500 text-xs mt-0.5">區分大小寫</span> -->
-        <!-- </div> -->
 
         <div class="flex justify-center mt-3">
           <button
@@ -120,10 +112,9 @@ import api from "@/api/client.js"
 
 const account = ref("")
 const name = ref("")
+const mail = ref("")
 const password = ref("")
 const confirmPassword = ref("")
-const agreeTerms = ref(false)
-const captcha = ref("")
 
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
@@ -140,6 +131,7 @@ const register = async () => {
     password: password.value,
     confirmPassword: confirmPassword.value,
     name: name.value.trim(),
+    email: mail.value.trim(),
   }
 
   try {
