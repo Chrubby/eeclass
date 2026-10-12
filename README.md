@@ -37,6 +37,7 @@ npm run backend:dev
 
 - 前端預設 API 位址為 `http://127.0.0.1:5000`，可透過 `frontend/.env` 的 `VITE_API_BASE_URL` 調整。
 - 作業頁面有 teacher/student 路由切換，測試可用瀏覽器 console 設定：
+- 網站已部署到 [`http://140.115.53.217`](http://140.115.53.217)
 
 ```js
 localStorage.setItem('userRole', 'teacher') // 或 'student'
