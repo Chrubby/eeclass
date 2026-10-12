@@ -5,13 +5,20 @@ import { appendSubmissionHistory } from "../utils/dbHistoryLogger.js";
 export const HomeworkService = {
   // 老師發布作業
   async publishHomework(courseId, bodyData, files) {
-    const { title, deadline, description, questions } = bodyData;
+    const { title, deadline, description, questions, isGroupHomework } = bodyData;
     let connection;
     try {
       connection = await pool.getConnection();
       await connection.beginTransaction();
 
-      const hwId = await HomeworkModel.createHomework(connection, courseId, title, deadline, description);
+      const hwId = await HomeworkModel.createHomework(
+        connection,
+        courseId,
+        title,
+        deadline,
+        description,
+        isGroupHomework === true || isGroupHomework === "true" || isGroupHomework === "1",
+      );
 
       const mainFiles = (files || []).filter((f) => f.fieldname === "homework_files" || f.fieldname === "homework_file");
       const attachments = mainFiles.map(file => ({
@@ -134,7 +141,7 @@ export const HomeworkService = {
 
   // 老師更新作業
   async updateHomework(hwId, bodyData, files) {
-    const { title, deadline, description, questions } = bodyData;
+    const { title, deadline, description, questions, isGroupHomework } = bodyData;
     const existing = await HomeworkModel.getHomeworkById(hwId);
     if (!existing) throw new Error("找不到作業");
 
@@ -147,6 +154,10 @@ export const HomeworkService = {
         title: title ?? existing.title,
         deadline: deadline ?? existing.deadline,
         description: description !== undefined ? description : existing.description,
+        isGroupHomework:
+          isGroupHomework === undefined
+            ? Boolean(existing.is_group_homework)
+            : isGroupHomework === true || isGroupHomework === "true" || isGroupHomework === "1",
       });
 
       const mainFiles = (files || []).filter((f) => f.fieldname === "homework_files" || f.fieldname === "homework_file");

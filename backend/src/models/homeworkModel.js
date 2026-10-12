@@ -2,10 +2,10 @@ import { pool } from "../config/db.js";
 
 export const HomeworkModel = {
   // 建立作業主檔 (需傳入 connection 以支援 Transaction)
-  async createHomework(connection, courseId, title, deadline, description) {
+  async createHomework(connection, courseId, title, deadline, description, isGroupHomework = false) {
     const [result] = await connection.execute(
-      "INSERT INTO homeworks (course_id, title, deadline, description, attachments_json) VALUES (?, ?, ?, ?, ?)",
-      [courseId, title, deadline, description || '', "[]"]
+      "INSERT INTO homeworks (course_id, title, deadline, description, attachments_json, is_group_homework) VALUES (?, ?, ?, ?, ?, ?)",
+      [courseId, title, deadline, description || '', "[]", isGroupHomework ? 1 : 0]
     );
     return result.insertId;
   },
@@ -17,10 +17,10 @@ export const HomeworkModel = {
     );
   },
 
-  async updateHomeworkById(connection, hwId, { title, deadline, description }) {
+  async updateHomeworkById(connection, hwId, { title, deadline, description, isGroupHomework }) {
     await connection.execute(
-      "UPDATE homeworks SET title = ?, deadline = ?, description = ? WHERE id = ?",
-      [title, deadline, description, hwId]
+      "UPDATE homeworks SET title = ?, deadline = ?, description = ?, is_group_homework = ? WHERE id = ?",
+      [title, deadline, description, isGroupHomework ? 1 : 0, hwId]
     );
   },
 

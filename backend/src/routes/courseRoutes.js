@@ -8,6 +8,7 @@ import { uploadPdf, upload} from "../middlewares/upload.js";
 import { requireRole } from "../middlewares/requireRole.js";
 import courseAiRoutes from "./courseAiRoutes.js";
 import aiQuizRoutes from "./AiQuizRoutes.js";
+import groupRoutes from "./groupRoutes.js";
 
 const router = express.Router();
 
@@ -27,6 +28,7 @@ router.post("/:courseCode/discussions", staff, uploadPdf.single("file"), Discuss
 
 router.get("/:courseId/homeworks", HomeworkController.getCourseHomeworks);
 router.post("/:courseId/homeworks", staff, upload.any(), HomeworkController.publishHomework);
+router.use("/:courseCode/groups", groupRoutes);
 router.use("/:courseCode", courseAiRoutes);
 
 router.get("/:courseId/materials", MaterialController.getMaterials);

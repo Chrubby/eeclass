@@ -10,14 +10,26 @@
     
     <p class="text-gray-700 mb-2 whitespace-pre-line">{{ node.content }}</p>
 
-    <div class="flex gap-2 mt-2 mb-4">
+    <div class="flex flex-wrap items-center gap-2 mt-2 mb-4">
       <input
         v-model="replyText"
-        class="flex-1 text-sm border p-1.5 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white disabled:bg-gray-100"
+        class="flex-1 min-w-[160px] text-sm border p-1.5 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white disabled:bg-gray-100"
         placeholder="回覆此留言..."
         :disabled="isSubmitting"
         @keyup.enter="handleReply"
       />
+      <label
+        v-if="aiAvailable"
+        class="flex items-center gap-1.5 text-xs text-gray-700 select-none whitespace-nowrap"
+      >
+        <input
+          v-model="requestAi"
+          type="checkbox"
+          class="rounded border-gray-300 text-[#337ab7] focus:ring-[#337ab7]"
+          :disabled="isSubmitting"
+        />
+        請 AI 回覆
+      </label>
       <button
         type="button"
         class="text-sm font-bold transition-colors text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
@@ -37,7 +49,8 @@
         :key="child.id"
         :node="child"
         :is-submitting="isSubmitting"
-        @submit-reply="(id, text) => $emit('submit-reply', id, text)"
+        :ai-available="aiAvailable"
+        @submit-reply="(id, text, wantAi) => $emit('submit-reply', id, text, wantAi)"
       />
     </div>
   </div>
@@ -55,17 +68,23 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  aiAvailable: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 // 定義向上層傳遞的事件
 const emit = defineEmits(['submit-reply'])
 const replyText = ref('')
+const requestAi = ref(false)
 
 const handleReply = () => {
   if (props.isSubmitting) return
   if (!replyText.value.trim()) return
-  emit('submit-reply', props.node.id, replyText.value)
+  emit('submit-reply', props.node.id, replyText.value, requestAi.value)
   replyText.value = ''
+  requestAi.value = false
 }
 
 // 共用方法

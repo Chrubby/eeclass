@@ -28,17 +28,31 @@
         placeholder="發表你的看法..."
         :disabled="isSubmitting"
       ></textarea>
-      <button
-        @click="submitThread(null, newPost)"
-        :disabled="isSubmitting"
-        class="mt-2 text-white px-6 py-2 rounded font-bold transition-colors"
-        :class="{
-          'bg-gray-400 cursor-not-allowed opacity-70': isSubmitting,
-          'bg-[#337ab7] hover:bg-[#285e8e]': !isSubmitting,
-        }"
-      >
-        {{ isSubmitting ? '發表中，請稍候...' : '發表留言' }}
-      </button>
+      <div class="mt-2 flex items-center gap-4">
+        <label
+          v-if="aiAvailable"
+          class="flex items-center gap-2 text-sm text-gray-700 select-none"
+        >
+          <input
+            v-model="requestAi"
+            type="checkbox"
+            class="rounded border-gray-300 text-[#337ab7] focus:ring-[#337ab7]"
+            :disabled="isSubmitting"
+          />
+          請 AI 回覆
+        </label>
+        <button
+          @click="submitThread(null, newPost, requestAi)"
+          :disabled="isSubmitting"
+          class="text-white px-6 py-2 rounded font-bold transition-colors"
+          :class="{
+            'bg-gray-400 cursor-not-allowed opacity-70': isSubmitting,
+            'bg-[#337ab7] hover:bg-[#285e8e]': !isSubmitting,
+          }"
+        >
+          {{ isSubmitting ? '發表中，請稍候...' : '發表留言' }}
+        </button>
+      </div>
     </div>
 
     <div class="relative">
@@ -51,6 +65,7 @@
           <ThreadItem
             :node="rootThread"
             :is-submitting="isSubmitting"
+            :ai-available="aiAvailable"
             @submit-reply="submitThread"
           />
         </div>
@@ -89,8 +104,11 @@ const roomId = route.params.discussionId
 const room = ref({})
 const allThreads = ref([])
 const newPost = ref('')
+const requestAi = ref(false)
 const isSubmitting = ref(false)
 const attachmentLoading = ref(false)
+
+const aiAvailable = computed(() => Boolean(room.value?.ai_prompt?.trim()))
 
 const onViewAttachment = () => {
   if (!room.value.file_path) return
@@ -140,19 +158,21 @@ const fetchData = async () => {
 }
 
 // 統一處理發送 API 的邏輯 (不論是主留言還是幾層下的子留言，都透過這個 function)
-const submitThread = async (parentId, contentText) => {
+const submitThread = async (parentId, contentText, wantAi = false) => {
   if (!contentText || !contentText.trim()) return
   isSubmitting.value = true
 
   try {
     await api.post(`/api/discussions/${roomId}/threads`, {
       content: contentText.trim(),
-      parent_thread_id: parentId // 後端原本就支援吃這個參數
+      parent_thread_id: parentId,
+      request_ai: Boolean(wantAi) && aiAvailable.value,
     })
 
     // 如果是全新的主留言，清空主輸入框 (子留言框會在 ThreadItem 內自行清空)
     if (!parentId) {
       newPost.value = ''
+      requestAi.value = false
     }
     
     await fetchData()

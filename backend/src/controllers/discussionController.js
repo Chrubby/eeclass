@@ -50,7 +50,7 @@ export const DiscussionController = {
 
   async addThread(req, res) {
     try {
-      const { content, parent_thread_id } = req.body;
+      const { content, parent_thread_id, request_ai } = req.body;
       if (!content) return res.status(400).json({ message: "內容不能為空" });
 
       await DiscussionService.addThreadAndTriggerAI(
@@ -58,6 +58,7 @@ export const DiscussionController = {
         req.user.username,
         content,
         parent_thread_id,
+        request_ai === true || request_ai === "true",
       );
       res.json({ message: "發表成功" });
     } catch {

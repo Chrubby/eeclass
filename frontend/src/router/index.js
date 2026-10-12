@@ -60,6 +60,11 @@ const router = createRouter({
           component: () => import('../views/course/Homework.vue')
         },
         {
+          path: 'group',
+          name: 'CourseGroup',
+          component: () => import('../views/course/Group.vue')
+        },
+        {
           path: 'homework/create',
           name: 'HomeworkCreate',
           component: () => import('../views/course/teacher/HomeworkCreate.vue'),

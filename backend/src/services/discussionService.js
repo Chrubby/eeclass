@@ -29,7 +29,7 @@ export const DiscussionService = {
     return { room, threads };
   },
 
-  async addThreadAndTriggerAI(roomId, userId, content, parentThreadId) {
+  async addThreadAndTriggerAI(roomId, userId, content, parentThreadId, requestAi = false) {
     const user = await AuthModel.findAccountByUsernameOrEmail(userId);
     if (!user) throw new Error("找不到使用者");
 
@@ -37,7 +37,7 @@ export const DiscussionService = {
     const newThreadId = await DiscussionModel.createThread(roomId, user.id, content, parentThreadId);
 
     const roomInfo = await DiscussionModel.getRoomById(roomId);
-    if (!roomInfo?.ai_prompt) return; // 沒有設定 AI，結束處理
+    if (!requestAi || !roomInfo?.ai_prompt?.trim()) return;
 
     // 2. 處理 AI 邏輯
     let currentUserRoleStr = user.role === "teacher" ? "老師" : user.role === "ta" ? "助教" : "學生";
