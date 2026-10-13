@@ -5,22 +5,30 @@ import { DiscussionController } from "../controllers/discussionController.js";
 import { HomeworkController } from "../controllers/homeworkController.js";
 import { MaterialController } from "../controllers/materialController.js";
 import { StudentListController } from "../controllers/StudentListController.js";
-import { uploadPdf, upload} from "../middlewares/upload.js";
+import { uploadPdf, upload, uploadSpreadsheet } from "../middlewares/upload.js";
 import { requireRole } from "../middlewares/requireRole.js";
+import { courseRole } from "../middlewares/courseRole.js";
 import courseAiRoutes from "./courseAiRoutes.js";
 import aiQuizRoutes from "./AiQuizRoutes.js";
 import groupRoutes from "./groupRoutes.js";
 
 const router = express.Router();
 
+// 兩個參數名稱帶的都是課程代碼；涵蓋底下所有 /:courseCode/... 與巢狀路由
+router.param("courseCode", courseRole.byCode);
+router.param("courseId", courseRole.byCode);
+
 const staff = requireRole("teacher", "ta");
 const studentSide = requireRole("student", "ta");
+const rosterManagers = requireRole("admin", "teacher", "ta");
 
 router.get("/", CourseController.search);
 router.post("/enroll", studentSide, CourseController.enroll);
 router.get("/user", CourseController.getUserCourses);
-router.post("/", staff, CourseController.createCourse);
+router.get("/all", requireRole("admin"), CourseController.getAllCourses);
+router.get("/teachers", requireRole("admin"), CourseController.getAllTeachers);
 router.get("/search", CourseController.search);
+router.post("/", requireRole("admin", "teacher"), CourseController.createCourse);
 
 router.get("/:courseCode/contacts", CourseController.getContacts);
 router.get("/:courseCode/announcements", AnnouncementController.getAnnouncements);
@@ -41,9 +49,9 @@ router.post("/:courseId/materials", staff, upload.single("file"), MaterialContro
 router.put("/:courseId/materials/:materialId", staff, upload.single("file"), MaterialController.replaceMaterial);
 router.delete("/:courseId/materials/:materialId", staff, MaterialController.deleteMaterial);
 
-router.get("/:courseId/studentlist", staff, StudentListController.getCourseStudents);
-router.post("/:courseId/studentlist", staff, upload.single("file"), StudentListController.syncStudents);
-router.post("/:courseId/studentlist/update", staff, StudentListController.updateStudentRole);
+router.get("/:courseId/studentlist", rosterManagers, StudentListController.getCourseStudents);
+router.post("/:courseId/studentlist", rosterManagers, uploadSpreadsheet.single("file"), StudentListController.syncStudents);
+router.post("/:courseId/studentlist/update", rosterManagers, StudentListController.updateStudentRole);
 
 //AIQuiz
 router.use("/:courseId/aiquizzes", aiQuizRoutes);

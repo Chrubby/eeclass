@@ -1,9 +1,16 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
+import { pool } from "../config/db.js";
 import { AuthModel } from "../models/authModel.js";
 import { signAccessToken } from "../utils/jwt.js";
+import { parseRosterExcel } from "../utils/rosterExcel.js";
 
 const DEFAULT_RECOVERY_CODE = "20260519";
+
+// accounts are only ever created by an admin; there is no self sign-up
+const ROLE_CREATION_MATRIX = {
+  admin: ["admin", "teacher", "student"],
+};
 
 function normalizeEmail(raw, { required = false } = {}) {
   const email = String(raw ?? "").trim();
@@ -26,7 +33,7 @@ async function assertEmailAvailable(accountId, email) {
   throw new Error("此信箱與其他帳號相同，請改用別的信箱");
 }
 
-function validateRegisterInput({ username, password, confirmPassword, name, role }) {
+function validateAccountInput({ username, password, confirmPassword, name }) {
   const u = String(username ?? "").trim();
   if (!u) throw new Error("帳號不可為空");
   if (u.length > 64) throw new Error("帳號過長");
@@ -40,9 +47,17 @@ function validateRegisterInput({ username, password, confirmPassword, name, role
   }
 
   if (!String(name ?? "").trim()) throw new Error("請填寫姓名");
+}
 
-  const allowedRoles = new Set(["student", "teacher", "ta"]);
-  if (!allowedRoles.has(role)) throw new Error("身份不合法");
+// fill in the corresponding names
+async function createProfileForRole(role, name, username, conn) {
+  if (role === "student") {
+    await AuthModel.createStudent(name, username, conn);
+  } else if (role === "teacher") {
+    await AuthModel.createTeacher(name, username, conn);
+  } else if (role === "admin") {
+    await AuthModel.createAdmin(name, username, conn);
+  }
 }
 
 function validateNewPassword(password, confirmPassword) {
@@ -79,34 +94,91 @@ function mapDbError(e, context) {
   if (msg.includes("Unknown column")) {
     return new Error("資料庫結構與程式不符，請執行 node scripts/initDB.js 更新資料庫");
   }
-  return new Error(msg || "註冊失敗，請稍後再試");
+  return new Error(msg || "建立帳號失敗，請稍後再試");
 }
 
 export const AuthService = {
-  async register({ username, password, name, role, confirmPassword, email, emailRequired = false }) {
+// creating a single account from a logged in admin
+  async createManagedAccount(creatorRole, { username, password, name, role, confirmPassword, email }) {
+    const allowedTargets = ROLE_CREATION_MATRIX[creatorRole] ?? [];
+    const targetRole = String(role ?? "").trim();
+    if (!allowedTargets.includes(targetRole)) {
+      throw new Error("權限不足，無法建立此身份的帳號");
+    }
+
     const trimmedUsername = String(username ?? "").trim();
-    validateRegisterInput({
+    validateAccountInput({
       username: trimmedUsername,
       password,
       confirmPassword,
       name,
-      role,
     });
-    const normalizedEmail = normalizeEmail(email, { required: emailRequired });
+    const normalizedEmail = normalizeEmail(email);
     if (normalizedEmail) await assertEmailAvailable(0, normalizedEmail);
 
     const passwordHash = await bcrypt.hash(password, 10);
     try {
-      await AuthModel.createAccount(trimmedUsername, passwordHash, normalizedEmail, role);
-
-      if (role === "student" || role === "ta") {
-        await AuthModel.createStudent(name, trimmedUsername);
-      } else if (role === "teacher") {
-        await AuthModel.createTeacher(name, trimmedUsername);
-      }
+      await AuthModel.createAccount(trimmedUsername, passwordHash, normalizedEmail, targetRole);
+      await createProfileForRole(targetRole, name, trimmedUsername);
     } catch (e) {
-      throw mapDbError(e, "register");
+      throw mapDbError(e, "createManagedAccount");
     }
+
+    return { username: trimmedUsername, role: targetRole };
+  },
+
+  /** admin batch-creates accounts from a roster Excel; existing accounts are left untouched */
+  async importAccounts(fileBuffer, initialPassword) {
+    validateNewPassword(initialPassword);
+    const { title, rows, problems } = await parseRosterExcel(fileBuffer);
+
+    // every imported account starts with the same password, so one hash is enough
+    const passwordHash = await bcrypt.hash(initialPassword, 10);
+
+    const created = [];
+    const skipped = [];
+    const failed = [...problems];
+
+    for (const row of rows) {
+      // 名單上註記「助教」的人也是學生帳號；助教身分之後由授課老師在課程的學生名冊指定
+      const accountRole = row.role === "teacher" ? "teacher" : "student";
+      const summary = { rowNumber: row.rowNumber, username: row.username, name: row.name, role: accountRole };
+
+      if (await AuthModel.findAccountByUsername(row.username)) {
+        skipped.push({ ...summary, reason: "帳號已存在" });
+        continue;
+      }
+      if (row.email) {
+        try {
+          normalizeEmail(row.email);
+        } catch (e) {
+          failed.push({ ...summary, reason: e.message });
+          continue;
+        }
+        const emailOwner = await AuthModel.findAccountByUsernameOrEmail(row.email);
+        if (emailOwner) {
+          failed.push({ ...summary, reason: `信箱已被帳號 ${emailOwner.username} 使用` });
+          continue;
+        }
+      }
+
+      // account and profile row go in together so a failure never leaves a half-created account
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        await AuthModel.createAccount(row.username, passwordHash, row.email, accountRole, connection);
+        await createProfileForRole(accountRole, row.name, row.username, connection);
+        await connection.commit();
+        created.push(summary);
+      } catch (e) {
+        await connection.rollback();
+        failed.push({ ...summary, reason: mapDbError(e, "importAccounts").message });
+      } finally {
+        connection.release();
+      }
+    }
+
+    return { title, created, skipped, failed };
   },
 
   async login(username, password) {
@@ -134,8 +206,10 @@ export const AuthService = {
 
     const role = account.role;
     let userData;
-    if (role === "student" || role === "ta") {
+    if (role === "student") {
       userData = await AuthModel.getStudentById(username);
+    } else if (role === "admin") {
+      userData = await AuthModel.getAdminById(username);
     } else {
       userData = await AuthModel.getTeacherById(username);
     }

@@ -5,15 +5,15 @@ function isMissingColumnError(err) {
 }
 
 export const AuthModel = {
-  async createAccount(username, passwordHash, email, role) {
+  async createAccount(username, passwordHash, email, role, conn = pool) {
     try {
-      return await pool.execute(
+      return await conn.execute(
         "INSERT INTO accounts (username, password_hash, email, role, must_change_password) VALUES (?, ?, ?, ?, 1)",
         [username, passwordHash, email ?? null, role],
       );
     } catch (err) {
       if (!isMissingColumnError(err)) throw err;
-      return pool.execute(
+      return conn.execute(
         "INSERT INTO accounts (username, password_hash, email, role) VALUES (?, ?, ?, ?)",
         [username, passwordHash, email ?? null, role],
       );
@@ -41,12 +41,21 @@ export const AuthModel = {
     return rows[0]?.role;
   },
 
-  async createStudent(name, studentId) {
-    return pool.execute("INSERT INTO students (name, student_id) VALUES (?, ?)", [name, studentId]);
+  async createStudent(name, studentId, conn = pool) {
+    return conn.execute("INSERT INTO students (name, student_id) VALUES (?, ?)", [name, studentId]);
   },
 
-  async createTeacher(name, teacherId) {
-    return pool.execute("INSERT INTO teachers (name, teacher_id) VALUES (?, ?)", [name, teacherId]);
+  async createTeacher(name, teacherId, conn = pool) {
+    return conn.execute("INSERT INTO teachers (name, teacher_id) VALUES (?, ?)", [name, teacherId]);
+  },
+
+  async createAdmin(name, adminId, conn = pool) {
+    return conn.execute("INSERT INTO admins (name, admin_id) VALUES (?, ?)", [name, adminId]);
+  },
+
+  async countAdmins() {
+    const [rows] = await pool.execute("SELECT COUNT(*) AS total FROM accounts WHERE role = 'admin'");
+    return Number(rows[0]?.total ?? 0);
   },
 
   async getStudentById(studentId) {
@@ -56,6 +65,11 @@ export const AuthModel = {
 
   async getTeacherById(teacherId) {
     const [rows] = await pool.execute("SELECT * FROM teachers WHERE teacher_id = ?", [teacherId]);
+    return rows[0];
+  },
+
+  async getAdminById(adminId) {
+    const [rows] = await pool.execute("SELECT * FROM admins WHERE admin_id = ?", [adminId]);
     return rows[0];
   },
 

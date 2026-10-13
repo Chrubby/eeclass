@@ -127,6 +127,7 @@ const roleLabels = {
   student: '學生',
   teacher: '教師',
   ta: '助教',
+  admin: '管理員',
 }
 
 const roleLabel = computed(() => roleLabels[profile.value.role] || profile.value.role)

@@ -28,9 +28,38 @@ export function parseJwtPayload(token) {
   }
 }
 
-export function getRoleFromToken() {
-  const payload = parseJwtPayload(getAccessToken());
-  return payload?.role || "student";
+/** 帳號本身的身分（student / teacher / admin）。舊 token 的 "ta" 視為學生。 */
+export function getAccountRole() {
+  const role = parseJwtPayload(getAccessToken())?.role || "student";
+  return role === "ta" ? "student" : role;
+}
+
+// 助教是課程層級的身分：帳號是學生，只有在自己帶的課才是 "ta"。
+// 這份對照表（課程代碼 → 我在該課的身分）由 utils/courseRoles.js 向後端取得。
+let courseRoles = null;
+
+export function setCourseRoles(roles) {
+  courseRoles = roles;
+}
+
+export function hasCourseRoles() {
+  return courseRoles !== null;
+}
+
+export function currentCourseCode() {
+  const match = /^\/course\/([^/]+)/.exec(window.location.pathname);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+/** 把帳號身分換成「在這門課」的身分；不在課程頁面時就是帳號身分 */
+export function courseRoleFor(accountRole, courseCode = currentCourseCode()) {
+  if (accountRole === "student" && courseCode && courseRoles?.[courseCode] === "ta") return "ta";
+  return accountRole;
+}
+
+/** 目前頁面（或指定課程）適用的身分，各頁面用它判斷要顯示老師端還是學生端 */
+export function getRoleFromToken(courseCode) {
+  return courseRoleFor(getAccountRole(), courseCode);
 }
 
 export function getUsernameFromToken() {

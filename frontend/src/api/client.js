@@ -1,4 +1,5 @@
 import axios from "axios";
+import { courseRoleFor } from "@/utils/auth.js";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "",
@@ -13,7 +14,14 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // 助教是課程層級身分：在課程頁面時，/me 回傳的身分換成該課的身分，各頁面原本的判斷就不用改
+    if (response.config?.url?.endsWith("/api/auth/me") && response.data?.role) {
+      response.data.account_role = response.data.role;
+      response.data.role = courseRoleFor(response.data.role);
+    }
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401) {
       const header = error.config?.headers?.Authorization || error.config?.headers?.authorization || "";

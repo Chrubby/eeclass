@@ -55,6 +55,27 @@ const MIGRATIONS = [
   // accounts：強制變更密碼、頭貼、信箱（可為 NULL，不覆寫既有資料）
   "ALTER TABLE accounts ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0",
   "ALTER TABLE accounts ADD COLUMN avatar_url VARCHAR(500) NULL",
+  // role in old db is an enum without admin, so change to varchar
+  "ALTER TABLE accounts MODIFY COLUMN role VARCHAR(20) NOT NULL",
+  `CREATE TABLE IF NOT EXISTS admins (
+     id INT AUTO_INCREMENT PRIMARY KEY,
+     name VARCHAR(100) NOT NULL,
+     admin_id VARCHAR(50) UNIQUE NOT NULL,
+     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   )`,
+  // roster rows without a student number use the email as the username, which can exceed 20 chars
+  "ALTER TABLE students MODIFY COLUMN student_id VARCHAR(100)",
+  "ALTER TABLE teachers MODIFY COLUMN teacher_id VARCHAR(100)",
+  // 修課身分（student / external / auditor / dropped）；initDB 也會加，這裡確保沒跑 initDB 的資料庫也有
+  "ALTER TABLE enrollments ADD COLUMN role VARCHAR(50) DEFAULT 'student'",
+  // 退選時間：退選只改身分、不刪資料，重新加入時清空
+  "ALTER TABLE enrollments ADD COLUMN withdrawn_at DATETIME NULL",
+  // an earlier revision tracked withdrawals in enrollments.status; fold it into role, then drop it
+  "UPDATE enrollments SET role = 'dropped' WHERE status = 'withdrawn'",
+  "ALTER TABLE enrollments DROP COLUMN status",
+  // 助教從帳號身分改為課程身分：原本的助教帳號變回學生帳號，選課紀錄不動；
+  // 要當哪一門課的助教，由授課老師或管理員在該課的學生名冊勾選
+  "UPDATE accounts SET role = 'student' WHERE role = 'ta'",
   "ALTER TABLE accounts ADD COLUMN email VARCHAR(100) NULL",
   // notifications：站內通知（公告、作業、測驗、討論）
   `CREATE TABLE IF NOT EXISTS notifications (

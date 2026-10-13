@@ -43,7 +43,7 @@ export async function sendPasswordResetEmail({ to, resetUrl, username }) {
   await transporter.sendMail({
     from: getFromAddress(),
     to,
-    subject: "重設您的 ee-class 密碼",
+    subject: "重設您的國立中央大學「LMS 計畫」密碼",
     text: `您好 ${username}：\n\n請在時效內點擊以下連結重設密碼：\n${resetUrl}\n\n若您未申請重設，請忽略此信。`,
     html: `<p>您好 ${escapeHtml(username)}：</p><p>請在時效內點擊以下連結重設密碼：</p><p><a href="${escapeHtml(resetUrl)}">${escapeHtml(resetUrl)}</a></p><p>若您未申請重設，請忽略此信。</p>`,
   });
@@ -67,9 +67,9 @@ export async function sendNotificationEmails({ recipients, subject, message, lin
   const base = String(process.env.APP_PUBLIC_URL || "").replace(/\/$/, "");
   const url = base && linkPath ? `${base}${linkPath.startsWith("/") ? linkPath : `/${linkPath}`}` : "";
   const body = message || subject;
-  const text = [body, url ? `查看：${url}` : "請登入 ee-class 查看。"].join("\n\n");
+  const text = [body, url ? `查看：${url}` : "請登入國立中央大學「LMS 計畫」查看。"].join("\n\n");
   const html = `<p>${escapeHtml(body).replace(/\n/g, "<br>")}</p>${
-    url ? `<p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>` : "<p>請登入 ee-class 查看。</p>"
+    url ? `<p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>` : "<p>請登入國立中央大學「LMS 計畫」查看。</p>"
   }`;
   const from = getFromAddress();
 

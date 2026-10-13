@@ -28,8 +28,10 @@ export const CourseService = {
       const course = await CourseModel.findCourseByCode(courseCode, connection);
       if (!course) throw new Error("找不到課程");
 
-      const isEnrolled = await CourseModel.checkEnrollment(student.id, course.id, connection);
-      if (isEnrolled) throw new Error("已經選過此課程");
+      // a withdrawn student re-joining by course code would silently undo the instructor's roster
+      const role = await CourseModel.getEnrollmentRole(student.id, course.id, connection);
+      if (role === "dropped") throw new Error("你已被退選此課程，如需重新加入請聯絡授課老師");
+      if (role) throw new Error("已經選過此課程");
 
       await CourseModel.enrollStudent(student.id, course.id, connection);
       await connection.commit();
@@ -45,7 +47,7 @@ export const CourseService = {
     let userDbId;
     let courses;
 
-    if (role === "student" || role === "ta") {
+    if (role === "student") {
       const student = await AuthModel.getStudentById(userId);
       if (!student) throw new Error(`找不到 ${role}`);
       userDbId = student.id;
@@ -66,6 +68,18 @@ export const CourseService = {
     return courses;
   },
 
+  async getAllCourses() {
+    const courses = await CourseModel.getAllCoursesWithCounts();
+    for (const course of courses) {
+      course.teachers = await CourseModel.getCourseTeachers(course.id);
+    }
+    return courses;
+  },
+
+  async getAllTeachers() {
+    return CourseModel.getAllTeachers();
+  },
+
   async createCourse({ teacher_id, course_name, course_code, description, academic_year }) {
     const connection = await pool.getConnection();
     await connection.beginTransaction();
@@ -74,10 +88,11 @@ export const CourseService = {
       const existCourse = await CourseModel.findCourseByCode(course_code, connection);
       if (existCourse) throw new Error("課程代碼已存在");
       const courseId = await CourseModel.createCourse(course_name, course_code, description, academic_year, connection);
-      const teacher = await AuthModel.getTeacherById(teacher_id);
-      if (!teacher) throw new Error("找不到該老師");
-
-      await CourseModel.bindTeacherToCourse(teacher.id, courseId, connection);
+      if (teacher_id) {
+        const teacher = await AuthModel.getTeacherById(teacher_id);
+        if (!teacher) throw new Error("找不到該老師");
+        await CourseModel.bindTeacherToCourse(teacher.id, courseId, connection);
+      }
       const defaultPrompt = "你是一位大學課程助教，請用繁體中文回答，並使用 '\\n' 來換行，保持訊息條列與換行，不要用 HTML 標籤。";
       await CourseModel.createDefaultAiPrompt(courseId, defaultPrompt, connection);
       await connection.commit();

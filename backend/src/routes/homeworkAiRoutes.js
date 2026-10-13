@@ -1,11 +1,16 @@
 import express from "express";
 import { requireRole } from "../middlewares/requireRole.js";
+import { courseRole } from "../middlewares/courseRole.js";
 import { HomeworkAiController } from "../controllers/homeworkAiController.js";
 
 const router = express.Router();
 
+router.param("courseId", courseRole.byCode);
+router.param("hwId", courseRole.byHomework);
+router.param("submissionId", courseRole.bySubmission);
+
 const staff = requireRole("teacher", "ta");
-const studentSide = requireRole("student", "ta");
+const studentSide = requireRole("student");
 
 router.get("/courses/:courseId/ai-prompts", staff, HomeworkAiController.getPrompts);
 router.put("/courses/:courseId/ai-prompts", staff, HomeworkAiController.updatePrompts);
