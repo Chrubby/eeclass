@@ -60,9 +60,6 @@
         <router-link to="/forgot-password" class="text-[#337ab7] hover:text-[#285e8e]">
           忘記密碼
         </router-link>
-        <router-link to="/register" class="text-[#337ab7] hover:text-[#285e8e]">
-          註冊
-        </router-link>
       </div>
     </div>
   </div>
@@ -91,7 +88,11 @@ const login = async () => {
     localStorage.setItem("user", data.username)
     setMustChangePassword(Boolean(data.mustChangePassword))
 
-    window.location.href = data.mustChangePassword ? '/change-password' : '/dashboard'
+    if (data.mustChangePassword) {
+      window.location.href = '/change-password'
+    } else {
+      window.location.href = data.role === 'admin' ? '/admin/accounts' : '/dashboard'
+    }
   } catch (error) {
     errorMessage.value = error.response?.data?.message || "連線失敗"
     console.error("錯誤詳細資訊:", error)

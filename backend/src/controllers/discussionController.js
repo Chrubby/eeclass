@@ -108,6 +108,7 @@ export const DiscussionController = {
         content,
         parent_thread_id,
         request_ai === true || request_ai === "true",
+        req.user.role,
       );
       res.json({ message: "發表成功" });
     } catch {

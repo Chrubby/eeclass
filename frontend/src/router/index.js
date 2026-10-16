@@ -2,13 +2,13 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
 import Course from '../views/Course.vue'
 import Login from "../views/Login.vue"
-import Register from "../views/Register.vue"
 import ForgotPassword from "../views/ForgotPassword.vue"
 import ResetPassword from "../views/ResetPassword.vue"
 import ChangePassword from "../views/ChangePassword.vue"
 import Profile from "../views/Profile.vue"
 import MainPage from '../views/MainPage.vue'
-import { getRoleFromToken, getAccessToken, getMustChangePassword } from '@/utils/auth.js'
+import { getRoleFromToken, getAccountRole, hasCourseRoles, getAccessToken, getMustChangePassword } from '@/utils/auth.js'
+import { refreshCourseRoles } from '@/utils/courseRoles.js'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -16,6 +16,18 @@ const router = createRouter({
     // { path: "/", redirect: "/login" },
     { path: '/', name: 'MainPage', component: MainPage},
     { path: '/dashboard', name: 'Home', component: Home },
+    {
+      path: '/admin/accounts',
+      name: 'AdminAccounts',
+      component: () => import('../views/admin/AccountManage.vue'),
+      meta: { requiresAdmin: true }
+    },
+    {
+      path: '/admin/courses',
+      name: 'AdminCourses',
+      component: () => import('../views/admin/CourseList.vue'),
+      meta: { requiresAdmin: true }
+    },
     { path: '/profile', name: 'Profile', component: Profile },
     { path: '/change-password', name: 'ChangePassword', component: ChangePassword },
     { path: '/course/:id', name: 'Course', component: Course,
@@ -28,7 +40,8 @@ const router = createRouter({
         {
           path: 'studentlist',
           name: 'StudentList',
-          component: () => import('../views/course/StudentList.vue')
+          component: () => import('../views/course/StudentList.vue'),
+          meta: { allowRoles: ['admin', 'teacher', 'ta'] }
         },
         {
           path: 'material',
@@ -115,7 +128,6 @@ const router = createRouter({
       ]
     },
     { path: "/login", name: 'Login', component: Login },
-    { path: "/register", name: 'Register', component: Register },
     { path: "/forgot-password", name: 'ForgotPassword', component: ForgotPassword },
     { path: "/reset-password", name: 'ResetPassword', component: ResetPassword }
   ]
@@ -123,18 +135,12 @@ const router = createRouter({
 
 const staffRoles = ['teacher', 'ta']
 
-const publicPaths = new Set(['/login', '/register', '/forgot-password', '/reset-password'])
+const publicPaths = new Set(['/login', '/forgot-password', '/reset-password'])
 const mustChangeAllowedPaths = new Set(['/change-password', '/login', '/profile'])
 
-router.beforeEach((to) => {
-  const userRole = getRoleFromToken()
+router.beforeEach(async (to, from) => {
   const token = getAccessToken()
   const mustChange = getMustChangePassword()
-
-  if (to.meta.requiresTeacher && !staffRoles.includes(userRole)) {
-    alert('無法訪問此頁面。')
-    return false
-  }
 
   if (token && mustChange && !mustChangeAllowedPaths.has(to.path)) {
     return '/change-password'
@@ -142,6 +148,36 @@ router.beforeEach((to) => {
 
   if (!token && !publicPaths.has(to.path) && to.path !== '/change-password' && to.path !== '/') {
     return '/login'
+  }
+
+  // 助教是課程層級身分：第一次載入、或進到另一門課時，先問後端我在各課的身分
+  const courseCode = to.params.id
+  if (token && courseCode && getAccountRole() === 'student' && (!hasCourseRoles() || from.params.id !== courseCode)) {
+    await refreshCourseRoles()
+  }
+  const userRole = getRoleFromToken(courseCode)
+
+  // admins manage courses through the student list only; the other course pages assume a teacher or student
+  if (token && userRole === 'admin') {
+    if (to.path === '/dashboard') return '/admin/accounts'
+    if (to.path.startsWith('/course/') && to.name !== 'StudentList') {
+      return { name: 'StudentList', params: { id: to.params.id } }
+    }
+  }
+
+  if (to.meta.requiresTeacher && !staffRoles.includes(userRole)) {
+    alert('無法訪問此頁面。')
+    return false
+  }
+
+  if (to.meta.requiresAdmin && userRole !== 'admin') {
+    alert('無法訪問此頁面。')
+    return false
+  }
+
+  if (to.meta.allowRoles && !to.meta.allowRoles.includes(userRole)) {
+    alert('無法訪問此頁面。')
+    return false
   }
 })
 

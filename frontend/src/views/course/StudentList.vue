@@ -1,6 +1,6 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, inject, onMounted } from 'vue'
 import api from '@/api/client.js'
 
 const route = useRoute()
@@ -10,7 +10,8 @@ const courseCode = route.params.id
 const students = ref([])
 const fileInput = ref(null)
 const isUploading = ref(false)
-const errorDetails = ref([])
+const syncResult = ref(null)
+const refreshCourseInfo = inject('refreshCourseInfo', () => {})
 
 const user = ref({
   name: '',
@@ -36,8 +37,11 @@ const loadUser = async () => {
   }
 }
 
-// 判斷是否為教師或助教（決定是否顯示上傳按鈕）
-const canManage = computed(() => ['teacher', 'ta'].includes(user.value.role))
+// 判斷是否為管理員、教師或助教（決定是否顯示上傳按鈕）
+const canManage = computed(() => ['admin', 'teacher', 'ta'].includes(user.value.role))
+// 指定／取消助教只有授課老師與管理員可以做，助教自己不行
+const canAssignTa = computed(() => ['admin', 'teacher'].includes(user.value.role))
+const togglingTa = ref('')
 
 //取得該課程目前的學生名冊
 const fetchStudents = async () => {
@@ -68,25 +72,26 @@ const handleFileChange = async (event) => {
   const file = event.target.files[0]
   if (!file) return
 
+  if (!confirm('同步後，名冊上有、但這份名單上沒有的學生會改為「已退選」（資料保留，之後名單再出現就會恢復）。確定要同步嗎？')) {
+    event.target.value = ''
+    return
+  }
+
   const formData = new FormData()
   formData.append("file", file) // 對應後端 multer 的欄位名稱
 
   isUploading.value = true
-  errorDetails.value = []
+  syncResult.value = null
 
   try {
     const res = await api.post(`/api/courses/${courseCode}/studentlist`, formData)
 
-    alert(res.data.message || "學生名冊同步成功！")
+    syncResult.value = res.data
     await fetchStudents() // 重新整理
+    refreshCourseInfo() // 名單可能帶入新的授課老師／助教
   } catch (error) {
-    // 處理後端傳回的預檢驗錯誤明細
     if (error.response && error.response.data) {
-      if (error.response.data.errors) {
-        errorDetails.value = error.response.data.errors
-      } else {
-        alert(error.response.data.message || "上傳失敗")
-      }
+      alert(error.response.data.message || "上傳失敗")
     } else {
       alert("網路連線異常，請稍後再試")
     }
@@ -99,12 +104,32 @@ const handleFileChange = async (event) => {
 // 身分格式化對應中文
 const formatRole = (role) => {
   const map = {
+    ta: '助教',
     student: '修課學生',
     external: '校外加選',
     auditor: '旁聽生',
     dropped: '已退選'
   }
   return map[role] || role || '修課學生'
+}
+
+const formatDate = (raw) => new Date(raw).toLocaleDateString()
+
+// 勾選：把這位學生升為這門課的助教；取消勾選則變回一般修課學生
+const toggleTa = async (student, checked) => {
+  togglingTa.value = student.student_id
+  try {
+    await api.post(`/api/courses/${courseCode}/studentlist/update`, {
+      studentId: student.student_id,
+      role: checked ? 'ta' : 'student'
+    })
+    refreshCourseInfo() // 側欄的助教名單要跟著更新
+  } catch (err) {
+    alert(err.response?.data?.message || "更新助教身分失敗")
+  } finally {
+    await fetchStudents()
+    togglingTa.value = ''
+  }
 }
 
 // 新增或修改學生身分
@@ -149,7 +174,7 @@ onMounted(async () => {
     <input 
       type="file" 
       ref="fileInput" 
-      accept=".xlsx, .xls" 
+      accept=".xlsx" 
       class="hidden" 
       @change="handleFileChange" 
     />
@@ -221,12 +246,34 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- 錯誤明細顯示 -->
-    <div v-if="errorDetails.length > 0" class="mb-4 p-4 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-      <h3 class="font-bold mb-1">⚠️ 匯入失敗，請修正以下 Excel 錯誤後重新上傳：</h3>
-      <ul class="list-disc list-inside space-y-1">
-        <li v-for="(err, index) in errorDetails" :key="index">{{ err }}</li>
-      </ul>
+    <!-- 同步結果 -->
+    <div v-if="syncResult" class="mb-4 p-4 bg-gray-50 border rounded text-sm flex flex-col gap-2">
+      <p>
+        新加入 <b class="text-green-700">{{ syncResult.added.length }}</b> 人、
+        恢復修課 <b class="text-green-700">{{ syncResult.reactivated.length }}</b> 人、
+        未變動 <b>{{ syncResult.unchanged }}</b> 人、
+        改為退選 <b class="text-orange-600">{{ syncResult.withdrawn.length }}</b> 人
+        <template v-if="syncResult.updated.length">
+          、身分更新 <b>{{ syncResult.updated.length }}</b> 人
+        </template>
+        <template v-if="syncResult.teachersAdded.length">
+          、新增授課老師 <b class="text-green-700">{{ syncResult.teachersAdded.length }}</b> 人
+        </template>
+        <template v-if="syncResult.skipped.length">
+          、略過 <b class="text-red-600">{{ syncResult.skipped.length }}</b> 列
+        </template>
+      </p>
+      <p v-if="syncResult.withdrawn.length" class="text-orange-700">
+        改為退選：{{ syncResult.withdrawn.map((p) => `${p.name}（${p.username}）`).join('、') }}
+      </p>
+      <div v-if="syncResult.skipped.length" class="text-red-700">
+        <p class="font-bold">以下各列需要留意（尚未建立帳號的人請先由管理員建立）：</p>
+        <ul class="list-disc list-inside space-y-1">
+          <li v-for="row in syncResult.skipped" :key="row.rowNumber">
+            第 {{ row.rowNumber }} 列 {{ row.name || '' }}{{ row.username ? `（${row.username}）` : '' }}：{{ row.reason }}
+          </li>
+        </ul>
+      </div>
     </div>
 
     <!-- 資料表格區塊 -->
@@ -234,9 +281,10 @@ onMounted(async () => {
       <!-- 表格標題列 -->
       <div class="flex bg-gray-100 text-sm font-bold text-gray-700 p-3 border-b">
         <div class="w-32">學號</div>
-        <div class="flex-1">姓名</div>
+        <div class="flex-1 min-w-[6rem]">姓名</div>
         <div class="w-64">電子郵件</div>
-        <div class="w-24 text-center">身分</div>
+        <div class="w-32 text-center">身分</div>
+        <div v-if="canAssignTa" class="w-14 text-center">助教</div>
       </div>
 
       <!-- 學生列表 -->
@@ -245,11 +293,26 @@ onMounted(async () => {
           v-for="student in students"
           :key="student.id"
           class="flex p-3 items-center text-[15px] hover:bg-gray-50"
+          :class="student.role === 'dropped' ? 'opacity-50' : ''"
         >
-          <div class="w-32 font-medium text-gray-800">{{ student.student_id }}</div>
-          <div class="flex-1 truncate pr-4 text-gray-800">{{ student.name }}</div>
+          <div class="w-32 font-medium text-gray-800 break-all pr-2">{{ student.student_id }}</div>
+          <div class="flex-1 min-w-[6rem] truncate pr-4 text-gray-800">{{ student.name }}</div>
           <div class="w-64 text-gray-500 text-sm truncate">{{ student.email || '-' }}</div>
-          <div class="w-32 text-center text-sm text-gray-600">{{ formatRole(student.role) }}</div>
+          <div class="w-32 text-center text-sm text-gray-600">
+            <span :class="student.role === 'ta' ? 'font-bold text-[#337ab7]' : ''">{{ formatRole(student.role) }}</span>
+            <div v-if="student.role === 'dropped' && student.withdrawn_at" class="text-xs text-gray-500">{{ formatDate(student.withdrawn_at) }}</div>
+          </div>
+          <div v-if="canAssignTa" class="w-14 text-center">
+            <input
+              v-if="student.role !== 'dropped'"
+              type="checkbox"
+              class="w-4 h-4 cursor-pointer align-middle"
+              :checked="student.role === 'ta'"
+              :disabled="togglingTa === student.student_id"
+              :title="student.role === 'ta' ? '取消助教' : '設為這門課的助教'"
+              @change="toggleTa(student, $event.target.checked)"
+            />
+          </div>
         </li>
       </ul>
 

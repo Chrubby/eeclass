@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, provide, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/api/client.js'
 import { setMustChangePassword } from '@/utils/auth.js'
@@ -98,8 +98,12 @@ watch(courseId, (code) => {
   if (isCoursePage.value) loadCourseStaff(code)
 }, { immediate: true })
 
+// a roster import can change the teachers and TAs shown in the sidebar
+provide('refreshCourseInfo', () => loadCourseStaff(courseId.value))
+provide('currentCourse', currentCourse)
+
 const isAuthPage = computed(() =>
-  ['MainPage', 'Login', 'Register', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
+  ['MainPage', 'Login', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
 )
 
 const showEmailPrompt = computed(() =>
@@ -124,7 +128,6 @@ const loadUser = async() => {
   const isAuthRoute =
     route.path === '/' ||
     route.path === '/login' ||
-    route.path === '/register' ||
     route.path === '/forgot-password' ||
     route.path === '/reset-password' ||
     route.path === '/change-password'
@@ -189,7 +192,11 @@ onBeforeUnmount(() => {
     <header v-if="!isAuthPage" class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm h-12">
       <router-link to ="/" class="font-bold text-base p-1 border-2 border-transparent focus:border-black rounded ">國立中央大學「LMS 計畫」</router-link>
       <div class="flex space-x-6 items-center text-gray-600">
-        <router-link to="/dashboard" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
+        <template v-if="user.role === 'admin'">
+          <router-link to="/admin/accounts" class="cursor-pointer hover:text-blue-600">【帳號管理】</router-link>
+          <router-link to="/admin/courses" class="cursor-pointer hover:text-blue-600">【所有課程】</router-link>
+        </template>
+        <router-link v-else to="/dashboard" class="cursor-pointer hover:text-blue-600">【我的課程】</router-link>
         <NotificationBell v-if="user.role === 'student' || user.role === 'ta' || user.role === 'teacher'" />
         <div class="relative">
 
@@ -222,11 +229,11 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="!isAuthPage && !isCoursePage" class="h-32 bg-gray-300 relative flex items-center px-10">
-      <h1 class="text-3xl text-white font-bold">ee-class 易課平台</h1>
+      <h1 class="text-3xl text-white font-bold">國立中央大學「LMS 計畫」</h1>
     </div>
 
     <div v-else-if="!isAuthPage && isCoursePage" class="h-28 bg-[#a39481] flex items-center px-10">
-      <h1 class="text-2xl text-white font-bold">課程代碼：{{ currentCourse?.id }}</h1>
+      <h1 class="text-2xl text-white font-bold">{{ currentCourse?.name }}</h1>
     </div>
 
     <!--div class="max-w-7xl mx-auto flex gap-6 mt-6 px-4 pb-10"-->
@@ -308,6 +315,7 @@ onBeforeUnmount(() => {
 
         <ul v-if="isCoursePage" class="bg-white text-[15px] text-gray-700 py-2">
 
+          <template v-if="user.role !== 'admin'">
           <router-link :to="`/course/${courseId}`" custom v-slot="{ navigate, isExactActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isExactActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
               公告
@@ -363,6 +371,12 @@ onBeforeUnmount(() => {
           <router-link :to="`/course/${courseId}/grade`" custom v-slot="{ navigate, isActive }">
             <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
               成績
+            </li>
+          </router-link>
+          </template>
+          <router-link v-else :to="`/course/${courseId}/studentlist`" custom v-slot="{ navigate, isActive }">
+            <li @click="navigate" :class="['px-6 py-2.5 cursor-pointer', isActive ? 'bg-blue-50 text-blue-600 font-bold border-l-4 border-l-blue-600' : 'hover:bg-gray-100']">
+              學生名冊
             </li>
           </router-link>
 

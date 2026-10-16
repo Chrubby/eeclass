@@ -1,17 +1,19 @@
 import express from "express";
 import { AuthController } from "../controllers/authController.js";
 import { authMiddleware } from "../middlewares/authMiddleware.js";
-import { uploadAvatar, uploadBulkAccountFile } from "../middlewares/upload.js";
+import { requireRole } from "../middlewares/requireRole.js";
+import { uploadAvatar, uploadSpreadsheet } from "../middlewares/upload.js";
 
 const router = express.Router();
 
-router.post("/register", AuthController.register);
+router.post("/accounts", authMiddleware, requireRole("admin"), AuthController.createAccount);
 router.post(
-  "/bulk-register",
-  uploadBulkAccountFile.single("file"),
-  AuthController.bulkRegister,
+  "/accounts/import",
+  authMiddleware,
+  requireRole("admin"),
+  uploadSpreadsheet.single("file"),
+  AuthController.importAccounts,
 );
-router.get("/bulk-register/template", AuthController.bulkRegisterTemplate);
 router.post("/login", AuthController.login);
 router.post("/forgot-password", AuthController.forgotPassword);
 router.post("/reset-password", AuthController.resetPassword);

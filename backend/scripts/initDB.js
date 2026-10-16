@@ -50,7 +50,7 @@ const initDB = async () => {
         CREATE TABLE IF NOT EXISTS students (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(50) NOT NULL,
-        student_id VARCHAR(50) UNIQUE NOT NULL
+        student_id VARCHAR(100) UNIQUE NOT NULL
         )
     `);
 
@@ -59,7 +59,17 @@ const initDB = async () => {
         CREATE TABLE IF NOT EXISTS teachers (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(50) NOT NULL,
-        teacher_id VARCHAR(50) UNIQUE NOT NULL
+        teacher_id VARCHAR(100) UNIQUE NOT NULL
+        )
+    `);
+
+    // 3.5 系統管理員表
+    await pool.execute(`
+        CREATE TABLE IF NOT EXISTS admins (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        admin_id VARCHAR(50) UNIQUE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
 
@@ -89,7 +99,9 @@ const initDB = async () => {
         CREATE TABLE IF NOT EXISTS enrollments (
         id INT AUTO_INCREMENT PRIMARY KEY,
         student_id INT NOT NULL,
-        course_id INT NOT NULL
+        course_id INT NOT NULL,
+        role VARCHAR(50) DEFAULT 'student',
+        withdrawn_at DATETIME NULL
         )
     `);
 

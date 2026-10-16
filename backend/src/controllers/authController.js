@@ -1,51 +1,24 @@
 import { AuthService } from "../services/authService.js";
-import { BulkAccountImportAdapter } from "../modules/bulkAccountImportAdapter.js";
 
 export const AuthController = {
-  async register(req, res) {
+  async createAccount(req, res) {
     try {
-      await AuthService.register({ ...req.body, emailRequired: true });
-      res.json({ message: "註冊成功！請登入並變更密碼。" });
+      const result = await AuthService.createManagedAccount(req.user.role, req.body);
+      res.json({ message: "帳號建立成功！請通知對方登入後變更密碼。", ...result });
     } catch (error) {
-      console.error("[register]", error);
-      res.status(400).json({ message: error.message || "註冊失敗" });
+      console.error("[createAccount]", error);
+      res.status(400).json({ message: error.message || "建立帳號失敗" });
     }
   },
 
-  async bulkRegister(req, res) {
+  async importAccounts(req, res) {
     try {
-      if (!req.file?.buffer) {
-        return res.status(400).json({ message: "請上傳 Excel 或 CSV 檔案" });
-      }
-
-      const outcome = await BulkAccountImportAdapter.createFromUpload(req.file.buffer, {
-        importCode: req.body?.importCode,
-      });
-
-      res.json({
-        message: `批次建立完成：成功 ${outcome.summary.created} 筆，失敗 ${outcome.summary.failed} 筆`,
-        summary: outcome.summary,
-        results: outcome.results,
-        meta: outcome.meta,
-      });
+      if (!req.file) return res.status(400).json({ message: "請選擇要匯入的 Excel 檔案" });
+      const result = await AuthService.importAccounts(req.file.buffer, req.body.initialPassword);
+      res.json(result);
     } catch (error) {
-      console.error("[bulkRegister]", error);
-      res.status(400).json({ message: error.message || "批次建立失敗" });
-    }
-  },
-
-  async bulkRegisterTemplate(_req, res) {
-    try {
-      const buffer = BulkAccountImportAdapter.buildTemplateBuffer();
-      res.setHeader(
-        "Content-Type",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      );
-      res.setHeader("Content-Disposition", 'attachment; filename="bulk-account-template.xlsx"');
-      res.send(buffer);
-    } catch (error) {
-      console.error("[bulkRegisterTemplate]", error);
-      res.status(500).json({ message: error.message || "無法產生樣板" });
+      console.error("[importAccounts]", error);
+      res.status(400).json({ message: error.message || "匯入失敗" });
     }
   },
 
