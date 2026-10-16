@@ -2,7 +2,7 @@
 
 > 所屬文件：[overview.md（總覽）](overview.md) ・ **database.md** ・ [process-issues.md](process-issues.md) ・ [workflow.md](workflow.md) ・ [modules/](modules/README.md)
 >
-> 內容依 `backend/scripts/initDB.js`、`backend/src/utils/ensureSchema.js`、`backend/src/models/*.js` 實際程式碼整理（核對日期：2026-09-27）。
+> 內容依 `backend/scripts/initDB.js`、`backend/src/utils/ensureSchema.js`、`backend/src/models/*.js` 實際程式碼整理（核對日期：2026-10-13）。
 
 ---
 
@@ -21,7 +21,7 @@
 
 - `initDB.js`：`CREATE TABLE IF NOT EXISTS` + 一連串包在 `try/catch` 裡的 `ALTER TABLE ... ADD COLUMN`，欄位已存在時錯誤會被忽略，因此**可重複執行**。這是目前唯一應該使用的建表方式。
 - `initDB.js` **不會** `CREATE DATABASE`，資料庫本身需先手動建立（例如 `CREATE DATABASE classroom_data;`）。
-- `ensureSchema.js`：伺服器啟動時補上 `homework_submissions.is_submitted`、`accounts.must_change_password`、`accounts.avatar_url` 三個欄位，與 `initDB.js` 內容重複。
+- `ensureSchema.js`：伺服器啟動時補上欄位與資料表。原本只補 `homework_submissions.is_submitted`、`accounts.must_change_password`、`accounts.avatar_url` 三個欄位（與 `initDB.js` 內容重複），但[小組](modules/group.md)、[通知](modules/notification.md)兩個模組的資料表（`course_groups`、`course_group_memberships`、`course_group_applications`、`notifications`）跟後續一串新欄位（`accounts.email`、`homeworks.is_group_homework`/`grade_notified_at`、`homework_submissions.files_json`、`discussion_rooms.created_by`、`announcements.author_username`）都只寫在這裡，**沒有**同步補進 `initDB.js`——跟第 6 節「新增欄位一律寫在 `initDB.js`」的規範不一致，見第 7 節已知問題。
 - `db/create_db.py`、`db/seed_data.py`：**舊版 Python 腳本，不要使用**（見 [第 5 節](#5-舊版腳本)）。
 
 > ⚠️ 所有 schema 變更都是手動疊加 `ALTER TABLE`，且分散在 `initDB.js` 與 `ensureSchema.js` 兩處。新增欄位的寫法見 [第 6 節](#6-修改資料庫時的規範)。
@@ -41,12 +41,15 @@
 
 | 欄位 | 實際存的值 |
 | --- | --- |
-| `teacher_courses.course_id`、`enrollments.course_id`、`announcements.course_id`、`discussion_rooms.course_id`、`ai_chat_messages.course_id`、`course_ai_prompts.course_id` | `courses.id` |
+| `teacher_courses.course_id`、`enrollments.course_id`、`announcements.course_id`、`discussion_rooms.course_id`、`ai_chat_messages.course_id`、`course_ai_prompts.course_id`、`course_groups.course_id`、`course_group_memberships.course_id`、`course_group_applications.course_id`、`notifications.course_id` | `courses.id` |
 | `homeworks.course_id`（VARCHAR）、`course_materials.course_id`（VARCHAR）、`AIQuizzes.courseId` | **`courses.course_code`** |
 | `enrollments.student_id`、`announcement_reads.student_id`、`ai_chat_messages.student_id` | `students.id` |
 | `teacher_courses.teacher_id`、`announcements.teacher_id` | `teachers.id` |
-| `homework_submissions.student_id`、`course_materials.uploader_id`、`AIQuizzes.teacherId`、`StudentAnswers.studentId`、`AIQuizComments.userId` | **`accounts.username`** |
+| `homework_submissions.student_id`、`course_materials.uploader_id`、`AIQuizzes.teacherId`、`StudentAnswers.studentId`、`AIQuizComments.userId`、`course_group_memberships.student_id`、`course_group_applications.student_id`、`course_groups.leader_student_id`、`discussion_rooms.created_by`、`announcements.author_username` | **`accounts.username`** |
 | `threads.student_id`（VARCHAR） | **`accounts.id`（數字轉字串）或字面值 `'AI'`** |
+| `notifications.student_id`、`notifications.teacher_id` | `students.id` / `teachers.id`（代理鍵，兩欄擇一有值，見 3.10） |
+
+> `course_groups`／`course_group_memberships`／`course_group_applications`（[group 模組](modules/group.md)）是少數**從一開始就用代理鍵 + 真的 FOREIGN KEY** 的新表，沒有重蹈 `course_code`/`username` 混用的舊問題——算是這份鍵值慣例稽核裡少見的正面案例，不是本節在警告的對象。
 
 > ⚠️ 已有程式碼因此出錯，詳見 [第 7 節](#7-已知問題)。
 
@@ -77,18 +80,18 @@
 
 | Table | 用途 | 欄位 | PK | FK |
 | --- | --- | --- | --- | --- |
-| `announcements` | 課程公告 | `course_id`、`teacher_id`、`title`、`content`、`is_pinned`、`created_at` | `id` | **無 FK**（app-level → `courses.id` / `teachers.id`） |
+| `announcements` | 課程公告 | `course_id`、`teacher_id`、`title`、`content`、`is_pinned`、`author_username`（ALTER 加入，記錄實際發文者，舊資料為 NULL）、`created_at` | `id` | **無 FK**（app-level → `courses.id` / `teachers.id`） |
 | `announcement_reads` | 已讀紀錄 | `student_id`、`announcement_id`；UNIQUE(`student_id`, `announcement_id`) | `id` | **無 FK**（app-level → `students.id` / `announcements.id`） |
 
-> 助教發公告時，`teacher_id` 會寫入「該課程第一位授課教師」的 `teachers.id`（助教不在 `teachers` 表）。
+> 助教發公告時，`teacher_id` 會寫入「該課程第一位授課教師」的 `teachers.id`（助教不在 `teachers` 表），`author_username` 才是實際發文的助教帳號，顯示作者姓名時優先用這欄。
 
 ### 3.4 作業
 
 | Table | 用途 | 欄位 | PK | FK |
 | --- | --- | --- | --- | --- |
-| `homeworks` | 作業主檔 | `course_id` VARCHAR(50)（**存 `course_code`**）、`title`、`description`、`deadline`、`attachments_json` TEXT（ALTER 加入，JSON 陣列 `[{file_name, file_path}]`） | `id` | **無 FK** |
+| `homeworks` | 作業主檔 | `course_id` VARCHAR(50)（**存 `course_code`**）、`title`、`description`、`deadline`、`attachments_json` TEXT（ALTER 加入，JSON 陣列 `[{file_name, file_path}]`）、`is_group_homework` TINYINT(1)（ALTER 加入，給 [group 模組](modules/group.md)彙整用，見已知問題）、`grade_notified_at` DATETIME（ALTER 加入，NULL 代表作業截止後還沒通知老師批改，見 [notification 模組](modules/notification.md)） | `id` | **無 FK** |
 | `homework_questions` | 作業子題 | `homework_id`、`question_order`、`title`、`description`、`answer_format`（`file`/`text`）、`discussion_prompt`（解惑 Prompt）、`ai_prompt`（ALTER 加入，語意為**評分 Prompt**）、`has_attachment`、`file_name`、`file_path` | `id` | **無 FK**（app-level → `homeworks.id`） |
-| `homework_submissions` | 繳交紀錄 | `homework_id`、`student_id` VARCHAR(128)（**存 `accounts.username`**）、`answer_text`（JSON 字串陣列）、`file_name`、`file_path`、`score` VARCHAR(10)、`feedback`、`graded_details` TEXT（ALTER 加入，存 JSON 字串）、`is_submitted`、`submitted_at`、`graded_at`；UNIQUE(`homework_id`, `student_id`) | `id` | **無 FK** |
+| `homework_submissions` | 繳交紀錄 | `homework_id`、`student_id` VARCHAR(128)（**存 `accounts.username`**）、`answer_text`（JSON 字串陣列）、`file_name`、`file_path`（舊版單檔欄位，仍保留相容）、`files_json` LONGTEXT（ALTER 加入，新版多檔陣列，每格對應一題 `{file_name, file_path}` 或 `null`）、`score` VARCHAR(10)、`feedback`、`graded_details` TEXT（ALTER 加入，存 JSON 字串）、`is_submitted`、`submitted_at`、`graded_at`；UNIQUE(`homework_id`, `student_id`) | `id` | **無 FK** |
 | `homework_submission_histories` | 繳交事件歷程 | `submission_id`、`event_type`（`submit` / `unsubmit` / `teacher_grade` / `ai_suggestion` / `student_self_estimate`）、`payload_json` LONGTEXT、`created_at` | `id` | `submission_id` → `homework_submissions.id`（FK, CASCADE） |
 
 > ⚠️ **`homework_submissions.ai_estimated_score` / `ai_estimated_reason` / `ai_estimated_at` 三個欄位不存在於任何建表或補欄位腳本**，但 `homeworkAiController.js` 的 4 支 AI 評分 API 都會 `UPDATE` 這三欄，`homeworkService.getSubmissionHistory` 也會讀取。全新環境跑完 `initDB.js` 後，這些 API 會因 `Unknown column` 失敗。需與團隊確認既有資料庫是如何加上這三欄，並補進 `initDB.js`。
@@ -97,7 +100,7 @@
 
 | Table | 用途 | 欄位 | PK | FK |
 | --- | --- | --- | --- | --- |
-| `discussion_rooms` | 討論主題 | `course_id`、`room_name`（建表時存在，程式碼未使用）、`title`、`content`（ALTER）、`ai_prompt`（ALTER）、`file_path`（ALTER，存 `uploads/xxx.pdf`，**沒有**開頭斜線）、`created_at` | `id` | `course_id` → `courses.id`（FK, CASCADE） |
+| `discussion_rooms` | 討論主題 | `course_id`、`room_name`（建表時存在，程式碼未使用）、`title`、`content`（ALTER）、`ai_prompt`（ALTER）、`file_path`（ALTER，存 `uploads/xxx.pdf`，**沒有**開頭斜線）、`created_by` VARCHAR(64)（ALTER 加入，**存 `accounts.username`**，舊主題為 NULL）、`created_at` | `id` | `course_id` → `courses.id`（FK, CASCADE） |
 | `threads` | 留言（巢狀） | `room_id`、`student_id` VARCHAR(50)（**存 `accounts.id` 或 `'AI'`**）、`content`、`parent_thread_id`、`created_at` | `id` | `room_id` → `discussion_rooms.id`；`parent_thread_id` → `threads.id`（皆 FK, CASCADE） |
 
 ### 3.6 AI 助教 / Prompt 設定
@@ -125,6 +128,26 @@
 | `AIQuizComments` | 作答下的巢狀留言 | `answerId`、`parentId`、`userId`、`userName`、`role`、`content`、`createdAt` | `id`（UUID） | `answerId` → `StudentAnswers.id`；`parentId` → `AIQuizComments.id`（皆 FK, CASCADE） |
 
 > ⚠️ `StudentAnswers` 沒有 UNIQUE(`questionId`, `studentId`)，而 `id` 每次都是新 UUID，所以 `saveStudentAnswer` 裡的 `ON DUPLICATE KEY UPDATE` 永遠不會觸發：**同一位學生重新作答會新增一筆，而不是覆蓋**。
+
+### 3.9 小組
+
+| Table | 用途 | 欄位 | PK | FK |
+| --- | --- | --- | --- | --- |
+| `course_groups` | 小組主檔 | `course_id` INT（**存 `courses.id`**）、`name`、`leader_student_id`（存 `accounts.username`）、`recruitment_enabled`、`recruitment_message`、`created_at`；UNIQUE(`course_id`, `name`) | `id` | `course_id` → `courses.id`（FK, CASCADE） |
+| `course_group_memberships` | 小組成員 | `course_id`、`group_id`、`student_id`（存 `accounts.username`）、`joined_at`；UNIQUE(`course_id`, `student_id`)（**同一課程同時只能在一個小組**） | `id` | `course_id` → `courses.id`；`group_id` → `course_groups.id`（皆 FK, CASCADE） |
+| `course_group_applications` | 加入申請 | `course_id`、`group_id`、`student_id`（存 `accounts.username`）、`message`、`status` ENUM(`pending`/`accepted`/`rejected`)、`created_at`、`updated_at`；UNIQUE(`group_id`, `student_id`) | `id` | `course_id` → `courses.id`；`group_id` → `course_groups.id`（皆 FK, CASCADE） |
+
+另外 `courses.student_group_creation_enabled` TINYINT(1)（ALTER 加入）控制該課程是否開放學生自建小組；`homeworks.is_group_homework` 見 3.4。
+
+> 這三張表是目前唯一從一開始就用「代理鍵 + 真的 FOREIGN KEY」設計的業務表，見第 2 節的正面案例說明。
+
+### 3.10 站內通知
+
+| Table | 用途 | 欄位 | PK | FK |
+| --- | --- | --- | --- | --- |
+| `notifications` | 站內通知（含未讀狀態） | `student_id` INT NULL（存 `students.id`）、`teacher_id` INT NULL（ALTER 加入，存 `teachers.id`）、`course_id`、`type`（`announcement`/`discussion`/`discussion_post`/`homework`/`homework_grade` 等）、`ref_id` VARCHAR(64)（存對應物件的 id，ALTER 放寬成字串以支援 AI 測驗的 UUID）、`title`、`message`、`is_read`、`created_at` | `id` | **無 FK**（app-level → `students.id` / `teachers.id` / `courses.id`） |
+
+> `student_id`、`teacher_id` 兩欄**擇一有值**（學生通知 vs. 教師批改提醒），沒有 DB 層 CHECK constraint 保證「剛好一欄有值」，純粹依賴程式碼寫入時的邏輯，見第 7 節已知問題。
 
 ---
 
@@ -170,6 +193,14 @@ erDiagram
     AIQUESTIONS ||--o{ STUDENTANSWERS : "answered-by (FK)"
     STUDENTANSWERS ||--o{ AIQUIZCOMMENTS : "discussed-in (FK)"
     AIQUIZCOMMENTS ||--o{ AIQUIZCOMMENTS : "replies-to (FK, self)"
+
+    COURSES ||--o{ COURSE_GROUPS : "has (FK)"
+    COURSE_GROUPS ||--o{ COURSE_GROUP_MEMBERSHIPS : "has members (FK)"
+    COURSE_GROUPS ||--o{ COURSE_GROUP_APPLICATIONS : "has applications (FK)"
+
+    STUDENTS ||--o{ NOTIFICATIONS : "student_id (app-level)"
+    TEACHERS ||--o{ NOTIFICATIONS : "teacher_id (app-level)"
+    COURSES ||--o{ NOTIFICATIONS : "course_id (app-level)"
 ```
 
 ### 刪除連動
@@ -181,6 +212,8 @@ erDiagram
 | 刪除 AI 測驗 | `AIQuestions` → `StudentAnswers` → `AIQuizComments` 由 FK CASCADE 刪除；**來源 PDF 實體檔不會刪除** |
 | 刪除教材 | 程式碼會先刪除實體檔，再刪除資料列 |
 | 刪除作業 | **附件與學生上傳檔案實體檔不會刪除** |
+| 刪除小組（`GroupService.deleteGroup`） | `course_group_memberships`、`course_group_applications` 由 FK CASCADE 刪除 |
+| 刪除課程 | `course_groups`（連同其成員/申請）由 FK CASCADE 刪除；其餘表（`homeworks`、`announcements`、`course_materials`...）因為沒有 FK，不會連動刪除，會變成孤兒資料 |
 
 ---
 
@@ -204,7 +237,7 @@ erDiagram
        await pool.execute("ALTER TABLE <table> ADD COLUMN <column> <type>");
    } catch (e) { /* 欄位已存在就忽略 */ }
    ```
-   確保腳本可在既有資料庫上重複執行。
+   確保腳本可在既有資料庫上重複執行。⚠️ 最近一批新增的表格/欄位（小組、通知、`is_group_homework`、`files_json`、`created_by`、`author_username` 等）**只寫進了 `ensureSchema.js`，沒有同步補進 `initDB.js`**，沒有照這條規範走，見第 7 節。
 2. 若欄位是「程式已在用但 schema 沒有」的（例如 `ai_estimated_*`），請優先補齊並更新本文件。
 3. 新增存「課程」或「使用者」的欄位前，先看 [第 2 節](#2-鍵值慣例最容易踩雷的地方)，與同模組既有欄位保持一致，不要再引入新的鍵值慣例。
 4. 新增表格 / 欄位後，同步更新本文件第 3、4 節。
@@ -225,3 +258,6 @@ erDiagram
 | Low | 命名與語意不符 | `homework_questions.ai_prompt` 實為評分 Prompt；`threads.student_id` 實為 `accounts.id`。 |
 | Low | 未使用欄位 | `discussion_rooms.room_name`、`homework_questions.has_attachment / file_name / file_path`（建立作業時固定寫 0 / NULL）。 |
 | Low | 上傳檔案沒有清理 | 見第 4 節「刪除連動」。 |
+| Medium | 新表/新欄位沒有補進 `initDB.js` | 小組三張表、`notifications`、`accounts.email`、`homeworks.is_group_homework`/`grade_notified_at`、`homework_submissions.files_json`、`discussion_rooms.created_by`、`announcements.author_username` 全部只寫在 `ensureSchema.js`，跟第 6 節「新增欄位一律在 `initDB.js` 補上」的規範不一致；全新環境只跑 `initDB.js` 不啟動後端的話，這些表/欄位不會存在 |
+| Low | `notifications.student_id`/`teacher_id` 沒有 CHECK constraint | 兩欄擇一有值完全靠程式邏輯保證，資料庫層面允許兩者同時為 NULL 或同時有值 |
+| Low | `homeworks.is_group_homework` 目前只是旗標 | 見 [homework 模組已知問題](modules/homework.md)：實際繳交仍以學生個人為單位，不是真的小組共用一份繳交 |

@@ -1,9 +1,9 @@
 # 模組：作業 AI（Homework AI）
 
 > 所屬文件：[overview.md](../overview.md) ・ [database.md](../database.md) ・ [process-issues.md](../process-issues.md)
-> 其他模組：[auth](auth.md) ・ [course](course.md) ・ [announcement](announcement.md) ・ [material](material.md) ・ [discussion](discussion.md) ・ [homework](homework.md) ・ [course-ai](course-ai.md) ・ [aiquiz](aiquiz.md) ・ [shared](shared.md)
+> 其他模組：[auth](auth.md) ・ [course](course.md) ・ [announcement](announcement.md) ・ [material](material.md) ・ [discussion](discussion.md) ・ [homework](homework.md) ・ [course-ai](course-ai.md) ・ [aiquiz](aiquiz.md) ・ [notification](notification.md) ・ [shared](shared.md)
 >
-> 核對日期：2026-09-29。CRUD/繳交/批改本體在 [homework](homework.md)，這裡只涵蓋 AI 相關功能。
+> 核對日期：2026-10-12。CRUD/繳交/批改本體在 [homework](homework.md)，這裡只涵蓋 AI 相關功能。
 
 ## 這個模組做什麼
 
@@ -39,11 +39,11 @@
 | --- | --- | --- |
 | `getPrompts` | 讀某課程的 AI Prompt 設定 | 直接 `import { pool }`，略過 Model 層 |
 | `updatePrompts` | 寫入/更新該課程的 AI Prompt 設定 | |
-| `gradeOverall` | 對整份繳交做 AI 總評分 | |
-| `gradeQuestion` | 對單一子題做 AI 評分 | |
+| `gradeOverall` | 對整份繳交做 AI 總評分，回傳改成 `perQuestion`（逐題明細陣列），取代舊的 `feedback` | 失敗時用 `sendAiError` 統一處理（例如 `OPENAI_API_KEY` 未設定會回 503，而不是籠統的 500） |
+| `gradeQuestion` | 對單一子題做 AI 評分；現在**只記在繳交歷程**，不再覆寫整份繳交的 `ai_estimated_*` 欄位（避免單題評分蓋掉整份的總評結果） | 同上，用 `sendAiError` |
 | `batchGrade` | 對某作業批次 AI 評分所有繳交 | |
 | `selfEstimate` | 學生自評，AI 預估分數 | |
-| `chatWithAi` | 學生與 AI 解惑聊天 | |
+| `chatWithAi` | 學生與 AI 解惑聊天 | 同上，用 `sendAiError` |
 
 ### Service — `backend/src/services/homeworkAiService.js`
 

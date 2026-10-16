@@ -3,11 +3,11 @@
 > 所屬文件：[overview.md](../overview.md) ・ [database.md](../database.md) ・ [process-issues.md](../process-issues.md)
 > 其他模組：[auth](auth.md) ・ [course](course.md) ・ [announcement](announcement.md) ・ [discussion](discussion.md) ・ [homework](homework.md) ・ [homework-ai](homework-ai.md) ・ [course-ai](course-ai.md) ・ [aiquiz](aiquiz.md) ・ [shared](shared.md)
 >
-> 核對日期：2026-09-29。
+> 核對日期：2026-10-12。
 
 ## 這個模組做什麼
 
-課程教材的上傳、列表、下載、刪除（教師/助教管理，所有人可下載）。
+課程教材的上傳、列表、下載、置換（上傳新檔覆蓋既有教材，保留原本的教材項目不變）、刪除（教師/助教管理，所有人可下載）。
 
 ## 前端程式碼
 
@@ -16,6 +16,7 @@
   - `loadMaterials`：載入教材列表，呼叫 `GET .../materials`
   - `onPickFile`、`onDrop`：選檔/拖曳放檔後，把檔案存進待上傳的狀態
   - `uploadMaterial`：送出上傳，呼叫 `POST .../materials`
+  - `replaceMaterial`：點「更換」選新檔後直接覆蓋，呼叫 `PUT .../materials/:id`（multipart）
   - `deleteMaterial`：刪除教材，呼叫 `DELETE .../materials/:id`
 - **`frontend/src/utils/files.js`**：下載邏輯共用工具，見 [shared.md](shared.md)
   - `downloadFile`、`getFileUrl`：分別是「帶 JWT 下載檔案」與「組出檔案的完整 URL」
@@ -32,6 +33,7 @@
 
 - `getMaterials`：取得課程教材列表
 - `uploadMaterial`：上傳教材檔案
+- `replaceMaterial`：置換教材檔案（保留原本的教材項目，只換掉檔案）
 - `deleteMaterial`：刪除教材（含刪除實體檔）
 
 ### Service — `backend/src/services/materialService.js`
@@ -40,13 +42,15 @@
 | --- | --- |
 | `getCourseMaterials` | |
 | `uploadMaterial` | 處理 multer 原始檔名編碼（latin1→utf8） |
+| `replaceMaterial` | 檢查教材是否屬於該課程，刪掉舊的實體檔（`fs.unlink`，檔案已經不存在也不當錯誤），寫入新檔案資訊 |
 | `deleteMaterial` | 會檢查教材是否屬於該課程，並刪除實體檔（`fs.unlink`） |
 
 ### Model — `backend/src/models/materialModel.js`
 
-- `getByCourseId`：查某課程的教材列表
+- `getByCourseId`：查某課程的教材列表（上傳者姓名優先查 `uploader_id` 對應的教師/學生名稱，查不到才顯示原始帳號）
 - `create`：寫入 `course_materials`
-- `getById`：依 id 查單筆教材（刪除前先確認歸屬哪個課程）
+- `getById`：依 id 查單筆教材（刪除/置換前先確認歸屬哪個課程）
+- `replaceFile`：更新既有教材列的檔案資訊與上傳時間
 - `delete`：刪除資料列
 
 ## API
@@ -55,6 +59,7 @@
 | --- | --- | --- | --- |
 | GET | `/api/courses/:courseId/materials` | `getMaterials` | JWT |
 | POST | `/api/courses/:courseId/materials` | `uploadMaterial` | JWT + (teacher, ta) |
+| PUT | `/api/courses/:courseId/materials/:materialId` | `replaceMaterial` | JWT + (teacher, ta) |
 | DELETE | `/api/courses/:courseId/materials/:materialId` | `deleteMaterial` | JWT + (teacher, ta) |
 
 ## 資料庫

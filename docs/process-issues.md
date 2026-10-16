@@ -73,6 +73,31 @@ fixed:file upload      ← 冒號後沒有空格，跟其他訊息風格（fix:s
 - **已合併分支不清理** → `discussion`/`frontend`/`temp` 這種已經併入 `main` 的分支留著，新加入的人不知道該不該用、內容是否過時，增加認知負擔；`mainpage` 這種**從未合併、也沒人記得的分支**更危險。
 - **Commit 訊息不可搜尋** → 半年後想知道「作業批改邏輯是哪個 commit 改的」，訊息是 `3.28`、`merge` 完全查不到，只能整包翻 diff。
 
+### 2.1 後續追蹤（2026-10-13）：採用 Jira/PR 之後，問題有改善，但沒有全面改善
+
+`workflow.md` 正式採用後（見第 8 章），`git log` 看得到確實有人照規矩走：
+
+```text
+37a0343 Merge pull request #3 from Chrubby/feature/NL-10-courseinfo
+e9da28f Merge pull request #2 from Chrubby/feature/NL-3-studentList
+a136afd Merge pull request #1 from Chrubby/feature/NL-5-mainpage
+```
+
+這三個 PR（作者 mafic、合併者 MapleFireIce）都帶了 Jira 編號（`NL-3`、`NL-5`、`NL-10`），也是真的透過 GitHub PR 合併——這部分跟第 2 章描述的舊狀況不一樣，是確實的改善。
+
+但同一段 git 歷史裡，**同時間還有兩批功能完全沒有走這個流程**：
+
+```text
+0cc69d7 add:小組專區頁面                                            （作者 Atlas，直接是一個 main 上的 commit，無 PR、無 Jira 編號）
+771a0a6 Notify users by email and remind teachers to grade...       （作者 ccwangg）
+ff455fe Add merged PDF export, AI grading suggestions...            （作者 ccwangg）
+5153623 update .env.example                                         （作者 ccwangg）
+e73cf66 merge notification                                          （ccwangg 自己把上面三個 commit 直接 merge 進 main，無 PR）
+c5bdf4c merge notification                                          （同上）
+```
+
+也就是說：**同一個團隊、同一段時間，一部分人用 PR + Jira 編號開發（小組/學生名冊/首頁），另一部分人還是用舊的「本機 merge 直接 push」（通知系統、作業匯出、AI 評分調整、公告/討論區編輯刪除等一大批功能）**。這代表問題不是「團隊不知道規則」（`workflow.md` 已經寫得很清楚），而是**規則沒有被強制執行**——沒有分支保護、沒有 CI 擋，想繞過就繞得過去，純粹依賴個人自覺。詳細的功能清單見 [CHANGELOG.md 的 Unreleased 區塊](../CHANGELOG.md)，每項都標了實際的合併方式。
+
 ---
 
 ## 3. 程式碼品質保證（現況）
@@ -101,6 +126,8 @@ fixed:file upload      ← 冒號後沒有空格，跟其他訊息風格（fix:s
 - `homework_submissions.ai_estimated_*` 三個欄位被程式碼引用，但**沒有任何腳本會建立它們**（見 [database.md 3.4](database.md#34-作業)）——這正是「schema 變更沒有走統一流程」會發生的典型狀況：可能是有人在自己的資料庫手動下了 `ALTER TABLE`，就直接開發下去，卻忘了把這段 SQL 補進 `initDB.js`。
 - 同一批欄位（例如 `must_change_password`、`avatar_url`）在 `initDB.js` 跟 `ensureSchema.js` 兩處都各自補了一次，看不出哪一份是「目前真正的規格」，這兩處至今還沒合併成一個。
 
+**後續追蹤（2026-10-13）**：這個問題沒有改善，反而更明顯——小組/通知兩個模組的新資料表、以及 `is_group_homework`/`files_json`/`created_by`/`author_username` 等一整批新欄位，全部只寫進 `ensureSchema.js`，完全沒有補進 `initDB.js`（細節見 [database.md 第 6、7 節](database.md#6-修改資料庫時的規範)）。代表「schema 變更要雙邊同步」這件事，從 2026-09-28 稽核當下到現在，一直沒有被當一回事處理。
+
 ---
 
 ## 6. 機密與環境管理（現況）
@@ -124,6 +151,8 @@ fixed:file upload      ← 冒號後沒有空格，跟其他訊息風格（fix:s
 ## 8. 專案 / 任務管理（現況）
 
 目前已採用 Jira（key `NL`）+ Discord 的流程（見 [workflow.md 第 1 章](workflow.md#1-jira-任務管理)）。**TODO / 待確認**：這份文件核對當下（2026-09-28）看不出 Jira/Discord 是何時導入的，也看不出導入前（2026-03～05 那段 git 歷史）是否有任何任務追蹤——從 commit 訊息完全沒有 Issue/Ticket 編號引用來看，當時應該是沒有的。
+
+**後續追蹤（2026-10-13）**：確認 Jira 編號有在實際使用——`main` 上看得到帶 `NL-3`、`NL-5`、`NL-10` 編號、透過 GitHub PR 合併的 commit（見 2.1）。但同一時期也有完全沒有編號、沒有走 Jira 的功能直接 merge 進 `main`，代表「有沒有開 Ticket」目前還是看個人，不是靠流程/工具強制（例如 Jira↔GitHub 整合——`workflow.md` 代辦事項裡提到的那項）。
 
 ---
 
