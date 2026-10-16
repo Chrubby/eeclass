@@ -132,9 +132,9 @@
 | GET | `/api/homeworks/:hwId` | `getHomeworkDetail` | JWT |
 | PUT | `/api/homeworks/:hwId` | `updateHomework` | JWT + (teacher, ta) |
 | DELETE | `/api/homeworks/:hwId` | `deleteHomework` | JWT + (teacher, ta) |
-| POST | `/api/homeworks/:hwId/submissions` | `submitHomework` | JWT + (student, ta) |
-| GET | `/api/homeworks/:hwId/submissions/me` | `getMySubmission` | JWT + (student, ta) |
-| DELETE | `/api/homeworks/:hwId/submissions/me` | `unsubmitHomework` | JWT + (student, ta) |
+| POST | `/api/homeworks/:hwId/submissions` | `submitHomework` | JWT + (student)（助教在自己帶的課不能繳交） |
+| GET | `/api/homeworks/:hwId/submissions/me` | `getMySubmission` | JWT + (student) |
+| DELETE | `/api/homeworks/:hwId/submissions/me` | `unsubmitHomework` | JWT + (student) |
 | GET | `/api/homeworks/:hwId/export` | `exportSubmissions` | JWT + (teacher, ta) |
 | GET | `/api/homeworks/:hwId/submissions` | `getSubmissionsList` | JWT + (teacher, ta) |
 | GET | `/api/submissions/:submissionId` | `getSubmissionDetail` | JWT + (teacher, ta) |

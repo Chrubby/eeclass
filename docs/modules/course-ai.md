@@ -44,7 +44,7 @@
 | --- | --- | --- |
 | `getPromptsByCourseId` | 依 `courses.id` 查該課程的 AI Prompt 設定 | 給本模組與 [homework-ai](homework-ai.md) 共用 |
 | `getPromptsByCourseCode` | 依 `course_code` 查該課程的 AI Prompt 設定 | 給 [homework-ai](homework-ai.md) 的 `getPrompts` 用 |
-| `upsertPrompts` | 新增或更新該課程的 AI Prompt 設定 | 給 [homework-ai](homework-ai.md) 的 `updatePrompts` 用；⚠️ INSERT 分支有 bug，見 homework-ai 已知問題 |
+| `upsertPrompts` | 新增或更新該課程的 AI Prompt 設定 | 給 [homework-ai](homework-ai.md) 的 `updatePrompts` 用（找不到課程時丟 `Error("找不到課程")`；INSERT 分支欄位與參數數量已對齊） |
 | `saveMessage` | 寫入一則聊天訊息 | |
 | `getChatHistory` | 查某學生與 AI 助教的聊天紀錄 | ⚠️ `ORDER BY created_at ASC LIMIT n`，取到最早 n 筆，見已知問題 |
 
@@ -68,5 +68,4 @@
 | High | `askAssistant` 的 `send_student_info` 區塊用 `students.id`/`courses.id` 查 `homework_submissions.student_id`（存 username）/`homeworks.course_id`（存 course_code），結果恆為空或錯誤 | `courseAiService.js` |
 | Medium | `getChatHistory` 用 `ORDER BY created_at ASC LIMIT n`，聊天紀錄 API 永遠顯示最早 20 筆，AI 的上下文永遠是最早 10 筆，不是最近的 | `courseAiModel.js` |
 | Medium | `remindHomework` 對教師角色也會被 `ChatBot.vue` 呼叫（無角色檢查即觸發），後端回 403 被前端 catch 吞掉，只是多打一次無效 API | `ChatBot.vue` |
-| Medium | `upsertPrompts` 在找不到課程時呼叫了作用域外的 `res.status(...)`，會丟 `ReferenceError` 而不是乾淨的錯誤訊息（實務上建課時已經會插入一列 Prompt，通常走不到這個分支） | `models/courseAiModel.js` |
 | Medium | `ChatBot.vue` 用 `v-html="renderMarkdown(...)"` 渲染 AI 回覆與提醒，只經過 `marked`，沒有 sanitize，有 XSS 風險 | `components/ChatBot.vue` |

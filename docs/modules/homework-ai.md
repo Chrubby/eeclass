@@ -77,8 +77,8 @@
 | POST | `/api/submissions/:submissionId/ai-grade` | `gradeOverall` | JWT + (teacher, ta) |
 | POST | `/api/submissions/:submissionId/questions/:questionId/ai-grade` | `gradeQuestion` | JWT + (teacher, ta) |
 | POST | `/api/homeworks/:hwId/ai-grade-batch` | `batchGrade` | JWT + (teacher, ta) |
-| POST | `/api/homeworks/:hwId/self-estimate` | `selfEstimate` | JWT + (student, ta) |
-| POST | `/api/homeworks/:hwId/questions/:questionId/ai-chat` | `chatWithAi` | JWT + (student, ta) |
+| POST | `/api/homeworks/:hwId/self-estimate` | `selfEstimate` | JWT + (student) |
+| POST | `/api/homeworks/:hwId/questions/:questionId/ai-chat` | `chatWithAi` | JWT + (student) |
 
 ## 資料庫
 
@@ -92,7 +92,6 @@
 | High | `runAiGradeQuestion` 用 `hw.course_id`（存 `course_code`）查 `course_ai_prompts.course_id`（存 `courses.id`），課程層級評分提示永遠是空字串 | `homeworkAiService.js` |
 | Medium | `homeworkAiController.js` 全部方法一律回 500，不分「找不到子題」這種應為 4xx 的情境 | `controllers/homeworkAiController.js` |
 | Medium | `chatWithTutor` 直接把前端傳來的 `messages` 塞進去，沒有過濾 `role`，可被夾帶 `role: "system"` 繞過「禁止透露評分標準」 | `homeworkAiService.js` |
-| Medium | `PdfHelper.extractText` 的 catch 參數是 `err`，卻 log `error`，PDF 解析失敗時會再丟 `ReferenceError`，掩蓋原本的錯誤（這個共用工具也被 [discussion](discussion.md)、[aiquiz](aiquiz.md) 使用） | `utils/pdfHelper.js` |
 | Medium | 教師用的 `ai-grade`／`ai-grade-batch`／單題 `ai-grade` 三支 API 前端沒有任何呼叫入口 | — |
 | Medium | 學生重新整理作業頁後看不到 AI 預估分數：`HomeworkModel.getStudentSubmission`（見 [homework.md](homework.md)）沒有 select `ai_estimated_*` | `models/homeworkModel.js` |
 | Low | 單題 AI 評分回傳 `question_order: q.questionOrder`，但物件實際欄位是 `question_order`（snake_case），值恆為 `undefined` | `homeworkAiService.js` |

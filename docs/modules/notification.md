@@ -7,7 +7,7 @@
 
 ## 這個模組做什麼
 
-學生/助教/教師右上角的通知鈴鐺：列出未讀/已讀通知、標記單筆或全部已讀。通知目前由這幾個地方觸發：教師/助教發公告時通知修課學生（[announcement](announcement.md)）、作業截止時通知該課教師去批改（`homeworkDeadlineService.js` 背景排程，每 60 秒檢查一次）。有填信箱的使用者，同一則通知也會收到一封email。使用者必須在註冊時或個人資料頁填寫信箱，才能收到 email 通知（未填信箱時頁首會出現提示 banner，見 [shared.md](shared.md) 的 `App.vue`）。
+學生/助教/教師右上角的通知鈴鐺：列出未讀/已讀通知、標記單筆或全部已讀。通知目前由這幾個地方觸發：教師/助教發公告時通知修課學生（[announcement](announcement.md)）、作業截止時通知該課教師去批改（`homeworkDeadlineService.js` 背景排程，每 60 秒檢查一次）。有填信箱的使用者，同一則通知也會收到一封email。使用者必須由管理員建帳號時或在個人資料頁填寫信箱，才能收到 email 通知（未填信箱時頁首會出現提示 banner，見 [shared.md](shared.md) 的 `App.vue`）。
 
 ## 前端程式碼
 

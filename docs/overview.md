@@ -19,9 +19,9 @@
 
 | 模組 | 涵蓋範圍 |
 | --- | --- |
-| [auth](modules/auth.md) | 註冊（含批次匯入）、登入、忘記密碼、改密碼、頭貼、email |
-| [course](modules/course.md) | 課程搜尋、加選課、建立課程、教師/助教聯絡資訊 |
-| [student-list](modules/student-list.md) | 教師/助教管理課程學生名冊：手動加選/改身分、Excel 整批同步 |
+| [auth](modules/auth.md) | 管理員建帳號（單筆/Excel 批次）、登入、忘記密碼、改密碼、頭貼、email、課程層級助教判斷 |
+| [course](modules/course.md) | 課程搜尋、加選課、建立課程、管理員所有課程總覽、教師/助教聯絡資訊 |
+| [student-list](modules/student-list.md) | 管理員/教師/助教管理課程學生名冊：手動加選/改身分、指定課程助教、Excel 整批同步 |
 | [group](modules/group.md) | 課程小組：建立/加入/退出、招募與加入申請、組長轉移、小組作業彙整 |
 
 **課程內容**
@@ -65,13 +65,15 @@
 
 ### 1.1 使用者角色
 
-角色存於 `accounts.role`，註冊時可選三種：
+帳號角色存於 `accounts.role`，共三種。**系統不開放自行註冊，所有帳號由管理員建立**（第一個管理員用 `backend/scripts/seedAdmin.js` 建立，見 README）；**助教不是帳號角色，是課程層級身分**。
 
 | 角色 | 說明 | 資料表 |
 | --- | --- | --- |
 | `student` | 選課、繳交作業、參與討論、AI 測驗、AI 助教 | `students` |
 | `teacher` | 建立課程、發布公告 / 作業 / 測驗、批改、設定 AI Prompt | `teachers` |
-| `ta` | 助教。**沒有自己的資料表，寫入 `students`**。同時具備大部分學生端與教師端權限，但無法建立課程；前端 ChatBot 對助教只顯示 Prompt 設定，不顯示聊天 | `students` |
+| `admin` | 系統管理員：建立帳號（單筆或 Excel 批次）、建立課程、檢視所有課程、管理任何課程的學生名冊（含指定助教）。**不參與課程內容**，進課程頁只看得到學生名冊 | `admins` |
+
+**助教（`ta`）**：帳號本身是 `student`，授課教師或管理員在某門課的[學生名冊](modules/student-list.md)勾選後，該生的 `enrollments.role` 在這門課變成 `ta`。同一帳號可以在 A 課是助教、B 課是一般學生。後端由 `middlewares/courseRole.js` 依請求所屬課程把 `req.user.role` 換成 `ta`，前端 `getRoleFromToken()` 同樣課程感知（見 [auth 模組](modules/auth.md#課程層級助教--backendsrcmiddlewarescourserolejs)）。助教在自己帶的課具備教師端權限（發公告、建討論、發作業、批改、設 AI Prompt、傳教材、管理名冊但不能指派助教），**不能繳交該課作業**，也不能建立課程（只有 admin、teacher 能建課）；前端 ChatBot 對助教只顯示 Prompt 設定，不顯示聊天。
 
 角色權限細節見 [第 11.3 節](#113-驗證與授權)。
 
@@ -132,6 +134,7 @@ eeclass/
 ├── frontend/            # Vue 3 前端（獨立子專案）→ 目錄細節見第 11.5 節
 ├── backend/             # Express 後端（獨立子專案）→ 目錄細節見第 11.1 節
 │   ├── scripts/initDB.js  # 建表腳本 → 見 database.md
+│   ├── scripts/seedAdmin.js # 建立第一個管理員（見 README）
 │   └── uploads/           # 上傳檔案（執行時自動建立）
 ├── db/                  # ⚠️ 舊版 Python 建表 / 種子腳本與舊 ER 圖，不要使用
 ├── docs/                # 本文件
@@ -163,7 +166,7 @@ sequenceDiagram
     API->>API: bcrypt.compare → 簽發 JWT {sub: username, role}
     API-->>FE: { message, username, role, token, mustChangePassword }
     FE->>FE: localStorage 存 accessToken / user / mustChangePassword
-    FE-->>User: 導向 /change-password 或 /dashboard
+    FE-->>User: 導向 /change-password、/dashboard（管理員為 /admin/accounts）
     Note over FE: 之後每個請求由 axios 攔截器帶上 Authorization: Bearer <token>
 ```
 
@@ -348,7 +351,7 @@ npm run dev                 # http://localhost:5173
 
 > `cp` 在 macOS、Linux、Git Bash、PowerShell 都能用。只有 Windows 的命令提示字元（cmd）要改成 `copy .env.example .env`。
 
-測試帳號請直接用 `/register` 註冊（`db/seed_data.py` 產生的帳號因雜湊演算法不相容而無法登入）。要測試教師 / 學生不同視角，請分別登入不同角色的帳號。
+系統沒有自行註冊功能。新資料庫先建立第一個管理員：`cd backend && node scripts/seedAdmin.js <帳號> <姓名> <密碼>`，登入後在「帳號管理」建立教師／學生帳號（或上傳名單 Excel 批次建立），再到「所有課程」建課、在課程的「學生名冊」上傳名單。`db/seed_data.py` 產生的帳號因雜湊演算法不相容而無法登入。要測試教師 / 學生 / 助教不同視角，請分別登入不同帳號（助教要由教師在名冊勾選）。
 
 ### 程式碼位置速查
 
@@ -401,27 +404,56 @@ flowchart LR
 6. 課程 / 使用者鍵值混用導致 AI 功能查錯資料：作業 AI 讀不到課程 Prompt、AI 助教讀不到作業與學生資訊。→ [database](database.md#7-已知問題)
 
 ### Medium
-
 1. Email 忘記密碼流程未完成。→ [auth 模組](modules/auth.md)
 2. 多數關聯沒有 FK；自然鍵 / 代理鍵混用。→ [database](database.md#2-鍵值慣例最容易踩雷的地方)
 3. `StudentAnswers` 缺 UNIQUE，重新作答會新增資料。→ [database](database.md#38-ai-測驗)
 4. AI 助教聊天紀錄取到的是最早而非最近的訊息。→ [course-ai 模組](modules/course-ai.md)
-5. `pdfHelper` catch 變數錯誤、`upsertPrompts` 使用不存在的 `res`。→ [homework-ai 模組](modules/homework-ai.md)、[course-ai 模組](modules/course-ai.md)
-6. ChatBot 以 `v-html` 渲染 AI 內容未 sanitize。→ [course-ai 模組](modules/course-ai.md)
-7. 教師 AI 預評分沒有前端入口；學生重新整理後看不到 AI 預估分數。→ [homework-ai 模組](modules/homework-ai.md)
-8. AI 解惑的對話由前端提供，可被注入 system 訊息。→ [homework-ai 模組](modules/homework-ai.md)
-9. API 回應格式不一致。→ [process-issues.md](process-issues.md)
-10. CORS 全開、沒有 rate limit / 安全標頭。→ [shared 模組](modules/shared.md)
+5. ChatBot 以 `v-html` 渲染 AI 內容未 sanitize。→ [course-ai 模組](modules/course-ai.md)
+6. 教師 AI 預評分沒有前端入口；學生重新整理後看不到 AI 預估分數。→ [homework-ai 模組](modules/homework-ai.md)
+7. AI 解惑的對話由前端提供，可被注入 system 訊息。→ [homework-ai 模組](modules/homework-ai.md)
+8. API 回應格式不一致。→ [process-issues.md](process-issues.md)
+9. CORS 全開、沒有 rate limit / 安全標頭。→ [shared 模組](modules/shared.md)
 
 ### Low
 
 1. 根目錄殘留的舊前端設定檔、前端鷹架元件、`homeworkAiModel.js`、`pdf-parser` 相依。
 2. `AiQuizService.getQuizDetail` 重複定義。
 3. 命名與語意不符（`homework_questions.ai_prompt`、`threads.student_id`）。
-4. 助教在 DB 層被視為學生，權限在不同功能間不一致。
-5. 刪除作業 / 討論 / 測驗不會刪除實體檔。
-6. 根目錄 README 的 `localStorage.userRole` 測試方法已失效。
-7. 沒有自動化測試與 CI。
+4. 刪除作業 / 討論 / 測驗不會刪除實體檔。
+5. 根目錄 README 的 `localStorage.userRole` 測試方法已失效。
+6. 沒有自動化測試與 CI。
+7. `db/__pycache__/*.pyc` 被誤提交進版本控制；`backend/.env.example` 的 SMTP 設定區塊重複出現兩次；`db/seed_data.py` 仍寫入 `ta` 角色帳號（該角色已不存在）。
+
+---
+
+### 9.1 問題複查（2026-10-17）
+
+對照 `main` 合併 PR #4 之後的程式碼逐項複查，結果如下：
+
+**已解決（已從各分冊與上方總表移除）**
+
+| 問題 | 解決方式 |
+| --- | --- |
+| `pdfHelper` catch 變數寫成 `error`、實際是 `err` | `utils/pdfHelper.js` 現在 log 的是 `err`，PDF 解析失敗回傳空字串 |
+| `upsertPrompts` 呼叫作用域外的 `res` | 改成 `throw new Error("找不到課程")`，INSERT 分支參數數量也已對齊 |
+| 助教在 DB 層被視為學生、權限在不同功能間不一致 | 助教改為課程層級身分（`enrollments.role = 'ta'`），權限只在自己帶的課有效，見 [auth 模組](modules/auth.md#課程層級助教--backendsrcmiddlewarescourserolejs) |
+| 助教可建立課程的權限／行為不一致 | 路由改為只有 admin、teacher 能建課 |
+| 批次匯入 API 是 Public，只靠選填的匯入驗證碼 | 公開的 `/api/auth/bulk-register*` 與 `modules/bulk-account-import/` 整個移除，改為 admin 才能呼叫的 `/api/auth/accounts/import` |
+| 全專案不開放註冊的資安疑慮（任何人可自行註冊成教師） | 移除 `/api/auth/register`，只有管理員能建帳號 |
+| 討論區在 MySQL 8 預設定序下查詢失敗 | `discussionModel` 的 JOIN 兩邊都 CAST，已修正 |
+| `db/create_db.py` 寫死明文 MySQL 密碼 | 目前檔案改讀 `backend/.env`（⚠️ 但**舊密碼仍在 git 歷史中**，密碼需要更換，所以上方 High #4 仍保留） |
+
+**仍然存在（逐項重新核對過）**：`/uploads` 公開、`JWT_SECRET` fallback 且未列入 `.env.example`、`ai_estimated_*` 欄位仍沒有任何建表/補欄位腳本、資源歸屬檢查缺失、AI 測驗 API 無角色限制且信任前端傳入的 `studentId`、課程/使用者鍵值混用、Email 忘記密碼流程沒有呼叫端、多數關聯無 FK、`StudentAnswers` 無 UNIQUE、AI 助教聊天紀錄取最早 n 筆（`ORDER BY created_at ASC`）、ChatBot 的 `v-html`、CORS 全開且沒有 rate limit、`getQuizDetail` 重複定義、根目錄殘留舊前端設定與鷹架元件、README 的 `userRole` 測試方法、刪除資料不清實體檔、沒有自動化測試與 CI、新增的表/欄位只寫進 `ensureSchema.js`（沒進 `initDB.js`）。
+
+**這次新增的問題**
+
+| 優先度 | 問題 | 位置 |
+| --- | --- | --- |
+| Medium | 管理員沒有停用/刪除帳號、重設他人密碼的功能 | [auth 模組](modules/auth.md) |
+| Medium | 名冊同步「名單沒有的人一律退選」，沒有預覽或二次確認 | [student-list 模組](modules/student-list.md) |
+| Low | `courseRole` 對每個帶課程參數的學生請求多打 1～2 次 DB 查詢，沒有快取 | [auth 模組](modules/auth.md) |
+| Low | 舊 token 的 `role: "ta"` 靠後端相容處理，要等過期才乾淨 | [auth 模組](modules/auth.md) |
+| Low | `db/__pycache__/*.pyc`、重複的 `.env.example` SMTP 區塊、`seed_data.py` 的 `ta` 帳號 | 見上方 Low #7 |
 
 ---
 
@@ -431,7 +463,7 @@ flowchart LR
 
 | 舊文件描述 | 程式碼實際行為 |
 | --- | --- |
-| 用重設代碼重設密碼後會標記 `must_change_password = 1` | 設為 **0**；只有「註冊」會設為 1 |
+| 用重設代碼重設密碼後會標記 `must_change_password = 1` | 設為 **0**；只有「建立帳號」會設為 1 |
 | 助教可建立課程（`requireRole('teacher','ta')`） | 路由放行，但 Service 找不到教師資料而失敗 |
 | `DiscussionThread.vue` 位於 `components/` | 位於 `views/course/` |
 | `AIQuizDetail.vue` 以 `v-html` 渲染 AI 回覆 | 使用 `{{ }}` 文字插值，沒有 XSS 問題；只有 `ChatBot.vue` 用 `v-html` |
@@ -478,7 +510,8 @@ backend/
     ├── middlewares/
     │   ├── authMiddleware.js   # 驗證 Bearer JWT → req.user = { username, role }
     │   ├── requireRole.js      # 角色白名單，否則 403
-    │   ├── upload.js           # multer：upload / uploadAvatar / uploadPdf
+    │   ├── courseRole.js       # 依請求所屬課程，把該課助教的 req.user.role 換成 ta
+    │   ├── upload.js           # multer：upload / uploadAvatar / uploadPdf / uploadSpreadsheet
     │   └── errorHandler.js     # 統一錯誤回應，不外洩內部訊息
     ├── routes/ / controllers/ / services/
     ├── models/            # 唯一可以直接寫 SQL 的地方；homeworkAiModel.js 未被任何檔案引用（死碼）
@@ -508,6 +541,7 @@ app.use(errorHandler);
 | `upload` | 作業、繳交、教材 | ≤ 50MB；副檔名白名單：pdf、doc(x)、ppt(x)、xls(x)、csv、txt、md、png、jpg、jpeg、gif、webp、zip | `uploads/<timestamp>-<random><ext>` |
 | `uploadAvatar` | 頭貼 | ≤ 2MB；png、jpg、jpeg、gif、webp | `uploads/avatars/...` |
 | `uploadPdf` | 討論區附件、AI 測驗 | ≤ 10MB；mimetype 必須是 `application/pdf` | `uploads/...` |
+| `uploadSpreadsheet` | 帳號批次匯入、學生名冊同步 | ≤ 5MB；僅 `.xlsx` | 只放記憶體，不寫入磁碟 |
 
 資料庫中的路徑格式不一致：作業 / 教材 / AI 測驗 / 頭貼存 `/uploads/xxx`，討論區存 `uploads/xxx`（無開頭斜線）。前端 `utils/files.js` 會自動補斜線。
 
@@ -531,11 +565,13 @@ app.use(errorHandler);
 
 - `authMiddleware`：解析 `Authorization: Bearer <token>`，失敗回 401；成功設定 `req.user = { username, role }`。
 - `requireRole(...roles)`：`req.user.role` 不在清單回 403。
-- `ta` 的權限不一致：可以做學生端的事（選課、繳交、AI 自評/解惑/助教問答），也可以做教師端的事（發公告、建討論、發作業、批改、設 AI Prompt、傳教材），但**無法建立課程**（見 [course 模組](modules/course.md)）。
+- `ta` 是課程層級身分（見 [1.1](#11-使用者角色)）：`courseRole` 在帶有課程參數的路由把該課助教的 `req.user.role` 換成 `ta`，所以 `requireRole('teacher','ta')` 的端點助教可用，但只限自己帶的課。作業繳交／AI 自評／AI 解惑（`studentSide = requireRole('student')`）排除助教；其他寫成 `requireRole('student','ta')` 的端點（選課、公告已讀、AI 助教問答、小組）助教在自己帶的課仍可用。
+- 沒有任何課程參數可判斷的路由（例如通知）不會換成 `ta`。
+- `admin` 只能用 `POST /api/courses`、`/api/courses/all`、`/api/courses/teachers`、`/api/auth/accounts*` 與學生名冊相關端點。
 
 ### 11.4 安全機制
 
-- **密碼**：`bcryptjs`（cost 10）雜湊；長度 8～128 字元。註冊後 `must_change_password = 1`；改密碼、重設密碼（代碼或 token）成功後設為 0。
+- **密碼**：`bcryptjs`（cost 10）雜湊；長度 8～128 字元。管理員建立帳號後 `must_change_password = 1`（`seedAdmin.js` 建立的第一個管理員例外，設 0）；改密碼、重設密碼（代碼或 token）成功後設為 0。
 - **Token**：無狀態 JWT，payload `{ sub: username, role }`，效期 `JWT_EXPIRES_IN`（預設 `7d`），沒有 refresh token、沒有撤銷機制，存於 `localStorage`（非 HttpOnly）。
 - **忘記密碼（兩套機制）**：
   1. 重設代碼（可用）：`POST /api/auth/forgot-password`，用全站共用的 `PASSWORD_RECOVERY_CODE`。
@@ -550,7 +586,8 @@ frontend/src/
 ├── main.js / App.vue       # 進入點、全站外框
 ├── api/client.js           # axios instance + JWT 攔截器 + 401 自動登出
 ├── router/index.js         # 路由表 + 導覽守衛
-├── utils/auth.js           # token 存取、JWT payload 解碼（不驗簽）、mustChangePassword 旗標
+├── utils/auth.js           # token 存取、JWT payload 解碼（不驗簽）、mustChangePassword 旗標、課程感知的角色判斷
+├── utils/courseRoles.js    # 向後端取得「我在各課的身分」對照表
 ├── utils/files.js          # getFileUrl / downloadFile / openFileInNewTab
 ├── components/             # ChatBot.vue（詳見對應模組）+ 未使用的鷹架殘留（見 shared 模組）
 └── views/                  # 各頁面，詳見 modules/
@@ -558,9 +595,9 @@ frontend/src/
 
 **localStorage key**：`accessToken`（JWT）、`user`（帳號字串）、`mustChangePassword`（旗標）。登出（`App.vue`）執行 `localStorage.clear()`。
 
-**角色判斷（僅 UI 用途）**：`utils/auth.js` 的 `getRoleFromToken()`/`getUsernameFromToken()` 直接 base64 解碼 JWT payload，**不驗證簽章**，沒有 token 時 `getRoleFromToken()` 回傳 `'student'`。真正的權限由後端 `authMiddleware` + `requireRole` 把關——**前端隱藏按鈕不等於後端會擋**。
+**角色判斷（僅 UI 用途）**：`utils/auth.js` 的 `getAccountRole()`/`getRoleFromToken(courseCode?)`/`getUsernameFromToken()` 直接 base64 解碼 JWT payload，**不驗證簽章**，沒有 token 時回傳 `'student'`。`getRoleFromToken` 在課程頁面會依 `courseRoles` 對照表（記憶體變數，不是 localStorage）把學生換成該課的 `'ta'`。真正的權限由後端 `authMiddleware` + `requireRole` 把關——**前端隱藏按鈕不等於後端會擋**。
 
-**路由守衛**（`router.beforeEach`）依序判斷：① 目標路由 `meta.requiresTeacher` 為真但角色不是 teacher/ta → 擋下並 alert；② 有 token 且 `mustChangePassword` 為真、目標不是 `/change-password`/`/login` → 導向 `/change-password`；③ 沒有 token 且目標不是公開頁面 → 導向 `/login`。
+**路由守衛**（`router.beforeEach`，async）依序判斷：① 有 token 且 `mustChangePassword` 為真、目標不是 `/change-password`/`/login`/`/profile` → 導向 `/change-password`；② 沒有 token 且目標不是公開頁面（`/login`、`/forgot-password`、`/reset-password`、`/`、`/change-password`）→ 導向 `/login`；③ 學生進課程頁、且「各課身分」對照表未載入或換了課程 → 先 `refreshCourseRoles()`；④ 管理員進 `/dashboard` 轉 `/admin/accounts`、進課程頁一律轉學生名冊；⑤ `meta.requiresTeacher`（teacher/ta）、`meta.requiresAdmin`、`meta.allowRoles` 不符 → 擋下並 alert。
 
 ### 11.6 前端 API 呼叫慣例
 

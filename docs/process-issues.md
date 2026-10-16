@@ -2,7 +2,7 @@
 
 > 所屬文件：[overview.md（總覽）](overview.md) ・ [database.md](database.md) ・ **process-issues.md** ・ [workflow.md](workflow.md) ・ [modules/](modules/README.md)
 >
-> 這份文件**只記錄現況與問題**，不重複寫「該怎麼做」——團隊正式採用的規則都在 [workflow.md](workflow.md)。全部內容依 `git log`、`.gitignore`、專案設定檔等**可查證的實際紀錄**整理（核對日期：2026-09-28），不是憑印象猜測；無法從現有資料確認的地方標示 **TODO / 待確認**。
+> 這份文件**只記錄現況與問題**，不重複寫「該怎麼做」——團隊正式採用的規則都在 [workflow.md](workflow.md)。全部內容依 `git log`、`.gitignore`、專案設定檔等**可查證的實際紀錄**整理（核對日期：2026-09-28；2026-10-17 複查，見各章「後續追蹤」），不是憑印象猜測；無法從現有資料確認的地方標示 **TODO / 待確認**。
 >
 > 討論的不是「程式碼寫得對不對」（那是 [database.md](database.md) 和 [modules/](modules/README.md) 的範圍），而是**團隊怎麼做出這些程式碼的過程**：版本控制、程式碼審查、測試、CI、Schema 變更、機密管理、文件、專案追蹤、部署。
 
@@ -73,6 +73,10 @@ fixed:file upload      ← 冒號後沒有空格，跟其他訊息風格（fix:s
 - **已合併分支不清理** → `discussion`/`frontend`/`temp` 這種已經併入 `main` 的分支留著，新加入的人不知道該不該用、內容是否過時，增加認知負擔；`mainpage` 這種**從未合併、也沒人記得的分支**更危險。
 - **Commit 訊息不可搜尋** → 半年後想知道「作業批改邏輯是哪個 commit 改的」，訊息是 `3.28`、`merge` 完全查不到，只能整包翻 diff。
 
+### 2.2 後續追蹤（2026-10-17）：PR 流程維持，分支仍沒清理
+
+遠端分支現況：`discussion`、`frontend`、`temp`、`mainpage`、`group`、`notification` 還在；`feature/NL-3-studentList`、`feature/NL-5-mainpage`、`feature/NL-10-courseinfo` 是已透過 PR #1～#3 合併的功能分支，也沒有刪除；另有 `docs/NL-9-initial-documentation`。`main` 目前共 89 個 commit，多了 PR #4（`WasabiSaikou/merge-upstream-main`，合併者 MapleFireIce）——這是**又一個走 PR 的合併**，但這個 PR 一次帶進 11 個 commit、近 60 個檔案（移除註冊、助教改制、名冊同步重寫等）；`.github/` 仍不存在，仍沒有分支保護、CI、PR 模板。PR 的審查品質（有沒有人實際看過 diff）從 git 歷史看不出來。
+
 ### 2.1 後續追蹤（2026-10-13）：採用 Jira/PR 之後，問題有改善，但沒有全面改善
 
 `workflow.md` 正式採用後（見第 8 章），`git log` 看得到確實有人照規矩走：
@@ -83,7 +87,7 @@ e9da28f Merge pull request #2 from Chrubby/feature/NL-3-studentList
 a136afd Merge pull request #1 from Chrubby/feature/NL-5-mainpage
 ```
 
-這三個 PR（作者 mafic、合併者 MapleFireIce）都帶了 Jira 編號（`NL-3`、`NL-5`、`NL-10`），也是真的透過 GitHub PR 合併——這部分跟第 2 章描述的舊狀況不一樣，是確實的改善。
+這三個 PR（作者 mafic、合併者 MapleFireIce；2026-10-17 又多了第四個 PR #4，見 2.2）都帶了 Jira 編號（`NL-3`、`NL-5`、`NL-10`），也是真的透過 GitHub PR 合併——這部分跟第 2 章描述的舊狀況不一樣，是確實的改善。
 
 但同一段 git 歷史裡，**同時間還有兩批功能完全沒有走這個流程**：
 
@@ -128,12 +132,14 @@ c5bdf4c merge notification                                          （同上）
 
 **後續追蹤（2026-10-13）**：這個問題沒有改善，反而更明顯——小組/通知兩個模組的新資料表、以及 `is_group_homework`/`files_json`/`created_by`/`author_username` 等一整批新欄位，全部只寫進 `ensureSchema.js`，完全沒有補進 `initDB.js`（細節見 [database.md 第 6、7 節](database.md#6-修改資料庫時的規範)）。代表「schema 變更要雙邊同步」這件事，從 2026-09-28 稽核當下到現在，一直沒有被當一回事處理。
 
+**後續追蹤（2026-10-17）**：PR #4 也一樣——`admins` 表、`enrollments.role`/`withdrawn_at`、`accounts.role` 改 VARCHAR、助教帳號遷移都在 `ensureSchema.js`，`initDB.js` 只補了 `admins` 表與 `enrollments` 兩個欄位，且沒有補 `accounts.role` 改型別與 `ta` 帳號遷移；`db/create_db.py` 還有第三份獨立的建表定義（`accounts.role` 是 ENUM）。現在變成**三處**各自維護 schema。另外 `ensureSchema.js` 裡開始出現**資料遷移**（例如把 `ta` 帳號改成 `student`、把 `status = 'withdrawn'` 併入 `role`），這類一次性的資料變更放在每次啟動都會跑的清單裡，沒有版本號可以確認是否已經執行過，是沒有 migration 工具的具體風險。
+
 ---
 
 ## 6. 機密與環境管理（現況）
 
 - `.env`、`backend/.env` 有被 `.gitignore` 排除，**目前的** `.env` 本身沒有進版本控制，這點做得對。
-- 但舊版 `db/create_db.py`、`db/seed_data.py`（已不建議使用，見 [database.md 第 5 節](database.md#5-舊版腳本)）裡**寫死了明文 MySQL 密碼，且已經進入 git 歷史**，即使現在刪掉檔案內容，這組密碼字串仍留在過去的 commit 裡，任何人 `git log -p` 都翻得到，**至今還沒更換**。
+- 但舊版 `db/create_db.py`、`db/seed_data.py`（已不建議使用，見 [database.md 第 5 節](database.md#5-舊版腳本)）裡**寫死了明文 MySQL 密碼，且已經進入 git 歷史**，即使現在刪掉檔案內容，這組密碼字串仍留在過去的 commit 裡，任何人 `git log -p` 都翻得到，**至今還沒更換**。（2026-10-17 複查：目前的 `db/create_db.py`、`db/db_config.py` 已改成讀 `backend/.env`，工作目錄裡不再有明文密碼，但歷史紀錄裡的舊密碼依然有效就必須更換。）
 - `backend/src/utils/jwt.js` 在 `JWT_SECRET` 沒設定時會 fallback 成寫死在程式碼裡的字串，而且這個變數**沒有列在 `.env.example`** 提醒團隊要設定（見 [auth 模組](modules/auth.md)）。
 - 沒有看到任何 secret scanning 機制（例如 GitHub 內建的 secret scanning、或 CI 裡跑 gitleaks/trufflehog），代表未來如果又有人不小心把金鑰寫死進程式碼，不會有任何自動提醒。
 
@@ -151,6 +157,8 @@ c5bdf4c merge notification                                          （同上）
 ## 8. 專案 / 任務管理（現況）
 
 目前已採用 Jira（key `NL`）+ Discord 的流程（見 [workflow.md 第 1 章](workflow.md#1-jira-任務管理)）。**TODO / 待確認**：這份文件核對當下（2026-09-28）看不出 Jira/Discord 是何時導入的，也看不出導入前（2026-03～05 那段 git 歷史）是否有任何任務追蹤——從 commit 訊息完全沒有 Issue/Ticket 編號引用來看，當時應該是沒有的。
+
+**後續追蹤（2026-10-17）**：PR #4 的 11 個 commit 都沒有 Jira 編號（commit 訊息是英文描述，不含 `NL-xx`），PR 本身是否帶票號無法從 git 歷史確認；看板上也沒有對應的票。
 
 **後續追蹤（2026-10-13）**：確認 Jira 編號有在實際使用——`main` 上看得到帶 `NL-3`、`NL-5`、`NL-10` 編號、透過 GitHub PR 合併的 commit（見 2.1）。但同一時期也有完全沒有編號、沒有走 Jira 的功能直接 merge 進 `main`，代表「有沒有開 Ticket」目前還是看個人，不是靠流程/工具強制（例如 Jira↔GitHub 整合——`workflow.md` 代辦事項裡提到的那項）。
 

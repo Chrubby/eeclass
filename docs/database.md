@@ -21,7 +21,7 @@
 
 - `initDB.js`：`CREATE TABLE IF NOT EXISTS` + 一連串包在 `try/catch` 裡的 `ALTER TABLE ... ADD COLUMN`，欄位已存在時錯誤會被忽略，因此**可重複執行**。這是目前唯一應該使用的建表方式。
 - `initDB.js` **不會** `CREATE DATABASE`，資料庫本身需先手動建立（例如 `CREATE DATABASE classroom_data;`）。
-- `ensureSchema.js`：伺服器啟動時補上欄位與資料表。原本只補 `homework_submissions.is_submitted`、`accounts.must_change_password`、`accounts.avatar_url` 三個欄位（與 `initDB.js` 內容重複），但[小組](modules/group.md)、[通知](modules/notification.md)兩個模組的資料表（`course_groups`、`course_group_memberships`、`course_group_applications`、`notifications`）跟後續一串新欄位（`accounts.email`、`homeworks.is_group_homework`/`grade_notified_at`、`homework_submissions.files_json`、`discussion_rooms.created_by`、`announcements.author_username`）都只寫在這裡，**沒有**同步補進 `initDB.js`——跟第 6 節「新增欄位一律寫在 `initDB.js`」的規範不一致，見第 7 節已知問題。
+- `ensureSchema.js`：伺服器啟動時補上欄位與資料表（含一次性資料遷移：`accounts.role` 改 VARCHAR、既有 `ta` 帳號改為 `student` 且**不動選課紀錄**——要當哪門課的助教由教師/管理員在[學生名冊](modules/student-list.md)重新勾選；舊的 `enrollments.status = 'withdrawn'` 併入 `role = 'dropped'` 後刪除 `status` 欄）。原本只補 `homework_submissions.is_submitted`、`accounts.must_change_password`、`accounts.avatar_url` 三個欄位（與 `initDB.js` 內容重複），但[小組](modules/group.md)、[通知](modules/notification.md)兩個模組的資料表（`course_groups`、`course_group_memberships`、`course_group_applications`、`notifications`）跟後續一串新欄位（`accounts.email`、`homeworks.is_group_homework`/`grade_notified_at`、`homework_submissions.files_json`、`discussion_rooms.created_by`、`announcements.author_username`）都只寫在這裡，**沒有**同步補進 `initDB.js`——跟第 6 節「新增欄位一律寫在 `initDB.js`」的規範不一致，見第 7 節已知問題。
 - `db/create_db.py`、`db/seed_data.py`：**舊版 Python 腳本，不要使用**（見 [第 5 節](#5-舊版腳本)）。
 
 > ⚠️ 所有 schema 變更都是手動疊加 `ALTER TABLE`，且分散在 `initDB.js` 與 `ensureSchema.js` 兩處。新增欄位的寫法見 [第 6 節](#6-修改資料庫時的規範)。
@@ -63,9 +63,10 @@
 
 | Table | 用途 | 欄位 | PK | FK |
 | --- | --- | --- | --- | --- |
-| `accounts` | 登入帳號 | `username` VARCHAR(50) UNIQUE、`password_hash`、`email`、`role`（`student`/`teacher`/`ta`）、`must_change_password` TINYINT、`avatar_url`、`created_at` | `id` | 無 |
-| `students` | 學生資料（**`ta` 也寫入此表**） | `name`、`student_id` UNIQUE（= `accounts.username`） | `id` | app-level → `accounts.username` |
-| `teachers` | 教師資料 | `name`、`teacher_id` UNIQUE（= `accounts.username`） | `id` | app-level → `accounts.username` |
+| `accounts` | 登入帳號 | `username` VARCHAR(50) UNIQUE、`password_hash`、`email`、`role`（`student`/`teacher`/`admin`；**不再有 `ta`**，舊的助教帳號由 `ensureSchema` 一律改成 `student`。欄位在舊資料庫是 ENUM，已 `MODIFY` 成 VARCHAR(20)）、`must_change_password` TINYINT、`avatar_url`、`created_at` | `id` | 無 |
+| `students` | 學生資料 | `name`、`student_id` VARCHAR(100) UNIQUE（= `accounts.username`；加長是因為名單沒有學號的人拿 email 當帳號） | `id` | app-level → `accounts.username` |
+| `teachers` | 教師資料 | `name`、`teacher_id` VARCHAR(100) UNIQUE（= `accounts.username`） | `id` | app-level → `accounts.username` |
+| `admins` | 系統管理員資料 | `name`、`admin_id` VARCHAR(50) UNIQUE（= `accounts.username`）、`created_at` | `id` | app-level → `accounts.username` |
 | `password_reset_tokens` | Email 重設密碼 token（**目前沒有產生流程**，見 [auth 模組已知問題](modules/auth.md)、[overview.md 11.4](overview.md#114-安全機制)） | `account_id`、`token_hash` CHAR(64)、`expires_at`、`used_at`、`created_at` | `id` | `account_id` → `accounts.id`（FK, CASCADE） |
 
 ### 3.2 課程 / 選課
@@ -74,7 +75,7 @@
 | --- | --- | --- | --- | --- |
 | `courses` | 課程主檔 | `course_name`、`course_code` UNIQUE、`description`、`academic_year`、`created_at` | `id` | 無 |
 | `teacher_courses` | 授課關聯 | `teacher_id`、`course_id` | `id` | **無 FK**（app-level → `teachers.id` / `courses.id`） |
-| `enrollments` | 選課關聯 | `student_id`、`course_id` | `id` | **無 FK**（app-level → `students.id` / `courses.id`） |
+| `enrollments` | 選課關聯 | `student_id`、`course_id`、`role` VARCHAR(50) 預設 `student`（`student`/`ta`/`external`/`auditor`/`dropped`；**助教就是這欄 = `ta`**，退選是設成 `dropped`、資料不刪）、`withdrawn_at` DATETIME NULL（退選時間，重新加入時清空） | `id` | **無 FK**（app-level → `students.id` / `courses.id`） |
 
 ### 3.3 公告
 
