@@ -85,6 +85,8 @@ async function notifyOneDueHomework(row) {
     subject: title,
     message,
     linkPath,
+    courseName: course.course_name,
+    headline: `作業已截止，請批改：${row.title}`,
   }).catch((error) => {
     console.error("[homework-deadline] 批改通知信寄送失敗", error?.message || error);
   });

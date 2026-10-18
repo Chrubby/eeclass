@@ -88,7 +88,6 @@ export const DiscussionService = {
     const newThreadId = await DiscussionModel.createThread(roomId, user.id, content, parentThreadId);
 
     const roomInfo = await DiscussionModel.getRoomById(roomId);
-    if (!requestAi || !roomInfo?.ai_prompt?.trim()) return;
     if (roomInfo?.course_code) {
       try {
         await NotificationService.notifyByCourseCode({
@@ -104,7 +103,8 @@ export const DiscussionService = {
         console.error("[notify] 討論留言通知失敗", notifyError?.message || notifyError);
       }
     }
-    if (!roomInfo?.ai_prompt) return; // 沒有設定 AI，結束處理
+    // 沒要求 AI 回覆或沒有設定 AI，結束處理（通知已在上方送出）
+    if (!requestAi || !roomInfo?.ai_prompt?.trim()) return;
 
     // 2. 處理 AI 邏輯
     const posterRole = actorRole || user.role;

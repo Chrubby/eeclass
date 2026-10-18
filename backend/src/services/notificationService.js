@@ -108,6 +108,8 @@ export const NotificationService = {
       title,
       message: body,
       linkPath,
+      courseName: course.course_name,
+      headline,
     };
     if (!conn) this.sendEmailPayload(emailPayload);
     return emailPayload;
@@ -122,7 +124,7 @@ export const NotificationService = {
     });
   },
 
-  async emailEnrolledStudents({ courseId, excludeStudentDbId, title, message, linkPath }) {
+  async emailEnrolledStudents({ courseId, excludeStudentDbId, title, message, linkPath, courseName, headline }) {
     const recipients = await NotificationModel.listEmailsForCourse(courseId, excludeStudentDbId);
     if (!recipients.length) return false;
     return sendNotificationEmails({
@@ -130,6 +132,8 @@ export const NotificationService = {
       subject: title,
       message: message || title,
       linkPath,
+      courseName,
+      headline,
     });
   },
 };

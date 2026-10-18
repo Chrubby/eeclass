@@ -7,7 +7,8 @@ export const NotificationModel = {
       `INSERT INTO notifications (student_id, course_id, type, ref_id, title, message)
        SELECT DISTINCT e.student_id, ?, ?, ?, ?, ?
        FROM enrollments e
-       WHERE e.course_id = ? AND e.student_id <> ?`,
+       WHERE e.course_id = ? AND e.student_id <> ?
+         AND COALESCE(e.role, 'student') <> 'dropped'`,
       [courseId, type, refId, title, message || "", courseId, excludeStudentDbId ?? 0]
     );
   },
@@ -128,6 +129,7 @@ export const NotificationModel = {
        JOIN accounts a ON a.username = s.student_id
        WHERE e.course_id = ?
          AND e.student_id <> ?
+         AND COALESCE(e.role, 'student') <> 'dropped'
          AND a.email IS NOT NULL
          AND TRIM(a.email) <> ''`,
       [courseId, excludeStudentDbId ?? 0]
