@@ -27,7 +27,7 @@ const loadUser = async () => {
   const stored = localStorage.getItem('user')
   const token = localStorage.getItem('accessToken')
   if (!stored || !token) {
-    router.push('/login')
+    router.push('/')
     return
   }
 

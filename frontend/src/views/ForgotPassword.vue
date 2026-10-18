@@ -44,7 +44,7 @@
         </button>
       </form>
       <div class="mt-6 text-center text-[15px]">
-        <router-link to="/login" class="text-[#337ab7] hover:text-[#285e8e]">返回登入</router-link>
+        <router-link to="/" class="text-[#337ab7] hover:text-[#285e8e]">返回登入</router-link>
       </div>
     </div>
   </div>
@@ -77,7 +77,7 @@ const submit = async () => {
       confirmPassword: confirmPassword.value,
     })
     alert(data.message)
-    router.push('/login')
+    router.push('/')
   } catch (e) {
     alert(e.response?.data?.message || '重設失敗')
   } finally {

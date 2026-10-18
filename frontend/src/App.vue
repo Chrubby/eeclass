@@ -103,7 +103,7 @@ provide('refreshCourseInfo', () => loadCourseStaff(courseId.value))
 provide('currentCourse', currentCourse)
 
 const isAuthPage = computed(() =>
-  ['MainPage', 'Login', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
+  ['MainPage', 'ForgotPassword', 'ResetPassword', 'ChangePassword'].includes(route.name),
 )
 
 const showEmailPrompt = computed(() =>
@@ -118,7 +118,6 @@ const goToProfile = () => {
 const logout = () => {
   isMenuOpen.value = false
   localStorage.clear()
-  // window.location.href = '/login'
   window.location.href = '/'
 }
 
@@ -127,7 +126,6 @@ const loadUser = async() => {
   const token = localStorage.getItem("accessToken")
   const isAuthRoute =
     route.path === '/' ||
-    route.path === '/login' ||
     route.path === '/forgot-password' ||
     route.path === '/reset-password' ||
     route.path === '/change-password'
@@ -135,7 +133,7 @@ const loadUser = async() => {
   if (isAuthRoute) return
 
   if (!stored || !token) {
-    router.push('/login')
+    router.push('/')
     return
   }
 

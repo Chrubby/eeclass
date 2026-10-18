@@ -32,8 +32,9 @@ api.interceptors.response.use(
         const hadToken = Boolean(currentToken);
         localStorage.removeItem("accessToken");
         localStorage.removeItem("user");
-        if (hadToken && !window.location.pathname.startsWith("/login")) {
-          window.location.assign("/login");
+        const path = window.location.pathname;
+        if (hadToken && path !== "/") {
+          window.location.assign("/");
         }
       }
     }

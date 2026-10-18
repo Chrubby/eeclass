@@ -23,7 +23,7 @@ const user = ref({
 const loadUser = async () => {
   const stored = localStorage.getItem("user")
   if (!stored) {
-    router.push('/login')
+    router.push('/')
     return
   }
 

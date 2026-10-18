@@ -2,9 +2,6 @@
   <div class="min-h-screen bg-gray-50 text-gray-800 font-sans">
     <header class="bg-white flex justify-between items-center px-6 py-3 border-b text-sm h-12">
       <router-link to ="/" class="font-bold text-base p-1 border-2 border-transparent focus:border-black rounded ">國立中央大學 「LMS 計畫」</router-link>
-      <div class="flex space-x-6 items-center text-gray-600">
-        <router-link to ="/login" class="font-bold text-base p-1 border-2 border-transparent focus:border-black rounded ">登入</router-link>
-      </div>
     </header>
     <div class="flex justify-start items-start mt-10 ml-10 gap-8">
 <div class="w-full max-w-[300px] p-4 bg-white border border-gray-200 rounded-xl shadow-lg">
@@ -126,10 +123,8 @@ const user = ref({
 
 const loadUser = async () => {
   const stored = localStorage.getItem("user")
-  if (!stored) {
-    router.push('/login')
-    return
-  }
+  // 未登入時留在首頁，由首頁的登入表單處理
+  if (!stored) return
 
   user.value.user_id = stored
 
@@ -161,7 +156,11 @@ const login = async () => {
     localStorage.setItem("user", data.username)
     setMustChangePassword(Boolean(data.mustChangePassword))
 
-    window.location.href = data.mustChangePassword ? '/change-password' : '/dashboard'
+    if (data.mustChangePassword) {
+      window.location.href = '/change-password'
+    } else {
+      window.location.href = data.role === 'admin' ? '/admin/accounts' : '/dashboard'
+    }
   } catch (error) {
     const msg = error.response?.data?.message || "連線失敗"
     alert(msg)
@@ -176,9 +175,8 @@ const enterCourse = () => {
 
 const logout = () => {
   localStorage.clear()
-  // window.location.href = '/login'
   window.location.href = '/'
-  isLoggedIn = false
+  isLoggedIn.value = false
   email.value = ""
   password.value = ""
 }

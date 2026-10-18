@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
 import Course from '../views/Course.vue'
-import Login from "../views/Login.vue"
 import ForgotPassword from "../views/ForgotPassword.vue"
 import ResetPassword from "../views/ResetPassword.vue"
 import ChangePassword from "../views/ChangePassword.vue"
@@ -13,7 +12,6 @@ import { refreshCourseRoles } from '@/utils/courseRoles.js'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    // { path: "/", redirect: "/login" },
     { path: '/', name: 'MainPage', component: MainPage},
     { path: '/dashboard', name: 'Home', component: Home },
     {
@@ -127,7 +125,8 @@ const router = createRouter({
         }
       ]
     },
-    { path: "/login", name: 'Login', component: Login },
+    // 登入表單在首頁，舊的 /login 網址導回首頁
+    { path: "/login", redirect: "/" },
     { path: "/forgot-password", name: 'ForgotPassword', component: ForgotPassword },
     { path: "/reset-password", name: 'ResetPassword', component: ResetPassword }
   ]
@@ -135,8 +134,8 @@ const router = createRouter({
 
 const staffRoles = ['teacher', 'ta']
 
-const publicPaths = new Set(['/login', '/forgot-password', '/reset-password'])
-const mustChangeAllowedPaths = new Set(['/change-password', '/login', '/profile'])
+const publicPaths = new Set(['/', '/forgot-password', '/reset-password'])
+const mustChangeAllowedPaths = new Set(['/change-password', '/', '/profile'])
 
 router.beforeEach(async (to, from) => {
   const token = getAccessToken()
@@ -146,8 +145,8 @@ router.beforeEach(async (to, from) => {
     return '/change-password'
   }
 
-  if (!token && !publicPaths.has(to.path) && to.path !== '/change-password' && to.path !== '/') {
-    return '/login'
+  if (!token && !publicPaths.has(to.path) && to.path !== '/change-password') {
+    return '/'
   }
 
   // 助教是課程層級身分：第一次載入、或進到另一門課時，先問後端我在各課的身分
