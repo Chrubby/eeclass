@@ -50,6 +50,7 @@ export const CourseController = {
     } catch (error) {
       const msg = error.message || "";
       if (msg.includes("無效")) return res.status(400).json({ message: msg });
+      console.error("[getUserCourses]", error);
       res.status(500).json({ message: "系統發生異常，請稍後再試" });
     }
   },
