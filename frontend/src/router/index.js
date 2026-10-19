@@ -83,6 +83,17 @@ const router = createRouter({
           component: () => import('../views/course/Group.vue')
         },
         {
+          path: 'group/:groupId/discussion',
+          name: 'GroupDiscussion',
+          component: () => import('../views/course/GroupDiscussion.vue')
+        },
+        {
+          path: 'group/:groupId/homework/:hwId',
+          name: 'GroupHomeworkDetail',
+          component: () => import('../views/course/student/HomeworkStudent.vue'),
+          meta: { allowRoles: ['student'] }
+        },
+        {
           path: 'homework/create',
           name: 'HomeworkCreate',
           component: () => import('../views/course/teacher/HomeworkCreate.vue'),

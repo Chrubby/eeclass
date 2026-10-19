@@ -2,6 +2,9 @@
   <div class="flex flex-col gap-6">
     <div class="bg-white border rounded p-5 shadow-sm border-l-4 border-l-[#337ab7]">
       <h2 class="text-xl font-bold text-gray-800 mb-2">{{ homeworkData.title }}</h2>
+      <p v-if="isGroupMode" class="text-sm text-[#337ab7] font-bold mb-2">
+        小組共用作答與成績；此紀錄綁定小組，不會因組員變動而改變。
+      </p>
       <div class="text-[15px] text-gray-600 flex flex-wrap gap-6">
         <span>截止日期：{{ homeworkData.deadlineText }}</span>
         <span>
@@ -73,7 +76,7 @@
       </div>
     </div>
 
-    <div v-if="homeworkData.isSubmitted && !homeworkData.isGraded" class="bg-indigo-50 border border-indigo-200 rounded p-5 shadow-sm">
+    <div v-if="homeworkData.isSubmitted && !homeworkData.isGraded && !isGroupMode" class="bg-indigo-50 border border-indigo-200 rounded p-5 shadow-sm">
       <h3 class="text-lg font-bold text-indigo-800 mb-3 border-b border-indigo-200 pb-2">AI 預估評分</h3>
       <div class="mb-3">
         <button
@@ -259,6 +262,7 @@ import { downloadFile } from '@/utils/files.js'
 
 const route = useRoute()
 const hwId = route.params.hwId
+const isGroupMode = computed(() => Boolean(route.params.groupId))
 
 const downloadingIndex = ref(null)
 const legacyDownloadingId = ref(null)
@@ -411,17 +415,30 @@ const sendChat = async () => {
 
 const loadData = async () => {
   try {
-    const [hwRes, listRes, mySubRes] = await Promise.all([
-      api.get(`/api/homeworks/${hwId}`),
-      api.get(`/api/courses/${route.params.id}/homeworks`),
-      api.get(`/api/homeworks/${hwId}/submissions/me`),
-    ])
-
-    const hw = hwRes.data
-    const list = listRes.data
-    const mySub = mySubRes.data
-
-    const current = list.find((x) => Number(x.id) === Number(hwId))
+    let hw
+    let mySub
+    let current
+    if (isGroupMode.value) {
+      const [detailRes, listRes] = await Promise.all([
+        api.get(`/api/courses/${route.params.id}/groups/${route.params.groupId}/homeworks/${hwId}`),
+        api.get(`/api/courses/${route.params.id}/groups/homeworks`),
+      ])
+      hw = detailRes.data.homework
+      mySub = detailRes.data.submission
+      current = listRes.data.find(
+        (item) => Number(item.id) === Number(hwId)
+          && Number(item.groupId) === Number(route.params.groupId),
+      )
+    } else {
+      const [hwRes, listRes, mySubRes] = await Promise.all([
+        api.get(`/api/homeworks/${hwId}`),
+        api.get(`/api/courses/${route.params.id}/homeworks`),
+        api.get(`/api/homeworks/${hwId}/submissions/me`),
+      ])
+      hw = hwRes.data
+      mySub = mySubRes.data
+      current = listRes.data.find((item) => Number(item.id) === Number(hwId))
+    }
 
     let gradedDetails = []
     try {
@@ -519,7 +536,10 @@ const submitHomework = async () => {
       formData.append('removeFileIndexes', JSON.stringify(removedFileIndexes.value))
     }
 
-    const { data: result } = await api.post(`/api/homeworks/${hwId}/submissions`, formData, {
+    const submissionUrl = isGroupMode.value
+      ? `/api/courses/${route.params.id}/groups/${route.params.groupId}/homeworks/${hwId}/submissions`
+      : `/api/homeworks/${hwId}/submissions`
+    const { data: result } = await api.post(submissionUrl, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     alert(result.message)
@@ -557,7 +577,10 @@ const unsubmitHomework = async () => {
   }
 
   try {
-    const { data: result } = await api.delete(`/api/homeworks/${hwId}/submissions/me`)
+    const unsubmitUrl = isGroupMode.value
+      ? `/api/courses/${route.params.id}/groups/${route.params.groupId}/homeworks/${hwId}/submissions/me`
+      : `/api/homeworks/${hwId}/submissions/me`
+    const { data: result } = await api.delete(unsubmitUrl)
     alert(result.message)
     await loadData()
   } catch (error) {

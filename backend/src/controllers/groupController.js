@@ -11,7 +11,28 @@ function handleError(res, error, fallbackMessage) {
   if (message === "目前不在此小組" || message.includes("小組名稱需為")) {
     return res.status(400).json({ message });
   }
+  if (message === "找不到待處理的加入申請" || message === "找不到待撤回的加入申請") {
+    return res.status(404).json({ message });
+  }
+  if (message === "找不到小組作業" || message === "找不到討論留言" || message === "找不到此小組的討論留言" || message === "找不到可刪除的討論留言") {
+    return res.status(404).json({ message });
+  }
+  if (message.includes("只有該小組組員")) {
+    return res.status(403).json({ message });
+  }
+  if (message.includes("留言內容")) {
+    return res.status(400).json({ message });
+  }
+  if (message.includes("檔案移除清單")) {
+    return res.status(400).json({ message });
+  }
+  if (message.includes("截止") || message.includes("空內容") || message.includes("檔案")) {
+    return res.status(400).json({ message });
+  }
   if (message.includes("一次需新增") || message === "開放狀態必須是布林值") {
+    return res.status(400).json({ message });
+  }
+  if (message === "小組人數上限必須是大於 0 的整數") {
     return res.status(400).json({ message });
   }
   if (message === "目前未開放學生創建小組") {
@@ -31,8 +52,6 @@ function handleError(res, error, fallbackMessage) {
     || message === "此小組目前未開放申請"
     || message === "你已經是此小組的組員"
     || message === "此小組已有人加入，請遞交加入申請"
-    || message === "請向其他小組遞交加入申請"
-    || message === "請先退出目前的小組，再創建新小組"
   ) {
     return res.status(403).json({ message });
   }
@@ -46,11 +65,15 @@ function handleError(res, error, fallbackMessage) {
   if (error.code === "APPLICATION_NOT_FOUND") {
     return res.status(404).json({ message: "找不到待處理的加入申請" });
   }
-  if (error.code === "APPLICANT_IN_OTHER_GROUP") {
+  if (error.code === "APPLICANT_HAS_OTHER_GROUPS") {
     return res.status(409).json({
       code: error.code,
       message: error.message,
+      otherGroups: error.otherGroups,
     });
+  }
+  if (error.code === "GROUP_AT_CAPACITY") {
+    return res.status(409).json({ code: error.code, message });
   }
   if (message.includes("請選擇新的組長") || message.includes("不是此小組成員")) {
     return res.status(400).json({ message });
@@ -111,11 +134,35 @@ export const GroupController = {
         req.params.courseCode,
         req.params.groupId,
         req.user,
-        req.body,
+        req.body || {},
       );
       res.json({ message: "招募設定已更新" });
     } catch (error) {
       handleError(res, error, "更新招募設定失敗");
+    }
+  },
+
+  async getCourseMaxMembers(req, res) {
+    try {
+      const maxMembers = await GroupService.getCourseMaxMembers(
+        req.params.courseCode,
+      );
+      res.json({ maxMembers });
+    } catch (error) {
+      handleError(res, error, "讀取小組人數上限失敗");
+    }
+  },
+
+  async setCourseMaxMembers(req, res) {
+    try {
+      await GroupService.setCourseMaxMembers(
+        req.params.courseCode,
+        req.user,
+        req.body.maxMembers,
+      );
+      res.json({ message: "課程小組人數上限已更新" });
+    } catch (error) {
+      handleError(res, error, "更新課程小組人數上限失敗");
     }
   },
 
@@ -167,10 +214,38 @@ export const GroupController = {
         req.params.groupId,
         req.params.applicationId,
         req.user,
+        req.body?.confirmMultipleGroups === true,
       );
       res.json({ message: "已同意加入申請" });
     } catch (error) {
       handleError(res, error, "處理加入申請失敗");
+    }
+  },
+
+  async withdrawApplication(req, res) {
+    try {
+      await GroupService.withdrawApplication(
+        req.params.courseCode,
+        req.params.groupId,
+        req.user,
+      );
+      res.json({ message: "已撤回加入申請" });
+    } catch (error) {
+      handleError(res, error, "撤回加入申請失敗");
+    }
+  },
+
+  async deleteApplication(req, res) {
+    try {
+      await GroupService.deleteApplication(
+        req.params.courseCode,
+        req.params.groupId,
+        req.params.applicationId,
+        req.user,
+      );
+      res.json({ message: "已刪除加入申請" });
+    } catch (error) {
+      handleError(res, error, "刪除加入申請失敗");
     }
   },
 
@@ -196,6 +271,98 @@ export const GroupController = {
       res.json(homeworks);
     } catch (error) {
       handleError(res, error, "讀取小組作業失敗");
+    }
+  },
+
+  async getGroupDiscussion(req, res) {
+    try {
+      const posts = await GroupService.getGroupDiscussion(
+        req.params.courseCode,
+        req.params.groupId,
+        req.user,
+      );
+      res.json(posts);
+    } catch (error) {
+      handleError(res, error, "讀取小組討論失敗");
+    }
+  },
+
+  async addGroupDiscussionPost(req, res) {
+    try {
+      const id = await GroupService.addGroupDiscussionPost(
+        req.params.courseCode,
+        req.params.groupId,
+        req.user,
+        req.body || {},
+      );
+      res.status(201).json({ id, message: "留言已送出" });
+    } catch (error) {
+      handleError(res, error, "發表小組討論留言失敗");
+    }
+  },
+
+  async deleteGroupDiscussionPost(req, res) {
+    try {
+      await GroupService.deleteGroupDiscussionPost(
+        req.params.courseCode,
+        req.params.groupId,
+        req.params.postId,
+        req.user,
+      );
+      res.json({ message: "留言已刪除" });
+    } catch (error) {
+      handleError(res, error, "刪除小組討論留言失敗");
+    }
+  },
+
+  async getGroupHomework(req, res) {
+    try {
+      const result = await GroupService.getGroupHomework(
+        req.params.courseCode,
+        req.params.groupId,
+        req.params.hwId,
+        req.user,
+      );
+      res.json(result);
+    } catch (error) {
+      handleError(res, error, "讀取小組作業失敗");
+    }
+  },
+
+  async submitGroupHomework(req, res) {
+    try {
+      let removeIndexes = [];
+      try {
+        removeIndexes = req.body.removeFileIndexes ? JSON.parse(req.body.removeFileIndexes) : [];
+      } catch {
+        throw new Error("檔案移除清單格式錯誤");
+      }
+      await GroupService.submitGroupHomework(
+        req.params.courseCode,
+        req.params.groupId,
+        req.params.hwId,
+        req.user,
+        req.body.answerText,
+        req.files || [],
+        removeIndexes,
+      );
+      res.json({ message: "小組作業繳交成功" });
+    } catch (error) {
+      handleError(res, error, "繳交小組作業失敗");
+    }
+  },
+
+  async unsubmitGroupHomework(req, res) {
+    try {
+      await GroupService.unsubmitGroupHomework(
+        req.params.courseCode,
+        req.params.groupId,
+        req.params.hwId,
+        req.user,
+      );
+      res.json({ message: "小組作業已收回" });
+    } catch (error) {
+      handleError(res, error, "收回小組作業失敗");
     }
   },
 

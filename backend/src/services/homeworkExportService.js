@@ -55,13 +55,18 @@ function studentOfRow(row, questionCount) {
       };
     })
     .filter(Boolean);
-  const studentId = row.studentId || row.student_id;
+  const groupId = row.groupId || row.group_id || null;
+  const studentId = row.studentId || row.student_id || null;
+  const ownerId = groupId ? `小組 ${groupId}` : studentId;
   return {
-    studentId,
+    studentId: ownerId,
+    groupId,
     name: row.studentName || "",
     submittedAt: row.submittedAt || row.submitted_at,
     answers: parseJsonArray(row.answerText || row.answer_text).map((item) => String(item ?? "")),
-    folder: safeName(`${studentId || "student"}_${row.studentName || ""}`),
+    folder: safeName(groupId
+      ? `group_${groupId}_${row.studentName || ""}`
+      : `${studentId || "student"}_${row.studentName || ""}`),
     files,
   };
 }

@@ -37,6 +37,8 @@ export const HomeworkService = {
   // 老師發布作業
   async publishHomework(courseId, bodyData, files, actorUsername = null) {
     const { title, deadline, description, questions, isGroupHomework } = bodyData;
+    const groupHomework =
+      isGroupHomework === true || isGroupHomework === "true" || isGroupHomework === "1";
     let connection;
     try {
       connection = await pool.getConnection();
@@ -48,7 +50,7 @@ export const HomeworkService = {
         title,
         deadline,
         description,
-        isGroupHomework === true || isGroupHomework === "true" || isGroupHomework === "1",
+        groupHomework,
       );
 
       const mainFiles = (files || []).filter((f) => f.fieldname === "homework_files" || f.fieldname === "homework_file");
@@ -75,7 +77,9 @@ export const HomeworkService = {
           headline: `新作業：${title}`,
           message: previewText(description),
           excludeUsername: actorUsername,
-          linkPath: `/course/${courseCode}/homework/${hwId}`,
+          linkPath: groupHomework
+            ? `/course/${courseCode}/group`
+            : `/course/${courseCode}/homework/${hwId}`,
         });
       } catch (notifyError) {
         console.error("[notify] 作業通知失敗", notifyError?.message || notifyError);
@@ -92,7 +96,10 @@ export const HomeworkService = {
 
   // 獲取作業列表 (依據身分附加繳交狀態或批改統計)
   async getCourseHomeworks(courseId, role, userId) {
-    const homeworks = await HomeworkModel.getHomeworksByCourse(courseId);
+    const homeworks = await HomeworkModel.getHomeworksByCourse(
+      courseId,
+      role === "teacher" || role === "ta",
+    );
 
     if (role === 'student' && userId) {
       for (let hw of homeworks) {
@@ -142,8 +149,14 @@ export const HomeworkService = {
   },
 
   // 學生繳交作業
-  async submitHomework(hwId, studentId, answerText, files = [], removeFileIndexes = []) {
+  async submitHomework(hwId, studentId, answerText, files = [], removeFileIndexes = [], groupId = null) {
     const homework = await HomeworkModel.getHomeworkById(hwId);
+    if (groupId === null && homework?.is_group_homework) {
+      throw new Error("小組作業請從小組專區繳交");
+    }
+    if (groupId !== null && !homework?.is_group_homework) {
+      throw new Error("這不是小組作業");
+    }
     if (homework && homework.deadline) {
       if (new Date() > new Date(homework.deadline)) {
         throw new Error("已超過繳交截止時間，無法繳交作業");
@@ -151,7 +164,7 @@ export const HomeworkService = {
     }
 
     const questions = await HomeworkModel.getQuestionsByHomework(hwId);
-    const existing = await HomeworkModel.getStudentSubmission(hwId, studentId);
+    const existing = await HomeworkModel.getStudentSubmission(hwId, studentId, groupId);
     const storedFiles = storedFilesFromSubmission(existing, questions.length);
     const removeSet = new Set(
       (Array.isArray(removeFileIndexes) ? removeFileIndexes : [])
@@ -193,6 +206,7 @@ export const HomeworkService = {
       JSON.stringify(storedFiles),
       firstFile?.file_name || null,
       firstFile?.file_path || null,
+      groupId,
     );
 
     await appendSubmissionHistory(subId, "submit", {
@@ -274,18 +288,24 @@ export const HomeworkService = {
   },
 
   // 學生收回作業：保留原本作答與檔案，僅標記為未繳交
-  async unsubmitHomework(hwId, studentId) {
+  async unsubmitHomework(hwId, studentId, groupId = null) {
     const homework = await HomeworkModel.getHomeworkById(hwId);
+    if (groupId === null && homework?.is_group_homework) {
+      throw new Error("小組作業請從小組專區處理");
+    }
+    if (groupId !== null && !homework?.is_group_homework) {
+      throw new Error("這不是小組作業");
+    }
     if (homework && homework.deadline) {
       if (new Date() > new Date(homework.deadline)) {
         throw new Error("已超過繳交截止時間，無法收回作業");
       }
     }
 
-    const sub = await HomeworkModel.getStudentSubmission(hwId, studentId);
+    const sub = await HomeworkModel.getStudentSubmission(hwId, studentId, groupId);
     if (sub) {
       await appendSubmissionHistory(sub.id, "unsubmit", { studentId });
-      await HomeworkModel.markSubmissionUnsubmitted(hwId, studentId);
+      await HomeworkModel.markSubmissionUnsubmitted(hwId, studentId, groupId);
     }
   },
 

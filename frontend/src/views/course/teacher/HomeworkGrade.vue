@@ -3,7 +3,11 @@
 
     <div class="bg-blue-50 border border-blue-200 rounded p-5 flex justify-between items-center shadow-sm">
       <div>
-        <h2 class="text-xl font-bold text-[#337ab7] mb-1">正在批改：{{ studentData.name || '未命名' }}（{{ studentData.id }}）</h2>
+        <h2 class="text-xl font-bold text-[#337ab7] mb-1">
+          正在批改：{{ studentData.name || '未命名' }}
+          <span v-if="!studentData.groupId">（{{ studentData.id }}）</span>
+          <span v-else class="text-sm text-gray-600">（小組共用作業）</span>
+        </h2>
         <p class="text-sm text-gray-600">繳交時間：{{ studentData.uploadedAt }}</p>
       </div>
       <div v-if="gradingForm.score" class="text-right">
@@ -16,7 +20,9 @@
 
       <div class="flex-1 flex flex-col gap-5">
         <div class="bg-white border rounded shadow-sm overflow-hidden">
-          <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700">學生作答內容</div>
+          <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700">
+            {{ studentData.groupId ? '小組作答內容' : '學生作答內容' }}
+          </div>
 
           <div class="p-5 space-y-6">
             <div v-for="(ans, index) in studentAnswers" :key="ans.id" class="border rounded-lg p-5 bg-gray-50">
@@ -310,6 +316,7 @@ const loadData = async () => {
     studentData.value = {
       id: subData.studentId,
       name: subData.studentName || '',
+      groupId: subData.groupId || null,
       uploadedAt: subData.submittedAt ? new Date(subData.submittedAt).toLocaleString() : '-'
     }
 

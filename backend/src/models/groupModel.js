@@ -24,6 +24,21 @@ export const GroupModel = {
     );
   },
 
+  async getCourseMaxMembers(courseId) {
+    const [rows] = await pool.execute(
+      "SELECT group_max_members AS maxMembers FROM courses WHERE id = ?",
+      [courseId],
+    );
+    return Number(rows[0]?.maxMembers ?? 4);
+  },
+
+  async setCourseMaxMembers(courseId, maxMembers) {
+    await pool.execute(
+      "UPDATE courses SET group_max_members = ? WHERE id = ?",
+      [maxMembers, courseId],
+    );
+  },
+
   async isStudentEnrolled(courseId, studentId, connection = pool) {
     const [rows] = await connection.execute(
       `SELECT 1
@@ -33,6 +48,18 @@ export const GroupModel = {
        LIMIT 1`,
       [studentId, courseId],
     );
+    return rows.length > 0;
+  },
+
+  async isCourseStaff(courseId, username, role) {
+    const sql = role === "teacher"
+      ? `SELECT 1 FROM teacher_courses tc
+         JOIN teachers t ON t.id = tc.teacher_id
+         WHERE tc.course_id = ? AND t.teacher_id = ? LIMIT 1`
+      : `SELECT 1 FROM enrollments e
+         JOIN students s ON s.id = e.student_id
+         WHERE e.course_id = ? AND s.student_id = ? AND e.role = 'ta' LIMIT 1`;
+    const [rows] = await pool.execute(sql, [courseId, username]);
     return rows.length > 0;
   },
 
@@ -51,6 +78,7 @@ export const GroupModel = {
          COALESCE(leader_student.name, leader.student_id) AS leaderName,
          mine_application.status AS myApplicationStatus
        FROM course_groups g
+       JOIN courses c ON c.id = g.course_id
        LEFT JOIN course_group_memberships gm
          ON gm.group_id = g.id AND gm.course_id = g.course_id
        LEFT JOIN students s ON s.student_id = gm.student_id
@@ -76,7 +104,9 @@ export const GroupModel = {
          END
        LEFT JOIN students leader_student ON leader_student.student_id = leader.student_id
        LEFT JOIN course_group_memberships mine
-         ON mine.course_id = g.course_id AND mine.student_id = ?
+         ON mine.course_id = g.course_id
+         AND mine.group_id = g.id
+         AND mine.student_id = ?
        LEFT JOIN course_group_applications mine_application
          ON mine_application.course_id = g.course_id
          AND mine_application.group_id = g.id
@@ -110,6 +140,79 @@ export const GroupModel = {
       }
     }
     return [...groupsById.values()];
+  },
+
+  async getGroupDiscussionPosts(groupId) {
+    const [groups] = await pool.execute(
+      "SELECT name FROM course_groups WHERE id = ?",
+      [groupId],
+    );
+    const [rows] = await pool.execute(
+      `SELECT p.id, p.group_id AS groupId, p.student_id AS studentId,
+              p.parent_post_id AS parentPostId, p.content, p.created_at AS createdAt,
+              COALESCE(s.name, t.name, a.username, p.student_id) AS authorName
+       FROM course_group_discussion_posts p
+       LEFT JOIN students s ON s.student_id = p.student_id
+       LEFT JOIN teachers t ON t.teacher_id = p.student_id
+       LEFT JOIN accounts a ON a.username = p.student_id
+       WHERE p.group_id = ?
+       ORDER BY p.created_at, p.id`,
+      [groupId],
+    );
+    return { groupName: groups[0]?.name || `小組 ${groupId}`, posts: rows };
+  },
+
+  async createGroupDiscussionPost(groupId, studentId, parentPostId, content) {
+    if (parentPostId !== null && parentPostId !== undefined) {
+      const [parents] = await pool.execute(
+        "SELECT id FROM course_group_discussion_posts WHERE id = ? AND group_id = ?",
+        [parentPostId, groupId],
+      );
+      if (!parents.length) throw new Error("找不到此小組的討論留言");
+    }
+    const [result] = await pool.execute(
+      `INSERT INTO course_group_discussion_posts
+         (group_id, student_id, parent_post_id, content)
+       VALUES (?, ?, ?, ?)`,
+      [groupId, studentId, parentPostId || null, content],
+    );
+    return result.insertId;
+  },
+
+  async deleteGroupDiscussionPost(groupId, postId, studentId, isStaff) {
+    const [result] = await pool.execute(
+      `DELETE FROM course_group_discussion_posts
+       WHERE group_id = ? AND id = ? AND (? = 1 OR student_id = ?)`,
+      [groupId, postId, isStaff ? 1 : 0, studentId],
+    );
+    return result.affectedRows > 0;
+  },
+
+  async getGroupHomeworks(courseCode, courseId, groupIds) {
+    if (!groupIds.length) return [];
+    const placeholders = groupIds.map(() => "?").join(", ");
+    const [rows] = await pool.execute(
+      `SELECT h.id, h.title, h.deadline,
+              g.id AS groupId, g.name AS groupName,
+              hs.id AS submissionId,
+              COALESCE(hs.is_submitted, 0) AS isSubmitted,
+              hs.score, hs.feedback
+       FROM homeworks h
+       JOIN course_groups g ON g.course_id = ?
+       LEFT JOIN homework_submissions hs
+         ON hs.homework_id = h.id
+         AND hs.group_id = g.id
+         AND hs.is_submitted = 1
+       WHERE h.course_id = ?
+         AND h.is_group_homework = 1
+         AND g.id IN (${placeholders})
+       ORDER BY h.deadline IS NULL, h.deadline, h.id, g.name`,
+      [courseId, courseCode, ...groupIds],
+    );
+    return rows.map((row) => ({
+      ...row,
+      isSubmitted: Boolean(row.isSubmitted),
+    }));
   },
 
   async groupBelongsToCourse(courseId, groupId, connection = pool) {
@@ -195,6 +298,20 @@ export const GroupModel = {
     );
   },
 
+  async isGroupAtCapacity(courseId, groupId) {
+    const [rows] = await pool.execute(
+      `SELECT COUNT(*) >= c.group_max_members AS isFull
+       FROM course_groups g
+       JOIN courses c ON c.id = g.course_id
+       LEFT JOIN course_group_memberships gm
+         ON gm.course_id = g.course_id AND gm.group_id = g.id
+       WHERE g.course_id = ? AND g.id = ?
+       GROUP BY g.id, c.group_max_members`,
+      [courseId, groupId],
+    );
+    return rows.length > 0 && Boolean(rows[0].isFull);
+  },
+
   async isGroupRecruiting(courseId, groupId) {
     const [rows] = await pool.execute(
       `SELECT recruitment_enabled AS enabled
@@ -215,16 +332,6 @@ export const GroupModel = {
     return rows.length > 0;
   },
 
-  async hasCourseMembership(courseId, studentId) {
-    const [rows] = await pool.execute(
-      `SELECT 1 FROM course_group_memberships
-       WHERE course_id = ? AND student_id = ?
-       LIMIT 1`,
-      [courseId, studentId],
-    );
-    return rows.length > 0;
-  },
-
   async getPendingApplications(courseId, groupId) {
     const [rows] = await pool.execute(
       `SELECT
@@ -232,14 +339,38 @@ export const GroupModel = {
          a.student_id AS studentId,
          COALESCE(s.name, a.student_id) AS studentName,
          a.message,
-         a.created_at AS createdAt
+         a.created_at AS createdAt,
+         other_group.name AS otherGroupName
        FROM course_group_applications a
        LEFT JOIN students s ON s.student_id = a.student_id
+       LEFT JOIN course_group_memberships other_membership
+         ON other_membership.course_id = a.course_id
+         AND other_membership.student_id = a.student_id
+         AND other_membership.group_id <> a.group_id
+       LEFT JOIN course_groups other_group
+         ON other_group.id = other_membership.group_id
+         AND other_group.course_id = other_membership.course_id
        WHERE a.course_id = ? AND a.group_id = ? AND a.status = 'pending'
        ORDER BY a.created_at, a.id`,
       [courseId, groupId],
     );
-    return rows;
+    const applications = new Map();
+    for (const row of rows) {
+      if (!applications.has(row.id)) {
+        applications.set(row.id, {
+          id: row.id,
+          studentId: row.studentId,
+          studentName: row.studentName,
+          message: row.message,
+          createdAt: row.createdAt,
+          otherGroups: [],
+        });
+      }
+      if (row.otherGroupName && !applications.get(row.id).otherGroups.includes(row.otherGroupName)) {
+        applications.get(row.id).otherGroups.push(row.otherGroupName);
+      }
+    }
+    return [...applications.values()];
   },
 
   async createApplication(courseId, groupId, studentId, message) {
@@ -277,13 +408,15 @@ export const GroupModel = {
     }
   },
 
-  async approveApplication(courseId, groupId, applicationId, leaderId) {
+  async approveApplication(courseId, groupId, applicationId, leaderId, confirmMultipleGroups = false) {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
       const [groupRows] = await connection.execute(
-        `SELECT id FROM course_groups
-         WHERE course_id = ? AND id = ?
+        `SELECT g.id, c.group_max_members AS maxMembers
+         FROM course_groups g
+         JOIN courses c ON c.id = g.course_id
+         WHERE g.course_id = ? AND g.id = ?
          FOR UPDATE`,
         [courseId, groupId],
       );
@@ -294,20 +427,28 @@ export const GroupModel = {
       }
       const [leaderRows] = await connection.execute(
         `SELECT 1
-         FROM course_group_memberships leader
-         WHERE leader.course_id = ?
-           AND leader.group_id = ?
-           AND leader.student_id = ?
-           AND leader.id = (
-             SELECT first_member.id
-             FROM course_group_memberships first_member
-             WHERE first_member.course_id = ?
-               AND first_member.group_id = ?
-             ORDER BY first_member.joined_at, first_member.id
-             LIMIT 1
-           )
+         FROM course_groups g
+         WHERE g.course_id = ?
+           AND g.id = ?
+           AND CASE
+             WHEN EXISTS (
+               SELECT 1
+               FROM course_group_memberships current_leader
+               WHERE current_leader.course_id = g.course_id
+                 AND current_leader.group_id = g.id
+                 AND current_leader.student_id = g.leader_student_id
+             ) THEN g.leader_student_id
+             ELSE (
+               SELECT first_member.student_id
+               FROM course_group_memberships first_member
+               WHERE first_member.course_id = g.course_id
+                 AND first_member.group_id = g.id
+               ORDER BY first_member.joined_at, first_member.id
+               LIMIT 1
+             )
+           END = ?
          LIMIT 1`,
-        [courseId, groupId, leaderId, courseId, groupId],
+        [courseId, groupId, leaderId],
       );
       if (!leaderRows.length) {
         const error = new Error("只有組長能處理加入申請");
@@ -328,17 +469,34 @@ export const GroupModel = {
       }
       const applicantId = applications[0].student_id;
       const [existingMemberships] = await connection.execute(
-        `SELECT group_id FROM course_group_memberships
-         WHERE course_id = ? AND student_id = ?
+        `SELECT gm.group_id, g.name AS groupName
+         FROM course_group_memberships gm
+         JOIN course_groups g ON g.id = gm.group_id AND g.course_id = gm.course_id
+         WHERE gm.course_id = ? AND gm.student_id = ?
          FOR UPDATE`,
         [courseId, applicantId],
       );
-      if (existingMemberships.some((membership) => Number(membership.group_id) !== Number(groupId))) {
-        const error = new Error("申請人已加入其他小組，請先退出原小組再重新處理申請");
-        error.code = "APPLICANT_IN_OTHER_GROUP";
+      const otherGroups = existingMemberships
+        .filter((membership) => Number(membership.group_id) !== Number(groupId))
+        .map((membership) => membership.groupName);
+      if (otherGroups.length && !confirmMultipleGroups) {
+        const error = new Error("申請人已加入其他小組");
+        error.code = "APPLICANT_HAS_OTHER_GROUPS";
+        error.otherGroups = otherGroups;
         throw error;
       }
-      if (!existingMemberships.length) {
+      if (!existingMemberships.some((membership) => Number(membership.group_id) === Number(groupId))) {
+        const [memberCountRows] = await connection.execute(
+          `SELECT COUNT(*) AS memberCount
+           FROM course_group_memberships
+           WHERE course_id = ? AND group_id = ?`,
+          [courseId, groupId],
+        );
+        if (Number(memberCountRows[0].memberCount) >= Number(groupRows[0].maxMembers)) {
+          const error = new Error("小組人數已達上限");
+          error.code = "GROUP_AT_CAPACITY";
+          throw error;
+        }
         await connection.execute(
           `INSERT INTO course_group_memberships (course_id, group_id, student_id)
            VALUES (?, ?, ?)`,
@@ -360,20 +518,47 @@ export const GroupModel = {
     }
   },
 
+  async withdrawApplication(courseId, groupId, studentId) {
+    const [result] = await pool.execute(
+      `DELETE FROM course_group_applications
+       WHERE course_id = ? AND group_id = ? AND student_id = ? AND status = 'pending'`,
+      [courseId, groupId, studentId],
+    );
+    return result.affectedRows > 0;
+  },
+
+  async deleteApplication(courseId, groupId, applicationId) {
+    const [result] = await pool.execute(
+      `DELETE FROM course_group_applications
+       WHERE course_id = ? AND group_id = ? AND id = ? AND status = 'pending'`,
+      [courseId, groupId, applicationId],
+    );
+    return result.affectedRows > 0;
+  },
+
   async joinEmptyGroup(courseId, groupId, studentId) {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
       const [groups] = await connection.execute(
-        "SELECT id FROM course_groups WHERE course_id = ? AND id = ? FOR UPDATE",
+        `SELECT g.id, c.group_max_members AS maxMembers
+         FROM course_groups g
+         JOIN courses c ON c.id = g.course_id
+         WHERE g.course_id = ? AND g.id = ?
+         FOR UPDATE`,
         [courseId, groupId],
       );
       if (!groups.length) throw new Error("小組不存在");
       const [members] = await connection.execute(
-        "SELECT id FROM course_group_memberships WHERE course_id = ? AND group_id = ? LIMIT 1",
+        "SELECT COUNT(*) AS memberCount FROM course_group_memberships WHERE course_id = ? AND group_id = ?",
         [courseId, groupId],
       );
-      if (members.length) throw new Error("此小組已有人加入，請遞交加入申請");
+      if (Number(members[0].memberCount) > 0) throw new Error("此小組已有人加入，請遞交加入申請");
+      if (Number(members[0].memberCount) >= Number(groups[0].maxMembers)) {
+        const error = new Error("小組人數已達上限");
+        error.code = "GROUP_AT_CAPACITY";
+        throw error;
+      }
       await connection.execute(
         `INSERT INTO course_group_memberships (course_id, group_id, student_id)
          VALUES (?, ?, ?)`,
@@ -518,43 +703,4 @@ export const GroupModel = {
     }
   },
 
-  async getGroupHomeworks(courseCode, courseId, groupId) {
-    const [rows] = await pool.execute(
-      `SELECT
-         h.id,
-         h.title,
-         h.deadline,
-         EXISTS (
-           SELECT 1
-           FROM homework_submissions hs
-           JOIN course_group_memberships gm
-             ON gm.student_id = hs.student_id
-           WHERE hs.homework_id = h.id
-             AND hs.is_submitted = 1
-             AND gm.course_id = ?
-             AND gm.group_id = ?
-         ) AS isSubmitted,
-         (
-           SELECT hs.score
-           FROM homework_submissions hs
-           JOIN course_group_memberships gm
-             ON gm.student_id = hs.student_id
-           WHERE hs.homework_id = h.id
-             AND hs.is_submitted = 1
-             AND hs.score IS NOT NULL
-             AND gm.course_id = ?
-             AND gm.group_id = ?
-           ORDER BY hs.graded_at DESC, hs.submitted_at DESC
-           LIMIT 1
-         ) AS score
-       FROM homeworks h
-       WHERE h.course_id = ? AND h.is_group_homework = 1
-       ORDER BY h.deadline IS NULL, h.deadline, h.id`,
-      [courseId, groupId, courseId, groupId, courseCode],
-    );
-    return rows.map((homework) => ({
-      ...homework,
-      isSubmitted: Boolean(homework.isSubmitted),
-    }));
-  },
 };

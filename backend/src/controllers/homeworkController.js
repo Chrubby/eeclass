@@ -42,6 +42,9 @@ export const HomeworkController = {
       const { hwId } = req.params;
       const hw = await HomeworkService.getHomeworkDetail(hwId);
       if (!hw) return res.status(404).json({ message: "找不到作業" });
+      if (hw.is_group_homework && req.user.role === "student") {
+        return res.status(403).json({ message: "小組作業請從小組專區查看" });
+      }
       res.json(hw);
     } catch {
       res.status(500).json({ message: "讀取作業失敗" });
@@ -87,6 +90,9 @@ export const HomeworkController = {
       res.json({ message: "作業繳交成功！" });
     } catch (error) {
       const msg = error.message || "";
+      if (msg.includes("小組作業請從小組專區")) {
+        return res.status(403).json({ message: msg });
+      }
       if (msg.includes("截止") || msg.includes("空內容")) {
         return res.status(400).json({ message: msg });
       }
@@ -100,6 +106,10 @@ export const HomeworkController = {
   async getMySubmission(req, res) {
     try {
       const { hwId } = req.params;
+      const homework = await HomeworkModel.getHomeworkById(hwId);
+      if (homework?.is_group_homework) {
+        return res.status(403).json({ message: "小組作業請從小組專區查看" });
+      }
       const sub = await HomeworkModel.getStudentSubmission(hwId, req.user.username);
       res.json(sub);
     } catch {
@@ -114,8 +124,8 @@ export const HomeworkController = {
       res.json({ message: "作業已收回" });
     } catch (error) {
       const msg = error.message || "";
-      if (msg.includes("截止")) {
-        return res.status(400).json({ message: msg });
+      if (msg.includes("截止") || msg.includes("小組作業請從小組專區")) {
+        return res.status(msg.includes("截止") ? 400 : 403).json({ message: msg });
       }
       res.status(500).json({ message: "收回失敗" });
     }
@@ -143,7 +153,10 @@ export const HomeworkController = {
       const pack = await HomeworkExportService.buildForSubmission(req.params.submissionId);
       if (!pack) return res.status(404).json({ message: "找不到繳交紀錄" });
       const title = pack.homework?.title || "作業";
-      sendPdf(res, pack.pdf, `${title}-${pack.student.studentId}-合併作答.pdf`);
+      const ownerName = pack.student.groupId
+        ? `小組-${pack.student.name || pack.student.groupId}`
+        : pack.student.studentId || "submission";
+      sendPdf(res, pack.pdf, `${title}-${ownerName}-合併作答.pdf`);
     } catch (error) {
       console.error("[homework-export]", error?.message || error);
       if (!res.headersSent) res.status(500).json({ message: "產生 PDF 失敗" });

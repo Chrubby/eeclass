@@ -47,10 +47,13 @@ app.use(errorHandler);
 
 const port = process.env.PORT || 5000;
 ensureSchema()
-  .catch((e) => console.warn("[ensureSchema] 初始化檢查發生例外：", e?.message || e))
-  .finally(() => {
+  .then(() => {
     app.listen(port, () => {
       console.log(`Server running at http://127.0.0.1:${port}`);
       startHomeworkDeadlineNotifier();
     });
+  })
+  .catch((e) => {
+    console.error("[ensureSchema] 初始化失敗，伺服器未啟動：", e?.message || e);
+    process.exitCode = 1;
   });

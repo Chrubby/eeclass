@@ -22,6 +22,7 @@
         </div>
       </div>
       <div class="text-[15px] text-gray-600 flex gap-6">
+        <span v-if="isGroupHomework">每組共用一份繳交與成績</span>
         <span>截止日期：{{ homeworkDeadline }}</span>
         <span class="font-bold text-[#337ab7]">{{ progressText }}</span>
       </div>
@@ -68,7 +69,7 @@
 
     <div class="bg-white border rounded shadow-sm overflow-hidden">
       <div class="bg-gray-100 px-5 py-3 border-b font-bold text-gray-700 flex justify-between items-center flex-wrap gap-2">
-        <span>學生繳交清單</span>
+        <span>{{ isGroupHomework ? '小組繳交清單' : '學生繳交清單' }}</span>
         <div class="flex gap-2">
           <button
             type="button"
@@ -92,7 +93,7 @@
       <table class="w-full text-left text-[15px]">
         <thead class="bg-gray-50 text-gray-700 border-b">
           <tr>
-            <th class="p-3 pl-5">學號</th>
+            <th class="p-3 pl-5">{{ isGroupHomework ? '小組' : '學生' }}</th>
             <th class="p-3">繳交時間</th>
             <th class="p-3">成績</th>
             <th class="p-3 pr-5">操作</th>
@@ -102,11 +103,11 @@
           <tr v-for="sub in submissions" :key="sub.id" class="hover:bg-blue-50 transition-colors">
             <td class="p-3 pl-5 font-bold text-gray-800">
               {{ sub.studentName || '未命名' }}
-              <span class="block text-xs font-normal text-gray-500">{{ sub.studentId }}</span>
+              <span v-if="!isGroupHomework" class="block text-xs font-normal text-gray-500">{{ sub.studentId }}</span>
             </td>
             <td class="p-3 text-gray-500 text-sm">{{ sub.uploadedAt }}</td>
             <td class="p-3">
-              <span v-if="sub.score" class="font-bold text-green-600 text-lg">{{ sub.score }}</span>
+              <span v-if="sub.score !== null && sub.score !== undefined && sub.score !== ''" class="font-bold text-green-600 text-lg">{{ sub.score }}</span>
               <span v-else class="text-red-500 font-bold text-sm">未批改</span>
             </td>
             <td class="p-3 pr-5">
@@ -115,7 +116,7 @@
                   @click="router.push(`/course/${courseId}/homework/${hwId}/grade/${sub.id}`)"
                   class="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-1.5 text-sm font-bold rounded hover:bg-blue-100 transition-colors"
                 >
-                  {{ sub.score ? '重新批改' : '批改' }}
+                  {{ sub.score !== null && sub.score !== undefined && sub.score !== '' ? '重新批改' : '批改' }}
                 </button>
                 <button
                   type="button"
@@ -140,7 +141,11 @@
     >
       <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[82vh] overflow-hidden flex flex-col border">
         <div class="px-4 py-3 border-b font-bold text-gray-800 flex justify-between items-center">
-          <span>學生 {{ currentHistory?.submission?.studentId || '' }}：評分/修正完整歷程</span>
+          <span>
+            {{ currentHistory?.submission?.groupId
+              ? `小組 ${currentHistory.submission.studentName || ''}`
+              : `學生 ${currentHistory?.submission?.studentId || ''}` }}：評分/修正完整歷程
+          </span>
           <button type="button" class="text-gray-500 hover:text-gray-800 text-xl leading-none" @click="historyModalOpen = false">×</button>
         </div>
         <div class="p-4 overflow-y-auto space-y-3 text-sm">
@@ -219,6 +224,7 @@ const hwId = route.params.hwId
 
 const homeworkTitle = ref('')
 const homeworkDeadline = ref('')
+const isGroupHomework = ref(false)
 const homeworkAttachments = ref([])
 const questions = ref([])
 const submissions = ref([])
@@ -255,7 +261,7 @@ const onDownloadQuestion = async (q) => {
 const formatDate = (raw) => (raw ? new Date(raw).toLocaleString() : '-')
 const progressText = computed(() => {
   const total = submissions.value.length
-  const graded = submissions.value.filter((s) => s.score).length
+  const graded = submissions.value.filter((s) => s.score !== null && s.score !== undefined && s.score !== '').length
   return `批改進度：${graded} / ${total} 份`
 })
 
@@ -309,6 +315,7 @@ const loadData = async () => {
 
     homeworkTitle.value = hw.title
     homeworkDeadline.value = formatDate(hw.deadline)
+    isGroupHomework.value = Boolean(hw.is_group_homework)
     questions.value = hw.questions || []
     const raw = hw.attachments
     if (Array.isArray(raw) && raw.length) homeworkAttachments.value = raw

@@ -5,7 +5,7 @@
         小組專區
       </h2>
       <span class="text-xs text-gray-500">
-        {{ myGroup ? `目前組別：${myGroup.name}` : '尚未加入小組' }}
+        {{ myGroups.length ? `目前組別：${myGroups.map((group) => group.name).join('、')}` : '尚未加入小組' }}
       </span>
     </div>
 
@@ -56,6 +56,37 @@
           <span class="text-xs text-gray-500">自動使用未占用的「第 N 組」名稱，單次最多 100 組。</span>
         </form>
 
+        <form
+          class="flex flex-wrap items-end gap-2 border-t pt-3"
+          @submit.prevent="saveCourseMaxMembers"
+        >
+          <label class="text-sm font-bold text-gray-700">
+            全課程小組人數上限（包含組長）
+            <input
+              v-model.number="courseMaxMembersDraft"
+              type="number"
+              min="1"
+              step="1"
+              required
+              class="block w-36 mt-1 border rounded px-3 py-2 font-normal"
+            />
+          </label>
+          <button
+            type="submit"
+            class="bg-[#337ab7] text-white px-3 py-2 rounded text-sm font-bold hover:bg-[#285e8e] disabled:opacity-50"
+            :disabled="courseMaxMembersSaveState === 'saving'"
+          >
+            {{ courseMaxMembersSaveState === 'saving' ? '儲存中...' : '儲存人數上限' }}
+          </button>
+          <span
+            v-if="courseMaxMembersSaveState === 'saved'"
+            class="text-sm text-green-700"
+            role="status"
+          >
+            人數上限已更新，適用於本課程所有小組。
+          </span>
+        </form>
+
         <div class="flex flex-wrap items-center gap-3 border-t pt-3">
           <button
             type="button"
@@ -99,19 +130,25 @@
           v-for="group in sortedGroups"
           :key="group.id"
           class="bg-white border rounded shadow-sm p-4"
-          :class="myGroupId === group.id ? 'border-[#337ab7] bg-blue-50/60' : ''"
+          :class="group.isMine ? 'border-[#337ab7] bg-blue-50/60' : ''"
         >
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0 flex-1">
               <div class="flex items-baseline gap-2 mb-1">
                 <h3 class="font-bold text-gray-800">{{ group.name }}</h3>
                 <span
-                  v-if="myGroupId === group.id"
+                  v-if="group.isMine"
                   class="text-xs text-[#337ab7] font-bold"
                 >
                   我的小組
                 </span>
-                <span class="text-xs text-gray-500">{{ group.members.length }} 人</span>
+                <span
+                  class="text-xs"
+                  :class="group.members.length >= courseMaxMembers ? 'font-bold text-amber-700' : 'text-gray-500'"
+                >
+                  {{ group.members.length }} / {{ courseMaxMembers }} 人
+                  <template v-if="group.members.length >= courseMaxMembers">（已達上限）</template>
+                </span>
                 <span
                   class="text-xs font-bold"
                   :class="group.recruitmentEnabled ? 'text-green-700' : 'text-gray-500'"
@@ -215,34 +252,69 @@
                   <li
                     v-for="application in group.applications"
                     :key="application.id"
-                    class="flex flex-wrap items-start justify-between gap-2 bg-gray-50 rounded p-3"
+                    class="flex items-start gap-3 bg-gray-50 rounded p-3"
                   >
-                    <div class="min-w-0">
+                    <div class="min-w-0 flex-1">
                       <p class="text-sm font-bold text-gray-800">{{ application.studentName }}</p>
                       <p class="text-sm text-gray-600 whitespace-pre-wrap">{{ application.message || '（未附訊息）' }}</p>
+                      <p
+                        v-if="application.otherGroups.length"
+                        class="mt-1 text-sm font-bold text-amber-700"
+                      >
+                        已加入其他小組：{{ application.otherGroups.join('、') }}
+                      </p>
                     </div>
-                    <button
-                      type="button"
-                      class="bg-green-600 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-green-700 disabled:opacity-50"
-                      :disabled="approvingApplicationId === application.id"
-                      @click="approveApplication(group, application)"
-                    >
-                      {{ approvingApplicationId === application.id ? '處理中...' : '同意加入' }}
-                    </button>
+                    <div class="shrink-0 flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="bg-green-600 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-green-700 disabled:opacity-50"
+                        :disabled="approvingApplicationId === application.id || deletingApplicationId === application.id"
+                        @click="approveApplication(group, application)"
+                      >
+                        {{ approvingApplicationId === application.id ? '處理中...' : '同意加入' }}
+                      </button>
+                      <button
+                        type="button"
+                        class="text-sm font-bold text-red-600 hover:underline px-2 py-1 disabled:opacity-50"
+                        :disabled="deletingApplicationId === application.id || approvingApplicationId === application.id"
+                        @click="deleteApplication(group, application)"
+                      >
+                        {{ deletingApplicationId === application.id ? '刪除中...' : '刪除申請' }}
+                      </button>
+                    </div>
                   </li>
                 </ul>
                 <p v-else class="text-sm text-gray-500">目前沒有待處理的加入申請。</p>
               </div>
 
               <form
-                v-if="!canManage && !group.isMine && group.recruitmentEnabled"
+                v-if="!canManage && !group.isMine && (group.recruitmentEnabled || group.myApplicationStatus === 'pending')"
                 class="mt-3 border-t pt-3 space-y-2"
                 @submit.prevent="submitApplication(group)"
               >
-                <p v-if="group.myApplicationStatus === 'pending'" class="text-sm text-amber-700">
-                  已送出申請，等待組長審核。
+                <div
+                  v-if="group.myApplicationStatus === 'pending'"
+                  class="flex flex-wrap items-center justify-between gap-2"
+                >
+                  <p class="text-sm text-amber-700">
+                    已送出申請，等待組長審核。
+                  </p>
+                  <button
+                    type="button"
+                    class="text-sm font-bold text-red-600 hover:underline disabled:opacity-50"
+                    :disabled="withdrawingApplicationId === group.id"
+                    @click="withdrawApplication(group)"
+                  >
+                    {{ withdrawingApplicationId === group.id ? '撤回中...' : '撤回申請' }}
+                  </button>
+                </div>
+                <p
+                  v-else-if="group.recruitmentEnabled && group.members.length >= courseMaxMembers"
+                  class="text-sm font-bold text-amber-700"
+                >
+                  此小組已達人數上限，暫時無法申請加入。
                 </p>
-                <template v-else>
+                <template v-else-if="group.recruitmentEnabled">
                   <textarea
                     v-model="applicationMessages[group.id]"
                     maxlength="500"
@@ -262,6 +334,14 @@
             </div>
             <div class="shrink-0 flex items-center gap-2">
               <button
+                v-if="canManage || group.isMine"
+                type="button"
+                class="text-sm font-bold text-[#337ab7] hover:underline px-2 py-1 whitespace-nowrap"
+                @click="openGroupDiscussion(group)"
+              >
+                小組討論區
+              </button>
+              <button
                 v-if="canManage"
                 type="button"
                 class="text-sm font-bold text-red-600 hover:underline px-2 py-1"
@@ -271,7 +351,7 @@
               </button>
               <template v-else>
                 <button
-                  v-if="myGroupId === group.id"
+                  v-if="group.isMine"
                   type="button"
                   class="text-sm font-bold text-red-600 hover:underline px-2 py-1"
                   @click="leaveGroup(group)"
@@ -279,7 +359,7 @@
                   退出小組
                 </button>
                 <button
-                  v-else-if="!group.members.length && !myGroup"
+                  v-else-if="!group.members.length"
                   type="button"
                   class="bg-[#337ab7] text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-[#285e8e] disabled:opacity-50 whitespace-nowrap"
                   :disabled="joiningId === group.id"
@@ -297,25 +377,33 @@
     </div>
 
     <div v-else>
-      <p v-if="!canManage && !myGroup" class="mb-4 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded px-3 py-2">
+      <p v-if="!canManage && !myGroups.length" class="mb-4 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded px-3 py-2">
         請先至「小組總覽」加入小組後，才能繳交小組作業。
       </p>
 
       <div class="bg-white border rounded shadow-sm overflow-x-auto">
-        <div class="flex bg-gray-100 text-sm font-bold text-gray-700 p-3 border-b min-w-[560px]">
-          <div class="flex-1">作業名稱</div>
+        <div class="flex bg-gray-100 text-sm font-bold text-gray-700 p-3 border-b min-w-[700px]">
+          <div class="w-32">小組</div>
+          <div class="flex-1">小組作業</div>
           <div class="w-40 text-center">截止日期</div>
           <div class="w-32 text-center">狀態</div>
           <div class="w-24 text-center">成績</div>
         </div>
 
-        <ul v-if="groupHomeworks.length" class="divide-y divide-gray-200 min-w-[560px]">
+        <ul v-if="groupHomeworks.length" class="divide-y divide-gray-200 min-w-[700px]">
           <li
             v-for="hw in groupHomeworks"
-            :key="hw.id"
-            class="flex p-3 items-center text-[15px]"
+            :key="`${hw.groupId}-${hw.id}`"
+            class="flex p-3 items-center text-[15px] hover:bg-blue-50"
           >
-            <div class="flex-1 text-[#337ab7] truncate pr-4">{{ hw.title }}</div>
+            <div class="w-32 font-bold text-gray-700 truncate pr-2">{{ hw.groupName }}</div>
+            <button
+              type="button"
+              class="flex-1 text-left text-[#337ab7] hover:underline truncate pr-4"
+              @click="openGroupHomework(hw)"
+            >
+              {{ hw.title }}
+            </button>
             <div class="w-40 text-center text-gray-500 text-sm">{{ hw.deadlineText }}</div>
             <div class="w-32 text-center text-sm">
               <span :class="hw.statusClass">{{ hw.statusText }}</span>
@@ -334,11 +422,12 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/client.js'
 import { getRoleFromToken } from '@/utils/auth.js'
 
 const route = useRoute()
+const router = useRouter()
 const courseId = route.params.id
 const userRole = computed(() => getRoleFromToken())
 const canManage = computed(() => ['teacher', 'ta'].includes(userRole.value))
@@ -352,10 +441,15 @@ const batchGroupCount = ref(1)
 const isCreatingGroup = ref(false)
 const isCreatingGroups = ref(false)
 const studentCreationEnabled = ref(false)
+const courseMaxMembers = ref(4)
+const courseMaxMembersDraft = ref(4)
+const courseMaxMembersSaveState = ref('')
 const isUpdatingSetting = ref(false)
 const applicationMessages = ref({})
 const submittingApplicationId = ref(null)
 const approvingApplicationId = ref(null)
+const deletingApplicationId = ref(null)
+const withdrawingApplicationId = ref(null)
 const recruitmentSaveStates = ref({})
 const leaderTransferTargets = ref({})
 const transferringGroupId = ref(null)
@@ -366,11 +460,9 @@ const sortedGroups = computed(() =>
   ),
 )
 
-const myGroup = computed(() =>
-  groups.value.find((group) => group.isMine) || null,
+const myGroups = computed(() =>
+  groups.value.filter((group) => group.isMine),
 )
-
-const myGroupId = computed(() => myGroup.value?.id ?? null)
 
 const memberNames = (group) =>
   group.members.map((m) => m.name || m.id).join('、')
@@ -401,6 +493,24 @@ const markRecruitmentChanged = (groupId) => {
   }
 }
 
+const saveCourseMaxMembers = async () => {
+  if (courseMaxMembersSaveState.value === 'saving') return
+  const maxMembers = Number(courseMaxMembersDraft.value)
+  if (!Number.isInteger(maxMembers) || maxMembers < 1) {
+    alert('小組人數上限必須是大於 0 的整數')
+    return
+  }
+  courseMaxMembersSaveState.value = 'saving'
+  try {
+    await api.put(`/api/courses/${courseId}/groups/max-members`, { maxMembers })
+    await loadCourseMaxMembers()
+    courseMaxMembersSaveState.value = 'saved'
+  } catch (error) {
+    courseMaxMembersSaveState.value = 'error'
+    alert(error.response?.data?.message || error.message || '更新小組人數上限失敗')
+  }
+}
+
 const loadGroupHomeworks = async () => {
   const { data } = await api.get(`/api/courses/${courseId}/groups/homeworks`)
   groupHomeworks.value = data.map((homework) => {
@@ -411,16 +521,12 @@ const loadGroupHomeworks = async () => {
       deadlineText: homework.deadline
         ? new Date(homework.deadline).toLocaleString('zh-TW')
         : '-',
-      statusText: !myGroup.value
-        ? '需先加入小組'
-        : isGraded
+      statusText: isGraded
           ? '已批改'
           : isSubmitted
             ? '待批改'
             : '未繳交',
-      statusClass: !myGroup.value
-        ? 'text-gray-400'
-        : isGraded
+      statusClass: isGraded
           ? 'text-green-600'
           : isSubmitted
             ? 'text-blue-600'
@@ -429,15 +535,36 @@ const loadGroupHomeworks = async () => {
   })
 }
 
+const openGroupDiscussion = (group) => {
+  router.push(`/course/${courseId}/group/${group.id}/discussion`)
+}
+
+const openGroupHomework = (homework) => {
+  const path = canManage.value
+    ? `/course/${courseId}/homework/${homework.id}`
+    : `/course/${courseId}/group/${homework.groupId}/homework/${homework.id}`
+  router.push(path)
+}
+
 const loadStudentCreationSetting = async () => {
   const { data } = await api.get(`/api/courses/${courseId}/groups/student-creation`)
   studentCreationEnabled.value = data.enabled
 }
 
+const loadCourseMaxMembers = async () => {
+  const { data } = await api.get(`/api/courses/${courseId}/groups/max-members`)
+  courseMaxMembers.value = data.maxMembers
+  courseMaxMembersDraft.value = data.maxMembers
+}
+
 const loadPageData = async () => {
   try {
     await loadGroups()
-    await Promise.all([loadGroupHomeworks(), loadStudentCreationSetting()])
+    await Promise.all([
+      loadGroupHomeworks(),
+      loadStudentCreationSetting(),
+      loadCourseMaxMembers(),
+    ])
   } catch (error) {
     alert(error.response?.data?.message || error.message || '讀取小組資料失敗')
   }
@@ -478,18 +605,49 @@ const approveApplication = async (group, application) => {
   if (approvingApplicationId.value === application.id) return
   approvingApplicationId.value = application.id
   try {
-    await api.post(
-      `/api/courses/${courseId}/groups/${group.id}/applications/${application.id}/approve`,
-    )
+    const approveUrl = `/api/courses/${courseId}/groups/${group.id}/applications/${application.id}/approve`
+    try {
+      await api.post(approveUrl)
+    } catch (error) {
+      if (error.response?.data?.code !== 'APPLICANT_HAS_OTHER_GROUPS') throw error
+      const otherGroups = error.response.data.otherGroups || application.otherGroups
+      const message = `${application.studentName} 已加入其他小組${otherGroups.length ? `：${otherGroups.join('、')}` : ''}。\n\n同意後會保留原有組籍，並同時加入「${group.name}」。仍要同意嗎？`
+      if (!confirm(message)) return
+      await api.post(approveUrl, { confirmMultipleGroups: true })
+    }
     await loadPageData()
   } catch (error) {
-    if (error.response?.data?.code === 'APPLICANT_IN_OTHER_GROUP') {
-      alert(`${application.studentName} 已加入其他小組，這筆申請會保留；請對方退出原小組後再重新同意。`)
-    } else {
-      alert(error.response?.data?.message || error.message || '同意加入申請失敗')
-    }
+    alert(error.response?.data?.message || error.message || '同意加入申請失敗')
   } finally {
     approvingApplicationId.value = null
+  }
+}
+
+const withdrawApplication = async (group) => {
+  if (withdrawingApplicationId.value === group.id) return
+  if (!confirm(`確定撤回對「${group.name}」的加入申請嗎？`)) return
+  withdrawingApplicationId.value = group.id
+  try {
+    await api.delete(`/api/courses/${courseId}/groups/${group.id}/applications/me`)
+    await loadPageData()
+  } catch (error) {
+    alert(error.response?.data?.message || error.message || '撤回加入申請失敗')
+  } finally {
+    withdrawingApplicationId.value = null
+  }
+}
+
+const deleteApplication = async (group, application) => {
+  if (deletingApplicationId.value === application.id) return
+  if (!confirm(`確定刪除 ${application.studentName} 對「${group.name}」的加入申請嗎？`)) return
+  deletingApplicationId.value = application.id
+  try {
+    await api.delete(`/api/courses/${courseId}/groups/${group.id}/applications/${application.id}`)
+    await loadPageData()
+  } catch (error) {
+    alert(error.response?.data?.message || error.message || '刪除加入申請失敗')
+  } finally {
+    deletingApplicationId.value = null
   }
 }
 
@@ -516,8 +674,9 @@ const transferLeadership = async (group) => {
 const joinGroup = async (group) => {
   if (canManage.value) return
 
-  if (myGroup.value && myGroup.value.id !== group.id) {
-    if (!confirm(`你目前在「${myGroup.value.name}」，確定改加入「${group.name}」嗎？`)) {
+  if (myGroups.value.length) {
+    const currentGroups = myGroups.value.map((currentGroup) => currentGroup.name).join('、')
+    if (!confirm(`你目前已加入「${currentGroups}」。確定同時加入「${group.name}」嗎？原有組籍會保留。`)) {
       return
     }
   }

@@ -22,7 +22,7 @@ const MIGRATIONS = [
     group_id INT NOT NULL,
     student_id VARCHAR(128) NOT NULL,
     joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_course_group_student (course_id, student_id),
+    UNIQUE KEY uniq_course_group_student (course_id, group_id, student_id),
     KEY idx_course_group_memberships_group (group_id),
     CONSTRAINT fk_course_group_memberships_course
       FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
@@ -32,6 +32,7 @@ const MIGRATIONS = [
   "ALTER TABLE course_groups ADD COLUMN leader_student_id VARCHAR(128) NULL",
   "ALTER TABLE course_groups ADD COLUMN recruitment_enabled TINYINT(1) NOT NULL DEFAULT 0",
   "ALTER TABLE course_groups ADD COLUMN recruitment_message VARCHAR(1000) NULL",
+  "ALTER TABLE courses ADD COLUMN group_max_members INT NOT NULL DEFAULT 4",
   `CREATE TABLE IF NOT EXISTS course_group_applications (
     id INT AUTO_INCREMENT PRIMARY KEY,
     course_id INT NOT NULL,
@@ -48,8 +49,23 @@ const MIGRATIONS = [
     CONSTRAINT fk_group_applications_group
       FOREIGN KEY (group_id) REFERENCES course_groups(id) ON DELETE CASCADE
   )`,
+  `CREATE TABLE IF NOT EXISTS course_group_discussion_posts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    group_id INT NOT NULL,
+    student_id VARCHAR(128) NOT NULL,
+    parent_post_id INT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_group_discussion_posts_group (group_id, created_at),
+    KEY idx_group_discussion_posts_parent (parent_post_id),
+    CONSTRAINT fk_group_discussion_posts_group
+      FOREIGN KEY (group_id) REFERENCES course_groups(id) ON DELETE CASCADE,
+    CONSTRAINT fk_group_discussion_posts_parent
+      FOREIGN KEY (parent_post_id) REFERENCES course_group_discussion_posts(id) ON DELETE CASCADE
+  )`,
   "ALTER TABLE courses ADD COLUMN student_group_creation_enabled TINYINT(1) NOT NULL DEFAULT 0",
   "ALTER TABLE homeworks ADD COLUMN is_group_homework TINYINT(1) NOT NULL DEFAULT 0",
+  "ALTER TABLE homework_submissions ADD COLUMN group_id INT NULL",
   // homework_submissions：保留收回紀錄需要的旗標
   "ALTER TABLE homework_submissions ADD COLUMN is_submitted TINYINT(1) NOT NULL DEFAULT 1",
   // accounts：強制變更密碼、頭貼、信箱（可為 NULL，不覆寫既有資料）
@@ -115,6 +131,100 @@ const IGNORABLE_CODES = new Set([
   "ER_DUP_KEYNAME", // 索引已存在
 ]);
 
+async function ensureMultipleGroupMemberships() {
+  const [indexes] = await pool.execute(
+    `SELECT COLUMN_NAME AS columnName
+     FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'course_group_memberships'
+       AND INDEX_NAME = 'uniq_course_group_student'
+     ORDER BY SEQ_IN_INDEX`,
+  );
+  const columns = indexes.map((index) => index.columnName);
+
+  if (columns.length === 2 && columns[0] === "course_id" && columns[1] === "student_id") {
+    const [supportingIndexes] = await pool.execute(
+      `SELECT 1
+       FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'course_group_memberships'
+         AND INDEX_NAME = 'idx_course_group_memberships_course'
+       LIMIT 1`,
+    );
+    if (!supportingIndexes.length) {
+      await pool.execute(
+        "ALTER TABLE course_group_memberships ADD INDEX idx_course_group_memberships_course (course_id)",
+      );
+    }
+    await pool.execute(
+      "ALTER TABLE course_group_memberships DROP INDEX uniq_course_group_student",
+    );
+    await pool.execute(
+      "ALTER TABLE course_group_memberships ADD UNIQUE KEY uniq_course_group_student (course_id, group_id, student_id)",
+    );
+    return;
+  }
+
+  if (!columns.length) {
+    await pool.execute(
+      "ALTER TABLE course_group_memberships ADD UNIQUE KEY uniq_course_group_student (course_id, group_id, student_id)",
+    );
+    return;
+  }
+
+  if (
+    columns.length !== 3
+    || columns[0] !== "course_id"
+    || columns[1] !== "group_id"
+    || columns[2] !== "student_id"
+  ) {
+    throw new Error(
+      `無法遷移 course_group_memberships.uniq_course_group_student，現有欄位順序為：${columns.join(", ")}`,
+    );
+  }
+}
+
+async function ensureGroupSubmissionRelation() {
+  const [uniqueIndexes] = await pool.execute(
+    `SELECT COLUMN_NAME AS columnName, SEQ_IN_INDEX AS seqInIndex, NON_UNIQUE AS nonUnique
+     FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'homework_submissions'
+       AND INDEX_NAME = 'uniq_homework_group_submission'
+     ORDER BY SEQ_IN_INDEX`,
+  );
+  if (!uniqueIndexes.length) {
+    await pool.execute(
+      "ALTER TABLE homework_submissions ADD UNIQUE KEY uniq_homework_group_submission (homework_id, group_id)",
+    );
+  } else if (
+    uniqueIndexes.length !== 2
+    || uniqueIndexes[0].columnName !== "homework_id"
+    || uniqueIndexes[1].columnName !== "group_id"
+    || uniqueIndexes.some((index) => Number(index.nonUnique) !== 0)
+  ) {
+    throw new Error(
+      "無法遷移 homework_submissions.uniq_homework_group_submission：索引欄位或唯一性不符",
+    );
+  }
+
+  const [constraints] = await pool.execute(
+    `SELECT 1
+     FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'homework_submissions'
+       AND CONSTRAINT_NAME = 'fk_homework_submissions_group'
+     LIMIT 1`,
+  );
+  if (!constraints.length) {
+    await pool.execute(
+      `ALTER TABLE homework_submissions
+       ADD CONSTRAINT fk_homework_submissions_group
+       FOREIGN KEY (group_id) REFERENCES course_groups(id) ON DELETE CASCADE`,
+    );
+  }
+}
+
 export async function ensureSchema() {
   for (const sql of MIGRATIONS) {
     try {
@@ -122,6 +232,10 @@ export async function ensureSchema() {
     } catch (e) {
       if (IGNORABLE_CODES.has(e?.code)) continue;
       console.warn("[ensureSchema] 略過：", sql, "原因：", e?.message || e);
+      throw e;
     }
   }
+
+  await ensureMultipleGroupMemberships();
+  await ensureGroupSubmissionRelation();
 }

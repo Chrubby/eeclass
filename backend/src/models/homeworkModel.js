@@ -17,11 +17,17 @@ export const HomeworkModel = {
     );
   },
 
-  async updateHomeworkById(connection, hwId, { title, deadline, description, resetGradeNotice = false }) {
+  async updateHomeworkById(connection, hwId, {
+    title,
+    deadline,
+    description,
+    isGroupHomework = false,
+    resetGradeNotice = false,
+  }) {
     if (resetGradeNotice) {
       await connection.execute(
-        "UPDATE homeworks SET title = ?, deadline = ?, description = ?, grade_notified_at = NULL WHERE id = ?",
-        [title, deadline, description, hwId]
+        "UPDATE homeworks SET title = ?, deadline = ?, description = ?, is_group_homework = ?, grade_notified_at = NULL WHERE id = ?",
+        [title, deadline, description, isGroupHomework ? 1 : 0, hwId]
       );
       return;
     }
@@ -128,10 +134,13 @@ export const HomeworkModel = {
     }
   },
 
-  async getHomeworksByCourse(courseId) {
+  async getHomeworksByCourse(courseId, includeGroupHomework = false) {
     const [rows] = await pool.execute(
-      "SELECT id, title, deadline, description FROM homeworks WHERE course_id = ? ORDER BY id DESC",
-      [courseId]
+      `SELECT id, title, deadline, description, is_group_homework
+       FROM homeworks
+       WHERE course_id = ? AND (? = 1 OR is_group_homework = 0)
+       ORDER BY id DESC`,
+      [courseId, includeGroupHomework ? 1 : 0]
     );
     return rows;
   },
@@ -150,23 +159,17 @@ export const HomeworkModel = {
   },
 
   // 學生端：取得繳交紀錄
-  async getStudentSubmission(hwId, studentId) {
+  async getStudentSubmission(hwId, studentId, groupId = null) {
+    const ownerClause = groupId === null
+      ? "student_id = ? AND group_id IS NULL"
+      : "group_id = ?";
+    const params = groupId === null ? [hwId, studentId] : [hwId, groupId];
     const [rows] = await pool.execute(
-      `
-      SELECT
-        id,
-        answer_text,
-        file_name,
-        file_path,
-        files_json,
-        score,
-        feedback,
-        graded_details,
-        is_submitted
-      FROM homework_submissions
-      WHERE homework_id = ? AND student_id = ?
-      `,
-      [hwId, studentId]
+      `SELECT id, answer_text, file_name, file_path, files_json, score, feedback,
+              graded_details, is_submitted
+       FROM homework_submissions
+       WHERE homework_id = ? AND ${ownerClause}`,
+      params,
     );
     return rows[0] || null;
   },
@@ -211,12 +214,14 @@ export const HomeworkModel = {
     return rows[0]?.id;
   },
 
-  async saveSubmissionPayload(hwId, studentId, answerText, filesJson, legacyFileName, legacyFilePath) {
+  async saveSubmissionPayload(hwId, studentId, answerText, filesJson, legacyFileName, legacyFilePath, groupId = null) {
+    const ownerStudentId = groupId === null ? studentId : null;
     const sql = `
       INSERT INTO homework_submissions
-        (homework_id, student_id, answer_text, file_name, file_path, files_json, is_submitted)
-      VALUES (?, ?, ?, ?, ?, ?, 1)
+        (homework_id, student_id, group_id, answer_text, file_name, file_path, files_json, is_submitted)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
       ON DUPLICATE KEY UPDATE
+        group_id = VALUES(group_id),
         answer_text = VALUES(answer_text),
         file_name = VALUES(file_name),
         file_path = VALUES(file_path),
@@ -226,32 +231,38 @@ export const HomeworkModel = {
     `;
     await pool.execute(sql, [
       hwId,
-      studentId,
+      ownerStudentId,
+      groupId,
       answerText || null,
       legacyFileName,
       legacyFilePath,
       filesJson,
     ]);
-    const [rows] = await pool.execute(
-      "SELECT id FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
-      [hwId, studentId]
-    );
+    const [rows] = groupId === null
+      ? await pool.execute(
+        "SELECT id FROM homework_submissions WHERE homework_id = ? AND student_id = ? AND group_id IS NULL",
+        [hwId, studentId],
+      )
+      : await pool.execute(
+        "SELECT id FROM homework_submissions WHERE homework_id = ? AND group_id = ?",
+        [hwId, groupId],
+      );
     return rows[0]?.id;
   },
 
   /** 學生收回作業：保留作答內容與檔案，僅標記為未繳交 */
-  async markSubmissionUnsubmitted(hwId, studentId) {
-    await pool.execute(
-      "UPDATE homework_submissions SET is_submitted = 0 WHERE homework_id = ? AND student_id = ?",
-      [hwId, studentId]
-    );
+  async markSubmissionUnsubmitted(hwId, studentId, groupId = null) {
+    const sql = groupId === null
+      ? "UPDATE homework_submissions SET is_submitted = 0 WHERE homework_id = ? AND student_id = ? AND group_id IS NULL"
+      : "UPDATE homework_submissions SET is_submitted = 0 WHERE homework_id = ? AND group_id = ?";
+    await pool.execute(sql, groupId === null ? [hwId, studentId] : [hwId, groupId]);
   },
 
-  async deleteSubmission(hwId, studentId) {
-    await pool.execute(
-      "DELETE FROM homework_submissions WHERE homework_id = ? AND student_id = ?",
-      [hwId, studentId]
-    );
+  async deleteSubmission(hwId, studentId, groupId = null) {
+    const sql = groupId === null
+      ? "DELETE FROM homework_submissions WHERE homework_id = ? AND student_id = ? AND group_id IS NULL"
+      : "DELETE FROM homework_submissions WHERE homework_id = ? AND group_id = ?";
+    await pool.execute(sql, groupId === null ? [hwId, studentId] : [hwId, groupId]);
   },
 
   // 老師端：取得單一作業的所有繳交清單
@@ -266,7 +277,8 @@ export const HomeworkModel = {
       SELECT
         hs.id,
         hs.student_id as studentId,
-        s.name as studentName,
+        COALESCE(g.name, s.name, hs.student_id) as studentName,
+        hs.group_id as groupId,
         hs.submitted_at as submittedAt,
         hs.score,
         hs.feedback,
@@ -276,6 +288,7 @@ export const HomeworkModel = {
         hs.files_json as filesJson
       FROM homework_submissions hs
       LEFT JOIN students s ON s.student_id = hs.student_id
+      LEFT JOIN course_groups g ON g.id = hs.group_id
       WHERE hs.homework_id = ? AND hs.is_submitted = 1
       `,
       [hwId]
@@ -286,11 +299,12 @@ export const HomeworkModel = {
   // 老師端：取得單一繳交的詳細內容
   async getSubmissionDetail(submissionId) {
     const [rows] = await pool.execute(
-      `SELECT hs.*, hs.student_id as studentId, s.name as studentName, hs.submitted_at as submittedAt, hs.answer_text as answerText,
+      `SELECT hs.*, hs.student_id as studentId, COALESCE(g.name, s.name, hs.student_id) as studentName, hs.group_id as groupId, hs.submitted_at as submittedAt, hs.answer_text as answerText,
               h.title as homeworkTitle, h.course_id as courseCode
        FROM homework_submissions hs
        JOIN homeworks h ON h.id = hs.homework_id
        LEFT JOIN students s ON s.student_id = hs.student_id
+       LEFT JOIN course_groups g ON g.id = hs.group_id
        WHERE hs.id = ?`,
       [submissionId]
     );

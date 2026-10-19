@@ -1,4 +1,6 @@
 import { GroupModel } from "../models/groupModel.js";
+import { HomeworkModel } from "../models/homeworkModel.js";
+import { HomeworkService } from "./homeworkService.js";
 
 function validateCourseCode(courseCode) {
   if (typeof courseCode !== "string" || !courseCode.trim()) {
@@ -16,6 +18,24 @@ async function resolveCourseId(courseCode) {
 async function assertStudentEnrollment(courseId, studentId) {
   if (!(await GroupModel.isStudentEnrolled(courseId, studentId))) {
     throw new Error("尚未加入此課程");
+  }
+}
+
+async function assertGroupAccess(courseId, groupId, user) {
+  if (!(await GroupModel.groupBelongsToCourse(courseId, groupId))) {
+    throw new Error("小組不存在");
+  }
+  if (user.role === "student") {
+    await assertStudentEnrollment(courseId, user.username);
+    if (!(await GroupModel.isGroupMember(courseId, groupId, user.username))) {
+      throw new Error("只有該小組組員與教師、助教能查看此內容");
+    }
+  } else if (["teacher", "ta"].includes(user.role)) {
+    if (!(await GroupModel.isCourseStaff(courseId, user.username, user.role))) {
+      throw new Error("只有該小組組員與教師、助教能查看此內容");
+    }
+  } else {
+    throw new Error("只有該小組組員與教師、助教能查看此內容");
   }
 }
 
@@ -42,15 +62,28 @@ export const GroupService = {
     return enabled;
   },
 
+  async getCourseMaxMembers(courseCode) {
+    const courseId = await resolveCourseId(courseCode);
+    return GroupModel.getCourseMaxMembers(courseId);
+  },
+
+  async setCourseMaxMembers(courseCode, user, maxMembers) {
+    const courseId = await resolveCourseId(courseCode);
+    if (!["teacher", "ta"].includes(user.role)) {
+      throw new Error("只有教師或助教能設定小組人數上限");
+    }
+    if (!Number.isInteger(maxMembers) || maxMembers < 1) {
+      throw new Error("小組人數上限必須是大於 0 的整數");
+    }
+    await GroupModel.setCourseMaxMembers(courseId, maxMembers);
+  },
+
   async joinGroup(courseCode, groupId, user) {
     const courseId = await resolveCourseId(courseCode);
     if (!/^\d+$/.test(String(groupId))) {
       throw new Error("小組不存在");
     }
     await assertStudentEnrollment(courseId, user.username);
-    if (await GroupModel.hasCourseMembership(courseId, user.username)) {
-      throw new Error("請向其他小組遞交加入申請");
-    }
     if (!(await GroupModel.groupBelongsToCourse(courseId, groupId))) {
       throw new Error("小組不存在");
     }
@@ -69,14 +102,113 @@ export const GroupService = {
 
   async getGroupHomeworks(courseCode, user) {
     const courseId = await resolveCourseId(courseCode);
-    let groupId = null;
+    let groupIds;
     if (user.role === "student") {
       await assertStudentEnrollment(courseId, user.username);
       const groups = await GroupModel.getGroups(courseId, user.username);
-      groupId = groups.find((group) => group.isMine)?.id ?? null;
+      groupIds = groups.filter((group) => group.isMine).map((group) => group.id);
+    } else {
+      if (!["teacher", "ta"].includes(user.role)
+        || !(await GroupModel.isCourseStaff(courseId, user.username, user.role))) {
+        throw new Error("只有該小組組員與教師、助教能查看此內容");
+      }
+      const groups = await GroupModel.getGroups(courseId, user.username);
+      groupIds = groups.map((group) => group.id);
     }
 
-    return GroupModel.getGroupHomeworks(courseCode, courseId, groupId);
+    return GroupModel.getGroupHomeworks(courseCode, courseId, groupIds);
+  },
+
+  async getGroupDiscussion(courseCode, groupId, user) {
+    const courseId = await resolveCourseId(courseCode);
+    if (!/^\d+$/.test(String(groupId))) throw new Error("小組不存在");
+    await assertGroupAccess(courseId, groupId, user);
+    return GroupModel.getGroupDiscussionPosts(groupId);
+  },
+
+  async addGroupDiscussionPost(courseCode, groupId, user, { content, parentPostId = null }) {
+    const courseId = await resolveCourseId(courseCode);
+    if (!/^\d+$/.test(String(groupId))) throw new Error("小組不存在");
+    await assertGroupAccess(courseId, groupId, user);
+    const normalizedContent = typeof content === "string" ? content.trim() : "";
+    if (!normalizedContent) throw new Error("留言內容不可為空");
+    if (normalizedContent.length > 10000) throw new Error("留言內容不可超過 10000 個字");
+    if (parentPostId != null && !/^\d+$/.test(String(parentPostId))) {
+      throw new Error("找不到此小組的討論留言");
+    }
+    return GroupModel.createGroupDiscussionPost(
+      groupId,
+      user.username,
+      parentPostId,
+      normalizedContent,
+    );
+  },
+
+  async deleteGroupDiscussionPost(courseCode, groupId, postId, user) {
+    const courseId = await resolveCourseId(courseCode);
+    if (!/^\d+$/.test(String(groupId)) || !/^\d+$/.test(String(postId))) {
+      throw new Error("找不到討論留言");
+    }
+    await assertGroupAccess(courseId, groupId, user);
+    const isStaff = ["teacher", "ta"].includes(user.role);
+    if (!(await GroupModel.deleteGroupDiscussionPost(groupId, postId, user.username, isStaff))) {
+      throw new Error("找不到可刪除的討論留言");
+    }
+  },
+
+  async getGroupHomework(courseCode, groupId, hwId, user) {
+    const courseId = await resolveCourseId(courseCode);
+    if (!/^\d+$/.test(String(groupId)) || !/^\d+$/.test(String(hwId))) {
+      throw new Error("找不到小組作業");
+    }
+    await assertGroupAccess(courseId, groupId, user);
+    const homework = await HomeworkService.getHomeworkDetail(hwId);
+    if (!homework || String(homework.course_id) !== String(courseCode) || !homework.is_group_homework) {
+      throw new Error("找不到小組作業");
+    }
+    const submission = await HomeworkModel.getStudentSubmission(
+      hwId,
+      user.username,
+      Number(groupId),
+    );
+    return { homework, submission };
+  },
+
+  async submitGroupHomework(courseCode, groupId, hwId, user, answerText, files, removeFileIndexes = []) {
+    const courseId = await resolveCourseId(courseCode);
+    if (!/^\d+$/.test(String(groupId)) || !/^\d+$/.test(String(hwId))) {
+      throw new Error("找不到小組作業");
+    }
+    await assertGroupAccess(courseId, groupId, user);
+    const homework = await HomeworkModel.getHomeworkById(hwId);
+    if (!homework || String(homework.course_id) !== String(courseCode) || !homework.is_group_homework) {
+      throw new Error("找不到小組作業");
+    }
+    return HomeworkService.submitHomework(
+      hwId,
+      user.username,
+      answerText,
+      files,
+      removeFileIndexes,
+      Number(groupId),
+    );
+  },
+
+  async unsubmitGroupHomework(courseCode, groupId, hwId, user) {
+    const courseId = await resolveCourseId(courseCode);
+    if (!/^\d+$/.test(String(groupId)) || !/^\d+$/.test(String(hwId))) {
+      throw new Error("找不到小組作業");
+    }
+    await assertGroupAccess(courseId, groupId, user);
+    const homework = await HomeworkModel.getHomeworkById(hwId);
+    if (!homework || String(homework.course_id) !== String(courseCode) || !homework.is_group_homework) {
+      throw new Error("找不到小組作業");
+    }
+    return HomeworkService.unsubmitHomework(
+      hwId,
+      user.username,
+      Number(groupId),
+    );
   },
 
   async createGroup(courseCode, name, user) {
@@ -89,9 +221,6 @@ export const GroupService = {
       await assertStudentEnrollment(courseId, user.username);
       const enabled = await GroupModel.getStudentCreationEnabled(courseId);
       if (!enabled) throw new Error("目前未開放學生創建小組");
-      if (await GroupModel.hasCourseMembership(courseId, user.username)) {
-        throw new Error("請先退出目前的小組，再創建新小組");
-      }
     }
     try {
       const id = await GroupModel.createGroup(
@@ -180,6 +309,11 @@ export const GroupService = {
     if (!(await GroupModel.isGroupRecruiting(courseId, groupId))) {
       throw new Error("此小組目前未開放申請");
     }
+    if (await GroupModel.isGroupAtCapacity(courseId, groupId)) {
+      const error = new Error("小組人數已達上限，暫時無法申請加入");
+      error.code = "GROUP_AT_CAPACITY";
+      throw error;
+    }
     const normalizedMessage = typeof message === "string" ? message.trim() : "";
     if (normalizedMessage.length > 500) {
       throw new Error("申請訊息不可超過 500 個字");
@@ -187,7 +321,7 @@ export const GroupService = {
     await GroupModel.createApplication(courseId, groupId, user.username, normalizedMessage);
   },
 
-  async approveApplication(courseCode, groupId, applicationId, user) {
+  async approveApplication(courseCode, groupId, applicationId, user, confirmMultipleGroups = false) {
     const courseId = await resolveCourseId(courseCode);
     if (
       !/^\d+$/.test(String(groupId))
@@ -196,7 +330,41 @@ export const GroupService = {
     ) {
       throw new Error("找不到待處理的加入申請");
     }
-    await GroupModel.approveApplication(courseId, groupId, applicationId, user.username);
+    await GroupModel.approveApplication(
+      courseId,
+      groupId,
+      applicationId,
+      user.username,
+      confirmMultipleGroups,
+    );
+  },
+
+  async withdrawApplication(courseCode, groupId, user) {
+    const courseId = await resolveCourseId(courseCode);
+    if (!/^\d+$/.test(String(groupId)) || !(await GroupModel.groupBelongsToCourse(courseId, groupId))) {
+      throw new Error("找不到待撤回的加入申請");
+    }
+    await assertStudentEnrollment(courseId, user.username);
+    if (!(await GroupModel.withdrawApplication(courseId, groupId, user.username))) {
+      throw new Error("找不到待撤回的加入申請");
+    }
+  },
+
+  async deleteApplication(courseCode, groupId, applicationId, user) {
+    const courseId = await resolveCourseId(courseCode);
+    if (
+      !/^\d+$/.test(String(groupId))
+      || !/^\d+$/.test(String(applicationId))
+      || !(await GroupModel.groupBelongsToCourse(courseId, groupId))
+    ) {
+      throw new Error("找不到待處理的加入申請");
+    }
+    if (!(await GroupModel.isGroupLeader(courseId, groupId, user.username))) {
+      throw new Error("只有組長能刪除加入申請");
+    }
+    if (!(await GroupModel.deleteApplication(courseId, groupId, applicationId))) {
+      throw new Error("找不到待處理的加入申請");
+    }
   },
 
   async deleteGroup(courseCode, groupId) {

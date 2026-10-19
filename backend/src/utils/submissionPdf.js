@@ -101,7 +101,9 @@ export async function buildStudentPdf(homework, questions, student) {
       if (i === 0) {
         doc.fontSize(18).fillColor("#1f2937").text(homework.title || "作業");
         doc.moveDown(0.3).fontSize(12).fillColor("#374151")
-          .text(`學生：${student.name || "未命名"}（${student.studentId}）`);
+          .text(student.groupId
+            ? `小組：${student.name || "未命名"}（${student.studentId}）`
+            : `學生：${student.name || "未命名"}（${student.studentId}）`);
         if (student.submittedAt) doc.text(`繳交時間：${new Date(student.submittedAt).toLocaleString("zh-TW")}`);
         doc.moveDown();
       }

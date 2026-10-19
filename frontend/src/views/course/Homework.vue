@@ -75,7 +75,7 @@ const loadHomeworkList = async () => {
   isLoading.value = true
   try {
     const { data: result } = await api.get(`/api/courses/${courseId}/homeworks`)
-    homeworkList.value = result.map((item) => ({
+    homeworkList.value = result.filter((item) => !item.is_group_homework).map((item) => ({
       ...item,
       deadlineText: formatDate(item.deadline),
       isSubmitted: Boolean(item.submissionId),
